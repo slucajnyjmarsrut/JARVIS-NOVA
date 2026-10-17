@@ -8,6 +8,8 @@ on:
       - 'silero_engine.py'
       - 'tests/test_real_model_adapters.py'
       - 'offline_e2e_test.py'
+      - 'vision_engine.py'
+      - 'tests/test_vision_chat_protocol.py'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
