@@ -49,7 +49,10 @@ class SileroSynthesizer:
             else:
                 import torch
                 model = torch.package.PackageImporter(str(path)).load_pickle("tts_models", "model")
-            self._model = model.to(self.config.device)
+            # Silero's PyTorch package implements .to() in-place and may return None.
+            # Assign the ORIGINAL real loaded model, never the return of .to().
+            model.to(self.config.device)
+            self._model = model
         except Exception as exc:
             self._model = None
             raise SileroInitializationError(f"Unable to load Silero checkpoint: {exc}") from exc
