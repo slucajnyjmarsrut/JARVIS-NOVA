@@ -1,0 +1,42 @@
+name: Import the audited JARVIS Python source snapshot
+on:
+  push:
+    branches: [dev/trimodal-integration-2026-10]
+    paths:
+      - 'source-snapshot.tar.xz'
+      - '.github/workflows/import-source.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  import-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Extract source snapshot into the repository (no model binaries)
+        run: |
+          set -euo pipefail
+          tar -tJf source-snapshot.tar.xz | while IFS= read -r path; do
+            case "$path" in
+              /*|../*|*/../*|*/.. ) echo "Unsafe archive member: $path"; exit 1 ;;
+            esac
+          done
+          tar -xJf source-snapshot.tar.xz -C .
+          test -f main.py
+          test -f trimodal_service.py
+          test -f offline_e2e_test.py
+          test -f .github/workflows/build-offline-install-exe.yml
+      - name: Commit the expanded source snapshot
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Sources already synchronized."
+          else
+            git commit -m "source: import RC4 and Stage 2 integrated Python code with test suite"
+            git push origin HEAD:dev/trimodal-integration-2026-10
+          fi
