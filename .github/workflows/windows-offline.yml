@@ -4,6 +4,7 @@ on:
     branches: [dev/trimodal-integration-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
+      - 'tests/test_self_improve.py'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
