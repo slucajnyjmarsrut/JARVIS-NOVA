@@ -103,7 +103,7 @@ class BundledStoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td)
             base=root/'models/ollama'
-            manifest=base/'manifests/registry.ollama.ai/library/qwen3-vl/2b'
+            manifest=base/'manifests/registry.ollama.ai/library/qwen3-vl/2b-instruct'
             manifest.parent.mkdir(parents=True)
             digest='sha256:'+'a'*64
             manifest.write_text(json.dumps({'config':{'digest':digest,'size':2},'layers':[]}))
