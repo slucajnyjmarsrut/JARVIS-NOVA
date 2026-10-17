@@ -14,6 +14,8 @@ on:
       - 'scripts/prepare_ollama.ps1'
       - 'jarvis_nova.spec'
       - 'tests/test_trimodal_integration.py'
+      - 'tests/test_bootstrap.py'
+      - 'bootstrap.py'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
