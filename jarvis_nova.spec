@@ -11,7 +11,7 @@ assets=project/'assets'
 critical=[assets/'models'/'vosk'/'am'/'final.mdl',
           assets/'models'/'base.pt',assets/'models'/'v5_ru.pt',
           assets/'ollama'/'ollama.exe',
-          assets/'models'/'ollama'/'manifests'/'registry.ollama.ai'/'library'/'qwen3-vl'/'2b']
+          assets/'models'/'ollama'/'manifests'/'registry.ollama.ai'/'library'/'qwen3-vl'/'2b-instruct']
 for item in critical:
     if not item.is_file():
         raise RuntimeError(f'Cannot build incomplete offline release. Missing: {item}')
