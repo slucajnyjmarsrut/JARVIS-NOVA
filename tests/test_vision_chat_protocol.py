@@ -9,7 +9,7 @@ class VisionChatProtocolTests(unittest.TestCase):
         def fake(route, payload):
             requests.append((route, payload))
             if route == "/api/tags":
-                return {"models": [{"name": "qwen3-vl:2b"}]}
+                return {"models": [{"name": "qwen3-vl:2b-instruct"}]}
             if route == "/api/show":
                 return {"capabilities": ["vision", "completion"]}
             if route == "/api/chat":
@@ -30,7 +30,7 @@ class VisionChatProtocolTests(unittest.TestCase):
     def test_model_reasoning_without_final_content_is_not_fake_answer(self):
         def fake(route, payload):
             return {
-                "/api/tags": {"models": [{"name": "qwen3-vl:2b"}]},
+                "/api/tags": {"models": [{"name": "qwen3-vl:2b-instruct"}]},
                 "/api/show": {"capabilities": ["vision"]},
                 "/api/chat": {"message": {"role": "assistant", "thinking": "some thoughts", "content": ""}},
             }[route]
