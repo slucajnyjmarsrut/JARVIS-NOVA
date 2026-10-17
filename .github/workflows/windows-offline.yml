@@ -7,6 +7,7 @@ on:
       - 'tests/test_self_improve.py'
       - 'silero_engine.py'
       - 'tests/test_real_model_adapters.py'
+      - 'offline_e2e_test.py'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
@@ -16,6 +17,9 @@ on:
         type: string
 permissions:
   contents: read
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: 'utf-8'
 concurrency:
   group: jarvis-offline-windows-${{ github.ref }}
   cancel-in-progress: true
