@@ -18,7 +18,7 @@ class VisionChatProtocolTests(unittest.TestCase):
 
         vision = LocalOllamaVision(VisionConfig(), transport=fake)
         vision.initialize()
-        result = vision.describe("Какого цвета квадрат?", b"\\xff\\xd8\\xff" + b"x" * 80 + b"\\xff\\xd9")
+        result = vision.describe("Какого цвета квадрат?", bytes([255, 216, 255]) + b"x" * 80 + bytes([255, 217]))
         self.assertEqual(result, "Красный квадрат.")
         route, payload = requests[-1]
         self.assertEqual(route, "/api/chat")
@@ -37,7 +37,7 @@ class VisionChatProtocolTests(unittest.TestCase):
         vision = LocalOllamaVision(VisionConfig(), transport=fake)
         vision.initialize()
         with self.assertRaisesRegex(VisionError, "no final answer"):
-            vision.describe("Что на картинке?", b"\\xff\\xd8\\xff" + b"x" * 80 + b"\\xff\\xd9")
+            vision.describe("Что на картинке?", bytes([255, 216, 255]) + b"x" * 80 + bytes([255, 217]))
 
 
 if __name__ == "__main__":
