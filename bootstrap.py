@@ -1,6 +1,18 @@
 # -*- coding: utf-8 -*-
 """Single entry point: protect PyInstaller child processes and support a headless smoke test."""
 import multiprocessing
+import os
+import sys
+
+# PyInstaller --windowed starts with stdout/stderr=None on Windows.
+# Libraries (including real-model inference) may print diagnostics. A None
+# stream would otherwise raise AttributeError and abort the whole application.
+# Do not persist user utterances or camera descriptions as logs.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
 multiprocessing.freeze_support()  # BEFORE importing torch/whisper/tkinter
 
 def smoke_test():
