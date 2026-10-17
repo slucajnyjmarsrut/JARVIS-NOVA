@@ -108,7 +108,7 @@ class SelfImprovementTests(unittest.TestCase):
         with mock.patch.object(d, 'shortcuts', return_value=[Path('C:/Start/Steam.lnk')]), \
              mock.patch('desktop.os.startfile', create=True) as launcher:
             self.assertIn('Steam', d.open_app('стимм'))
-            launcher.assert_called_once_with('C:/Start/Steam.lnk')
+            launcher.assert_called_once_with(str(Path('C:/Start/Steam.lnk')))
 
 
 if __name__=='__main__':
