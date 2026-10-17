@@ -21,6 +21,12 @@ from whisper_engine import WhisperConfig, WhisperRecognizer
 
 
 def main() -> int:
+    # Windows PowerShell and GUI-subsystem EXEs may have a legacy output codepage
+    # or no stdout stream at all. Never break a REAL inference test when the
+    # generated Russian transcript contains non-ASCII characters.
+    for out in (sys.stdout, sys.stderr):
+        if out is not None and hasattr(out, "reconfigure"):
+            out.reconfigure(encoding="utf-8", errors="backslashreplace")
     root=assets().parent
     models=root/'models'
     runtime=BundledVisionRuntime(BundledRuntimeConfig(root=root,startup_seconds=90))
