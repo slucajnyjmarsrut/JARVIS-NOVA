@@ -1,0 +1,114 @@
+name: JARVIS NOVA offline Windows build - REAL models, fail closed
+on:
+  push:
+    branches: [dev/trimodal-integration-2026-10]
+    paths:
+      - '.github/workflows/windows-offline.yml'
+  workflow_dispatch:
+    inputs:
+      ollama_release_tag:
+        description: 'Official Ollama release tag, or latest'
+        required: false
+        default: latest
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: jarvis-offline-windows-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  offline-windows:
+    runs-on: windows-2022
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Check disk and CPU
+        shell: pwsh
+        run: |
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'Requires Windows x64' }
+          $drive=Get-PSDrive C
+          Write-Host "Disk free: $([math]::Round($drive.Free/1GB,2)) GB"
+          if ($drive.Free -lt 9000000000) { throw 'Need at least 9 GB of free disk at start' }
+      - name: Install CPU-only Torch and application dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          if ($LASTEXITCODE -ne 0) { throw 'Torch installation failed' }
+          python -m pip install -r requirements-windows.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows app dependency installation failed' }
+      - name: Run unit suite (NOT inference)
+        run: python -m unittest discover -s tests -v
+      - name: Obtain and check Vosk, Whisper and Silero before packaging
+        timeout-minutes: 40
+        run: python build_models.py
+      - name: Real Whisper, Vosk and Silero checkpoint verification
+        timeout-minutes: 30
+        run: python verify_models.py
+      - name: Download official portable Ollama and full Qwen Vision weights
+        timeout-minutes: 75
+        shell: pwsh
+        run: ./scripts/prepare_ollama.ps1 -Tag "${{ inputs.ollama_release_tag || 'latest' }}"
+      - name: Real Whisper-to-Vision-to-Silero synthetic E2E (no mocks)
+        timeout-minutes: 35
+        run: python offline_e2e_test.py
+      - name: Generate Windows icon (original image, not an external dependency)
+        run: python scripts/generate_icon.py
+      - name: Build fully bundled onedir Windows application
+        timeout-minutes: 60
+        run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
+      - name: Execute packaged EXE self-test and actual model E2E
+        timeout-minutes: 45
+        shell: pwsh
+        run: ./scripts/verify_offline_distribution.ps1
+      - name: Install official Inno Setup via Chocolatey
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+      - name: Build ONE actual installer EXE
+        shell: pwsh
+        timeout-minutes: 45
+        run: |
+          $compiler='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $compiler)) { throw 'No Inno Setup compiler' }
+          & $compiler 'installer\JarvisNova.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
+          $setups=@(Get-ChildItem 'dist/installer/*.exe')
+          if ($setups.Count -ne 1) { throw 'Expected exactly one installer EXE' }
+          Write-Host "Real Windows installer bytes: $($setups[0].Length)"
+          Get-FileHash $setups[0].FullName -Algorithm SHA256 | Format-List
+      - name: Validate model store (FULL checksums at build-time)
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; from bundled_vision_runtime import validate_offline_model_store; validate_offline_model_store(Path('assets'), verify_hashes=True); print('Vision blobs SHA256 verified')"
+          if ($LASTEXITCODE -ne 0) { throw 'Vision bundle hash verification failed' }
+      - name: Write integrity manifest
+        shell: pwsh
+        run: |
+          python scripts/write_release_manifest.py --root dist/JarvisNova --out dist/installer/FULL_FILE_SHA256_MANIFEST.json
+          if ($LASTEXITCODE -ne 0) { throw 'Manifest failed' }
+          Get-ChildItem dist/installer/*.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } | Set-Content dist/installer/SHA256SUMS.txt
+      - name: Caveats / tests that still REQUIRE a human on clean Windows
+        shell: pwsh
+        run: |
+          @'
+          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE.
+          CI does NOT prove real microphone, camera, Bluetooth, audio output, foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
+          '@ | Add-Content $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: JARVIS-NOVA-DEV-UNVERIFIED-WINDOWS-INSTALLER
+          path: |
+            dist/installer/*.exe
+            dist/installer/SHA256SUMS.txt
+            dist/installer/FULL_FILE_SHA256_MANIFEST.json
+            assets/BUNDLE_BUILD_INFO.txt
+          retention-days: 7
+          if-no-files-found: error
