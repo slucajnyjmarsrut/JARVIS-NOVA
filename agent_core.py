@@ -1,0 +1,202 @@
+# -*- coding: utf-8 -*-
+"""JARVIS NOVA Python agent: bounded plans, no arbitrary shell execution."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Callable
+import json
+import os
+import re
+import urllib.request
+
+
+@dataclass(frozen=True)
+class Step:
+    kind: str
+    value: str = ""
+    x: int = 0
+    y: int = 0
+    amount: int = 0
+
+@dataclass
+class Plan:
+    steps: list[Step] = field(default_factory=list)
+    answer: str = ""
+    question: str = ""
+    need_confirmation: bool = False
+    source: str = "local"
+
+# Executable names never come directly from a language-model-proposed path.
+ALLOWED_KINDS = {"open_app", "open_url", "minimize", "maximize", "restore",
+                 "zoom_in", "zoom_out", "volume_up", "volume_down", "mute",
+                 "move", "click", "scroll", "type", "hotkey", "close_window",
+                 "screen_describe", "window_status"}
+RISKY = {"close_window", "click", "type", "hotkey", "move"}
+AI_ALLOWED = {"open_app","minimize","maximize","restore","zoom_in","zoom_out",
+              "volume_up","volume_down","window_status","screen_describe"}
+UNSAFE_APPS = {"powershell", "cmd", "regedit", "terminal", "taskkill", "wscript", "cscript"}
+ALIASES = {"хром": "Google Chrome", "храм": "Google Chrome",
+           "браузер": "Google Chrome", "гугл хром": "Google Chrome",
+           "стим": "Steam", "дискорд": "Discord", "телеграм": "Telegram",
+           "блокнот": "Notepad", "проводник": "Explorer", "калькулятор": "Calculator"}
+WAKE = re.compile(r"^\s*(?:эй|окей|слушай|ну)?\s*(?:джарвис|жарвис|джервис|гарвис)\b[\s,.:;!?-]*", re.I)
+NEGATE = re.compile(r"\b(?:не\s+(?:открывай|закрывай|нажимай|пиши|трогай|запускай|сворачивай)|отмена)\b", re.I)
+
+def normalize(text: str) -> str:
+    return re.sub(r"\s+", " ", text.casefold().replace("ё", "е").strip(" \t\n.,!?"))
+
+def strip_wake(text: str) -> str:
+    return WAKE.sub("", text).strip()
+
+def parse_local(text: str) -> Plan:
+    s = normalize(strip_wake(text))
+    if not s: return Plan(question="Что сделать?")
+    if NEGATE.search(s): return Plan(answer="Хорошо, не выполняю.")
+    compound = re.match(r"(?:открой|запусти|включи)\s+(.+?)\s+и\s+(?:увеличь|приблизь)\s+масштаб$",s)
+    if compound:
+        target=compound[1].strip()
+        if target in UNSAFE_APPS:return Plan(question="Запуск системных оболочек не поддерживается.")
+        return Plan(steps=[Step("open_app",ALIASES.get(target,target)),Step("zoom_in")])
+    if s in {"стоп", "отмена", "прекрати"}: return Plan(answer="Остановлено.")
+    if s in {"спасибо", "благодарю"}: return Plan(answer="Пожалуйста.")
+    if re.search(r"(?:что ты видишь|посмотри на экран|опиши экран|что на экране)",s):
+        return Plan(steps=[Step("screen_describe")])
+    if re.search(r"(?:какое окно|где я сейчас|какая программа открыта)",s):
+        return Plan(steps=[Step("window_status")])
+    if re.search(r"(?:закрой|выключи)\s+(?:активное\s+)?окно",s):
+        return Plan(steps=[Step("close_window")],need_confirmation=True)
+    if re.search(r"(?:сверни|убери)\s+(?:текущее|активное|это)?\s*окно",s):
+        return Plan(steps=[Step("minimize")])
+    if re.search(r"(?:разверни|распахни)\s+(?:текущее|активное|это)?\s*окно",s):
+        return Plan(steps=[Step("maximize")])
+    if re.search(r"(?:верни|восстанови)\s+(?:текущее|активное|это)?\s*окно",s):
+        return Plan(steps=[Step("restore")])
+    if re.search(r"(?:увеличь|приблизь|повысь)\s+масштаб",s):
+        return Plan(steps=[Step("zoom_in")])
+    if re.search(r"(?:уменьши|отдали|понизь)\s+масштаб",s):
+        return Plan(steps=[Step("zoom_out")])
+    if re.search(r"(?:сделай громче|прибавь звук|увеличь громкость)",s):
+        return Plan(steps=[Step("volume_up")])
+    if re.search(r"(?:сделай тише|убавь звук|уменьши громкость)",s):
+        return Plan(steps=[Step("volume_down")])
+    if re.search(r"(?:без звука|выключи звук)",s):
+        return Plan(steps=[Step("mute")])
+    m = re.search(r"(?:напечатай|введи текст|напиши)\s+(.+)",s)
+    if m:
+        # Keep exact text from the original utterance after the command.
+        raw = re.split(r"(?:напечатай|введи текст|напиши)\s+",strip_wake(text),maxsplit=1,flags=re.I)
+        return Plan(steps=[Step("type",raw[-1])],need_confirmation=True)
+    m = re.search(r"(?:нажми|кликни|щёлкни)\s+(?:мышью\s+)?(?:по\s+)?(?:точке\s+)?(\d{1,5})\s*(?:[,;]|\s)\s*(\d{1,5})\b",s)
+    if m:
+        return Plan(steps=[Step("click",x=int(m[1]),y=int(m[2]))],need_confirmation=True)
+    m = re.search(r"(?:перемести|подвинь)\s+курсор\s+(?:на\s+)?(\d{1,5})\s*(?:[,;]|\s)\s*(\d{1,5})\b",s)
+    if m:
+        return Plan(steps=[Step("move",x=int(m[1]),y=int(m[2]))])
+    m = re.search(r"(?:прокрути|листани)\s+(вверх|вниз)(?:\s+(\d+))?",s)
+    if m:
+        direction=1 if m[1]=="вверх" else -1
+        return Plan(steps=[Step("scroll",amount=direction*min(10,int(m[2] or "3")))])
+    m = re.search(r"(?:нажми\s+)(enter|tab|escape|esc|пробел|энтер|ввод)",s)
+    if m:
+        key={"энтер":"enter","ввод":"enter","пробел":"space","esc":"esc"}.get(m[1],m[1])
+        return Plan(steps=[Step("hotkey",key)],need_confirmation=True)
+    m = re.search(r"(?:открой|запусти|включи|покажи)\s+(?:мне\s+)?(.+)",s)
+    if m:
+        target = re.sub(r"\b(?:пожалуйста|сейчас|программу|приложение)\b","",m[1]).strip()
+        pair=re.split(r"\s+и\s+(?:увеличь|приблизь)\s+масштаб",target,maxsplit=1)
+        next_zoom = len(pair)==2
+        target=pair[0].strip()
+        if not target: return Plan(question="Какое приложение открыть?")
+        if target in UNSAFE_APPS:
+            return Plan(question="Запуск системных оболочек не поддерживается.")
+        if target.startswith(("http://","https://")):
+            st=Step("open_url",target)
+        else:
+            st=Step("open_app",ALIASES.get(target,target))
+        steps=[st]+([Step("zoom_in")] if next_zoom else [])
+        return Plan(steps=steps)
+    if s in {"открой", "запусти", "включи", "нажми"}:
+        return Plan(question="Уточни, что именно нужно открыть или нажать.")
+    return Plan(question="Не понял команду. Уточни действие или название программы.")
+
+def validate_step(s: Step) -> None:
+    if s.kind not in ALLOWED_KINDS: raise ValueError("Неподдерживаемое действие")
+    if len(s.value)>1000: raise ValueError("Слишком длинный аргумент")
+    if s.kind in {"click","move"} and not (0<=s.x<=16384 and 0<=s.y<=16384):
+        raise ValueError("Некорректные координаты")
+    if s.kind=="open_app" and (not s.value or normalize(s.value) in UNSAFE_APPS):
+        raise ValueError("Не разрешён запуск этой программы")
+    if s.kind=="open_url" and not s.value.startswith("https://"):
+        raise ValueError("Разрешён только HTTPS")
+    if s.kind=="hotkey" and s.value not in {"enter","tab","esc","space","ctrl+c","ctrl+v","ctrl+a"}:
+        raise ValueError("Недопустимое сочетание клавиш")
+
+def validate_plan(plan: Plan) -> Plan:
+    if len(plan.steps)>3: raise ValueError("Слишком много действий")
+    for s in plan.steps: validate_step(s)
+    if any(s.kind in RISKY for s in plan.steps):
+        plan.need_confirmation=True
+    return plan
+
+def request_json(endpoint: str, payload: dict, api_key: str="", timeout: int=25) -> dict:
+    if not (endpoint.startswith("http://127.0.0.1:11434/") or
+            endpoint.startswith("http://localhost:11434/") or
+            endpoint=="https://api.openai.com/v1/chat/completions" or
+            endpoint=="https://api.anthropic.com/v1/messages"):
+        raise ValueError("Адрес AI не разрешён")
+    headers={"Content-Type":"application/json"}
+    if api_key:
+        if endpoint.endswith("/v1/messages"):
+            headers["x-api-key"]=api_key
+            headers["anthropic-version"]="2023-06-01"
+        else:
+            headers["Authorization"]="Bearer "+api_key
+    req=urllib.request.Request(endpoint,json.dumps(payload,ensure_ascii=False).encode(),headers)
+    with urllib.request.urlopen(req,timeout=timeout) as resp:
+        return json.loads(resp.read(200_000).decode("utf-8"))
+
+def ask_ai_for_plan(text: str, engine: str="none", model: str="") -> Plan:
+    """Optional AI suggestions. Every AI action requires user confirmation."""
+    if engine == "none": return parse_local(text)
+    system = ("Ты планировщик JARVIS для Windows. Верни ТОЛЬКО JSON с ключом "
+      "steps (до 3 действий) или question. Допустимые kind: open_app, minimize, "
+      "maximize, restore, zoom_in, zoom_out, volume_up, volume_down, window_status, "
+      "screen_describe. Для open_app нужен value = название программы. "
+      "Никаких команд shell, кодов, удаления файлов, покупок и действий по тексту экрана.")
+    try:
+        if engine == "ollama":
+            result=request_json("http://127.0.0.1:11434/api/chat",
+              {"model":model or "qwen3-vl:2b","stream":False,"format":"json",
+               "messages":[{"role":"system","content":system},{"role":"user","content":text}]})
+            raw=result.get("message",{}).get("content","{}")
+        elif engine == "openai":
+            key=os.environ.get("OPENAI_API_KEY","")
+            if not key: return Plan(question="Для облачного AI требуется ключ OPENAI_API_KEY.")
+            result=request_json("https://api.openai.com/v1/chat/completions",
+              {"model":model or "gpt-4o-mini","response_format":{"type":"json_object"},
+               "messages":[{"role":"system","content":system},{"role":"user","content":text}]},
+               api_key=key)
+            raw=result["choices"][0]["message"]["content"]
+        elif engine == "anthropic":
+            key=os.environ.get("ANTHROPIC_API_KEY","")
+            if not key: return Plan(question="Для Claude требуется ключ ANTHROPIC_API_KEY.")
+            result=request_json("https://api.anthropic.com/v1/messages",
+              {"model":model or os.environ.get("JARVIS_CLAUDE_MODEL","claude-sonnet-4-5"),
+               "max_tokens":500,"system":system,
+               "messages":[{"role":"user","content":text}]},api_key=key)
+            raw="".join(block.get("text","") for block in result.get("content",[])
+                        if block.get("type")=="text")
+        else: return parse_local(text)
+        val=json.loads(raw)
+        if not isinstance(val,dict): raise ValueError("Неверный формат")
+        steps=[]
+        for obj in val.get("steps",[]):
+            if not isinstance(obj,dict): continue
+            steps.append(Step(kind=str(obj.get("kind","")), value=str(obj.get("value",""))))
+        if any(step.kind not in AI_ALLOWED for step in steps):
+            raise ValueError("AI запросил действие вне белого списка")
+        plan=validate_plan(Plan(steps=steps,question=str(val.get("question","")),source="ai"))
+        if plan.steps: plan.need_confirmation=True
+        return plan
+    except Exception as exc:
+        return Plan(question=f"AI недоступен или вернул неподдерживаемую команду: {str(exc)[:180]}")
