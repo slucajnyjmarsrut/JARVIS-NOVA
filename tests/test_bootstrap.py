@@ -20,7 +20,7 @@ class SmokeTests(unittest.TestCase):
                 p.write_bytes(b'A'*2000)
             (root.parent/'ollama').mkdir()
             (root.parent/'ollama'/'ollama.exe').write_bytes(b'unit-test-placeholder')
-            manifest=root/'ollama/manifests/registry.ollama.ai/library/qwen3-vl/2b'
+            manifest=root/'ollama/manifests/registry.ollama.ai/library/qwen3-vl/2b-instruct'
             manifest.parent.mkdir(parents=True)
             digest='sha256:'+'f'*64
             manifest.write_text(json.dumps({'config':{'digest':digest,'size':1},'layers':[]}))
