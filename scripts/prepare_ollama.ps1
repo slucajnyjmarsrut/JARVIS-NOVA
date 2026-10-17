@@ -42,16 +42,16 @@ try {
         } catch { Start-Sleep -Seconds 1 }
     }
     if (!$Ready) { throw 'Portable Ollama never opened loopback HTTP' }
-    Write-Host 'Build-time download of 1.9GB multimodal qwen3-vl:2b'
-    & (Join-Path $Dst 'ollama.exe') pull 'qwen3-vl:2b'
+    Write-Host 'Build-time download of 1.9GB multimodal qwen3-vl:2b-instruct'
+    & (Join-Path $Dst 'ollama.exe') pull 'qwen3-vl:2b-instruct'
     if ($LASTEXITCODE -ne 0) { throw 'Ollama pull failed' }
     $Tags=Invoke-RestMethod -Uri 'http://127.0.0.1:21678/api/tags' -TimeoutSec 15
-    if (!$Tags.models -or !(@($Tags.models.name) -contains 'qwen3-vl:2b')) { throw 'Vision model was not registered' }
-    $Show = Invoke-RestMethod -Uri 'http://127.0.0.1:21678/api/show' -Method Post -ContentType 'application/json' -Body '{"model":"qwen3-vl:2b"}'
+    if (!$Tags.models -or !(@($Tags.models.name) -contains 'qwen3-vl:2b-instruct')) { throw 'Vision model was not registered' }
+    $Show = Invoke-RestMethod -Uri 'http://127.0.0.1:21678/api/show' -Method Post -ContentType 'application/json' -Body '{"model":"qwen3-vl:2b-instruct"}'
     if (!(@($Show.capabilities) -contains 'vision')) { throw 'Pulled model does not support vision' }
-    Write-Host 'Bundle includes REAL registered qwen3-vl:2b Vision weights'
+    Write-Host 'Bundle includes REAL registered qwen3-vl:2b-instruct Vision weights'
 } finally {
     if (!$Server.HasExited) { Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue }
 }
-"Ollama tag=$($Release.tag_name) archive_sha256=$ActualHash Vision=qwen3-vl:2b" |
+"Ollama tag=$($Release.tag_name) archive_sha256=$ActualHash Vision=qwen3-vl:2b-instruct" |
     Set-Content -Path (Join-Path $Assets 'BUNDLE_BUILD_INFO.txt') -Encoding utf8
