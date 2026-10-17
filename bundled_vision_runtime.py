@@ -25,18 +25,18 @@ class BundledRuntimeError(RuntimeError):
 @dataclass(frozen=True)
 class BundledRuntimeConfig:
     root: Path
-    model: str = 'qwen3-vl:2b'
+    model: str = 'qwen3-vl:2b-instruct'
     startup_seconds: float = 45.0
 
 
 def _model_manifest(models: Path, model: str) -> Path:
     # The local model is not a tag pointer to the public registry at runtime.
-    if model != 'qwen3-vl:2b':
-        raise BundledRuntimeError('Only the audited qwen3-vl:2b manifest is supported')
-    return models / 'manifests' / 'registry.ollama.ai' / 'library' / 'qwen3-vl' / '2b'
+    if model != 'qwen3-vl:2b-instruct':
+        raise BundledRuntimeError('Only the audited qwen3-vl:2b-instruct manifest is supported')
+    return models / 'manifests' / 'registry.ollama.ai' / 'library' / 'qwen3-vl' / '2b-instruct'
 
 
-def validate_offline_model_store(root: Path, model: str = 'qwen3-vl:2b', *, verify_hashes: bool = False) -> None:
+def validate_offline_model_store(root: Path, model: str = 'qwen3-vl:2b-instruct', *, verify_hashes: bool = False) -> None:
     """Check manifest and local blobs. Hash full weights at BUILD TIME only.
 
     verify_hashes=True streams every blob to verify official content digests.
