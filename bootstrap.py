@@ -43,6 +43,27 @@ def smoke_test():
     print("JARVIS bundled dependencies present; this is NOT a real inference test",flush=True)
     return 0
 
+def _acquire_windows_single_instance():
+    """Named mutex: installer refuses upgrading a running JARVIS."""
+    import os
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+    api = ctypes.WinDLL("kernel32", use_last_error=True)
+    api.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    api.CreateMutexW.restype = wintypes.HANDLE
+    api.CloseHandle.argtypes = [wintypes.HANDLE]
+    api.CloseHandle.restype = wintypes.BOOL
+    handle = api.CreateMutexW(None, False, "JarvisNovaRuntime")
+    if not handle:
+        raise OSError(ctypes.get_last_error(), "Cannot create JARVIS mutex")
+    if ctypes.get_last_error() == 183:
+        api.CloseHandle(handle)
+        return False
+    return api, handle
+
+
 def main():
     import sys
     if "--self-test" in sys.argv:
@@ -50,9 +71,17 @@ def main():
     if "--real-e2e" in sys.argv:
         from offline_e2e_test import main as real_test
         return real_test()
-    from main import Jarvis
-    Jarvis().mainloop()
-    return 0
+    guard = _acquire_windows_single_instance()
+    if guard is False:
+        return 10  # No second microphone/UI/vision server.
+    try:
+        from main import Jarvis
+        Jarvis().mainloop()
+        return 0
+    finally:
+        if guard is not None:
+            api, handle = guard
+            api.CloseHandle(handle)
 
 if __name__=="__main__":
     raise SystemExit(main())
