@@ -5,10 +5,10 @@ from tkinter import messagebox, simpledialog, ttk
 from agent_core import Plan, parse_local, validate_plan, ask_ai_for_plan
 from desktop import Desktop, AppSuggestion
 from speaker import Speaker
-from voice_engine import Voice
 from self_improve import LearningStore, safe_name
 from trimodal_service import TrimodalService
-from work_modes import ModeManager, ModeCommand, MODES
+from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
+from game_catalog import GameCatalog
 from voice_engine import Voice as RC4Voice
 
 class Jarvis(tk.Tk):
@@ -29,6 +29,7 @@ class Jarvis(tk.Tk):
         self.engine="none"
         self.learning=LearningStore()
         self.modes=ModeManager()
+        self.games=GameCatalog()
         self._focus_deadline=None
         self._focus_epoch=0
         self._pending_alias=None
@@ -75,15 +76,21 @@ class Jarvis(tk.Tk):
         vision_menu.add_command(label="Спросить голосом о камере (Whisper → Vision → Silero)",
                                 command=lambda:self.request_trimodal("camera"))
         menu.add_cascade(label="Зрение",menu=vision_menu)
-        menu.add_command(label="Видео / Вирусные ролики",command=self.open_viral_studio)
         modes_menu=tk.Menu(menu,tearoff=False)
         self._selected_mode=tk.StringVar(value='neutral')
         for key,label in [('neutral','Обычный'),('gaming','Игры'),('work','Работа'),
                           ('office','Офис'),('study','Учёба')]:
             modes_menu.add_radiobutton(label=label,variable=self._selected_mode,value=key,
                 command=lambda value=key:self.activate_mode(value))
+        video_menu=tk.Menu(modes_menu,tearoff=False)
+        for key,label in [('videos','Ролики — идея и аудитория'),('video_shoot','Ролики — съёмка'),
+                          ('video_edit','Ролики — монтаж'),('video_review','Ролики — оценка')]:
+            video_menu.add_radiobutton(label=label,variable=self._selected_mode,value=key,
+                command=lambda value=key:self.activate_mode(value))
+        modes_menu.add_cascade(label='Ролики',menu=video_menu)
         modes_menu.add_separator()
-        modes_menu.add_command(label='Запустить приложения режима',command=self.start_mode_apps)
+        modes_menu.add_command(label='Начать действие режима',command=self.start_mode_apps)
+        modes_menu.add_command(label='Выбрать игру…',command=self.ask_game)
         modes_menu.add_command(label='Настроить приложения…',command=self.configure_mode_apps)
         modes_menu.add_command(label='Команды текущего режима',command=lambda:self.reply(self.modes.help()))
         modes_menu.add_command(label='Фокус-таймер 25 минут',command=lambda:self.handle_mode_command(
@@ -213,27 +220,75 @@ class Jarvis(tk.Tk):
         lines.append("Это проверка файлов, а не реальный запуск нейросетей.")
         messagebox.showinfo("Проверка движков","\n".join(lines),parent=self)
 
-    def open_viral_studio(self):
+    def open_viral_studio(self,stage="audience"):
         """One in-app window for trend research, a shot list and local video editing."""
         if self._closing:return
         from viral_studio_ui import ViralStudioWindow
         previous=getattr(self,'_viral_window',None)
         if previous is not None and previous.winfo_exists():
             previous.lift()
-            return
+            previous.focus_stage(stage)
+            return previous
         self._viral_window=ViralStudioWindow(self,speaker=self.speaker)
+        self._viral_window.focus_stage(stage)
+        return self._viral_window
 
     def activate_mode(self,key):
         if key not in MODES and key!='neutral':
             return
-        self.modes.mode=key
-        self._selected_mode.set(key)
-        self.reply(self.modes.help() if key!='neutral' else 'Обычный режим включён.')
+        command=self.modes.set_mode(key)
+        self.handle_mode_command(command)
+        if key=='gaming':
+            # Menu users get a native picker; voice users can answer the spoken question.
+            self.after(50,self.ask_game)
+
+    def ask_game(self):
+        if self._closing:return
+        if self.modes.mode!='gaming':
+            self.reply('Сначала включи игровой режим.');return
+        known=tuple(g for g in self.games.available(()) if g.source=='steam')
+        examples=', '.join(g.label for g in known[:8]) or 'укажи игру по названию'
+        chosen=simpledialog.askstring('Игровой режим',
+            'В какую игру хочешь поиграть?\n'
+            'Назови игру из меню Пуск или локальной библиотеки Steam.\n'
+            'Примеры найденного: '+examples[:260],
+            parent=self)
+        if chosen is not None:
+            self.handle_mode_command(self.modes.choose_game(chosen))
+
+    def _launch_selected_game(self,name):
+        choice=self.games.find(name,self.desktop.installed_names())
+        if choice is None:
+            self.modes.awaiting_game=True
+            self.reply('Не нашёл такую установленную игру. Назови точное название из меню Пуск или библиотеки Steam.')
+            return
+        if choice.source=='start_menu':
+            from agent_core import Plan, Step
+            self.execute_plan(Plan(steps=[Step('open_app',choice.target)],
+                                   need_confirmation=True,source='game'))
+            return
+        if not messagebox.askyesno('Подтвердить запуск игры',
+            f'Запустить «{choice.label}» через локальный Steam?\nНикакие команды shell не выполняются.',parent=self):
+            self.reply('Запуск игры отменён.');return
+        if self.executing:
+            self.reply('Другое действие ещё выполняется.');return
+        self.executing=True
+        def worker():
+            try:
+                # Revalidate immediately before opening the Steam URI.
+                if not self.games.validate_steam(choice):
+                    raise FileNotFoundError('Игра отсутствует в проверенной Steam-библиотеке')
+                os.startfile('steam://rungameid/'+choice.target)
+                result=(True,'Запускаю '+choice.label,('steam_game',))
+            except Exception as exc:
+                result=(False,'Не удалось запустить игру: '+str(exc)[:160],('steam_game',))
+            self.q.put(('action_result',result))
+        threading.Thread(target=worker,daemon=True,name='jarvis-steam-launch').start()
 
     def configure_mode_apps(self):
         key=self.modes.mode
-        if key=='neutral':
-            messagebox.showinfo('Режимы','Сначала выбери Игры, Работа, Офис или Учёба.',parent=self)
+        if key=='neutral' or key=='gaming' or key in VIDEO_STAGES:
+            messagebox.showinfo('Режимы','Настройка пакетов программ доступна в режимах Работа, Офис и Учёба. Для игр выбери игру, для роликов используй Видео-студию.',parent=self)
             return
         existing=', '.join(self.modes.apps(key))
         answer=simpledialog.askstring('Приложения режима '+MODES[key].label,
@@ -257,6 +312,12 @@ class Jarvis(tk.Tk):
     def start_mode_apps(self):
         if self.modes.mode=='neutral':
             self.reply('Выбери один из режимов в меню.');return
+        if self.modes.mode=='gaming':
+            self.handle_mode_command(self.modes.parse('начни сессию',self.desktop.is_installed))
+            return
+        if self.modes.mode in VIDEO_STAGES:
+            self.open_viral_studio(VIDEO_STAGES[self.modes.mode])
+            return
         self.handle_mode_command(self.modes.build_launch(self.modes.mode,self.desktop.is_installed))
 
     def _focus_tick(self,epoch):
@@ -298,9 +359,25 @@ class Jarvis(tk.Tk):
         return f'Осталось {remaining//60} минут {remaining%60} секунд.'
 
     def handle_mode_command(self,command:ModeCommand):
-        if command.kind=='switch':
+        if command is None:return
+        if command.kind in {'switch','game_prompt','video_stage'}:
             self._selected_mode.set(command.mode)
             self.reply(command.message)
+            if command.kind=='video_stage':
+                studio=self.open_viral_studio(stage=command.stage)
+                if command.action and studio is not None:
+                    operations={
+                        'audience':'import_audience',
+                        'script':'generate',
+                        'shoot':'read_shots',
+                        'edit':'montage',
+                        'review':'review',
+                    }
+                    name=operations.get(command.action)
+                    if name:
+                        self.after(40,getattr(studio,name))
+        elif command.kind=='game_launch':
+            self._launch_selected_game(command.game)
         elif command.kind=='launch':
             self.log('Профиль',command.message)
             self.execute_plan(command.plan)
@@ -333,8 +410,8 @@ class Jarvis(tk.Tk):
         if any(token in text.casefold() for token in (
             'смонтируй ролик', 'вирусный ролик', 'вирусное видео',
             'сценарий для рилс', 'сценарий для шортс', 'снять тикток')):
-            self.open_viral_studio()
-            self.status.set('Видео-студия открыта. Укажи тему и подтверди поиск трендов.')
+            self.open_viral_studio('audience')
+            self.status.set('Видео-студия: сначала анализ аудитории; интернет только с разрешения.')
             return
         source=self.voice.vision_source(text)
         if source:
