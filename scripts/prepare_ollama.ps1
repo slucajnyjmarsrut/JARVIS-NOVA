@@ -53,5 +53,28 @@ try {
 } finally {
     if (!$Server.HasExited) { Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue }
 }
+# The portable official archive includes heavy CUDA GPU runtime DLLs.
+# JARVIS NOVA's CPU-only offline Windows installer must stay below 4.2 GB.
+# Prune GPU-only libraries; real model inference is retested on CPU AFTER pruning.
+$GpuDirPattern = '^(cuda(?:[_-].*)?|rocm(?:[_-].*)?|vulkan(?:[_-].*)?|mlx(?:[_-].*)?|metal(?:[_-].*)?|sycl(?:[_-].*)?|hip(?:[_-].*)?|oneapi(?:[_-].*)?)
+    Set-Content -Path (Join-Path $Assets 'BUNDLE_BUILD_INFO.txt') -Encoding utf8
+
+$GpuFilePattern = '^(ggml-(cuda|vulkan|hip|sycl|metal)|cudart|cublas|cudnn|nvrtc|rocblas|amdhip|hipblas)'
+$BytesPruned = [long]0
+$GpuDirs = @(Get-ChildItem -LiteralPath $Dst -Directory -Recurse | Where-Object { $_.Name -match $GpuDirPattern } | Sort-Object { $_.FullName.Length } -Descending)
+foreach ($Dir in $GpuDirs) {
+    if (!(Test-Path -LiteralPath $Dir.FullName)) { continue }
+    $Length = (Get-ChildItem -LiteralPath $Dir.FullName -File -Recurse | Measure-Object Length -Sum).Sum
+    if ($Length) { $BytesPruned += [long]$Length }
+    Write-Host "Removing non-CPU Vision runtime directory $($Dir.Name): $Length bytes"
+    Remove-Item -LiteralPath $Dir.FullName -Recurse -Force
+}
+$GpuFiles = @(Get-ChildItem -LiteralPath $Dst -File -Recurse | Where-Object { $_.Name -match $GpuFilePattern })
+foreach ($File in $GpuFiles) {
+    $BytesPruned += [long]$File.Length
+    Write-Host "Removing non-CPU Vision runtime file $($File.Name): $($File.Length) bytes"
+    Remove-Item -LiteralPath $File.FullName -Force
+}
+Write-Host "CPU-only Ollama bundle: removed $BytesPruned GPU bytes (real Vision inference tests MUST now pass)."
 "Ollama tag=$($Release.tag_name) archive_sha256=$ActualHash Vision=qwen3-vl:2b-instruct" |
     Set-Content -Path (Join-Path $Assets 'BUNDLE_BUILD_INFO.txt') -Encoding utf8
