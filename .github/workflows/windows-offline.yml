@@ -2,7 +2,7 @@ name: JARVIS NOVA offline Windows build - REAL models, fail closed
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [dev/trimodal-integration-2026-10]
+    branches: [dev/modes-video-game-cleanup-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -20,6 +20,16 @@ on:
       - 'installer/JarvisNova.iss'
       - 'scripts/verify_installer_payload.py'
       - 'scripts/test_installer.ps1'
+      - 'work_modes.py'
+      - 'game_catalog.py'
+      - 'main.py'
+      - 'viral_studio.py'
+      - 'viral_studio_ui.py'
+      - 'video_forecast.py'
+      - 'creator_experts.py'
+      - 'channel_audience.py'
+      - 'tests/test_game_video_modes.py'
+      - 'scripts/prepare_ffmpeg.ps1'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
@@ -79,6 +89,15 @@ jobs:
         run: python offline_e2e_test.py
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
+      - name: Include audited FFmpeg + FFprobe in OFFLINE installer for Video Studio
+        timeout-minutes: 30
+        shell: pwsh
+        run: |
+          ./scripts/prepare_ffmpeg.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Offline FFmpeg download or SHA256 audit failed' }
+          foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
+            if (!(Test-Path (Join-Path 'assets/bin' $name))) { throw "Video module missing $name" }
+          }
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
