@@ -5,12 +5,15 @@ on:
     paths:
       - '.github/workflows/viral-studio-smoke.yml'
       - 'viral_studio.py'
+      - 'viral_studio_ui.py'
+      - 'tests/test_viral*'
+      - 'tests/test_audience_pipeline.py'
+      - 'tests/test_work_modes.py'
+      - 'work_modes.py'
+      - 'main.py'
       - 'channel_audience.py'
       - 'creator_experts.py'
       - 'video_forecast.py'
-      - 'viral_studio_ui.py'
-      - 'tests/test_viral*'
-      - 'tests/test_audience_first.py'
       - 'scripts/prepare_ffmpeg.ps1'
   workflow_dispatch:
 permissions:
@@ -25,7 +28,7 @@ jobs:
         with:
           python-version: '3.11'
           architecture: 'x64'
-      - name: Install Pillow for real caption rendering
+      - name: Install CSV and caption dependencies
         run: python -m pip install pillow
       - name: Obtain exact audited FFmpeg for offline installer
         shell: pwsh
@@ -36,8 +39,10 @@ jobs:
           & './assets/bin/ffmpeg.exe' -hide_banner -version
           & './assets/bin/ffprobe.exe' -hide_banner -version
           python -m unittest discover -s tests -p 'test_viral*.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Video studio tests failed' }
-          python -m unittest discover -s tests -p 'test_audience_first.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Viral Studio test failed' }
+          python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Audience-first test failed' }
+          python -m unittest discover -s tests -p 'test_work_modes.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Profile mode tests failed' }
       - name: Compile UI and editing modules
-        run: python -m py_compile viral_studio.py viral_studio_ui.py channel_audience.py creator_experts.py video_forecast.py main.py
+        run: python -m py_compile viral_studio.py viral_studio_ui.py channel_audience.py creator_experts.py video_forecast.py main.py work_modes.py
