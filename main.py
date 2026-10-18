@@ -71,6 +71,7 @@ class Jarvis(tk.Tk):
         vision_menu.add_command(label="Спросить голосом о камере (Whisper → Vision → Silero)",
                                 command=lambda:self.request_trimodal("camera"))
         menu.add_cascade(label="Зрение",menu=vision_menu)
+        menu.add_command(label="Видео / Вирусные ролики",command=self.open_viral_studio)
         ai=tk.Menu(menu,tearoff=False)
         for title,choice in [("Офлайн-команды","none"),("Локальная Ollama","ollama"),
                              ("OpenAI API (нужен ключ)","openai"),
@@ -194,6 +195,16 @@ class Jarvis(tk.Tk):
         lines.append("Это проверка файлов, а не реальный запуск нейросетей.")
         messagebox.showinfo("Проверка движков","\n".join(lines),parent=self)
 
+    def open_viral_studio(self):
+        """Open a consent-gated local video editor in a separate Tk window."""
+        if self._closing:return
+        from viral_studio_ui import ViralStudioWindow
+        existing=getattr(self,'_viral_window',None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        self._viral_window=ViralStudioWindow(self,speaker=self.speaker)
+
     def set_engine(self,engine):
         self.engine=engine
         self.status.set({"none":"Офлайн-команды","ollama":"AI: локальная Ollama",
@@ -208,6 +219,12 @@ class Jarvis(tk.Tk):
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        if any(token in text.casefold() for token in (
+            'смонтируй ролик', 'вирусный ролик', 'вирусное видео',
+            'сценарий для рилс', 'сценарий для шортс', 'снять тикток')):
+            self.open_viral_studio()
+            self.status.set('Видео-студия открыта. Укажи тему и подтверди поиск трендов.')
+            return
         source=self.voice.vision_source(text)
         if source:
             # A typed vision request starts one five-second spoken Whisper question.
@@ -381,6 +398,10 @@ class Jarvis(tk.Tk):
         if self._closing:return
         self._closing=True
         self._shutdown.set()  # prevent slow model initialization reopening the mic
+        studio=getattr(self,'_viral_window',None)
+        if studio is not None:
+            try: studio.cancel()
+            except Exception:pass
         self.voice_enabled=False
         self.control_allowed=False;self.vision_allowed=False
         self.voice.stopping=True
