@@ -121,15 +121,19 @@ class BundledVisionRuntime:
                         ('PeakProcessMemoryUsed', ctypes.c_size_t),
                         ('PeakJobMemoryUsed', ctypes.c_size_t)]
         api = ctypes.WinDLL('kernel32', use_last_error=True)
+        api.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
         api.CreateJobObjectW.restype = wintypes.HANDLE
         api.SetInformationJobObject.argtypes = [wintypes.HANDLE,wintypes.INT,ctypes.c_void_p,wintypes.DWORD]
         api.AssignProcessToJobObject.argtypes = [wintypes.HANDLE,wintypes.HANDLE]
+        api.AssignProcessToJobObject.restype = wintypes.BOOL
         api.CloseHandle.argtypes = [wintypes.HANDLE]
+        api.CloseHandle.restype = wintypes.BOOL
         job = api.CreateJobObjectW(None, None)
         if not job:
             raise BundledRuntimeError('Cannot create Windows job object')
         limits = EXTENDED()
         limits.BasicLimitInformation.LimitFlags = 0x00002000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        api.SetInformationJobObject.restype = wintypes.BOOL
         if not api.SetInformationJobObject(job, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
             api.CloseHandle(job)
             raise BundledRuntimeError('Cannot secure Windows child process job')
@@ -196,7 +200,10 @@ class BundledVisionRuntime:
         self._port = None
         if self._job is not None:
             if os.name == 'nt':
-                ctypes.windll.kernel32.CloseHandle(self._job)
+                api = ctypes.WinDLL('kernel32', use_last_error=True)
+                api.CloseHandle.argtypes = [ctypes.c_void_p]
+                api.CloseHandle.restype = ctypes.c_int
+                api.CloseHandle(self._job)
             self._job = None
         if proc is not None and proc.poll() is None:
             try:
