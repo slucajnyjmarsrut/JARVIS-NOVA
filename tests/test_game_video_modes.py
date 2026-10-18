@@ -54,6 +54,14 @@ class GameVideoModesTests(unittest.TestCase):
         self.assertEqual(args[0],40)
         self.assertEqual(args[1],ui.open_viral_studio.return_value.montage)
 
+    def test_reenter_game_mode_forgets_previous_choice(self):
+        self.manager.set_mode('gaming')
+        self.manager.choose_game('Portal 2')
+        self.assertEqual(self.manager.game_name,'Portal 2')
+        self.manager.set_mode('gaming')
+        self.assertFalse(self.manager.game_name)
+        self.assertTrue(self.manager.awaiting_game)
+
     def test_game_cancel_and_mode_change(self):
         self.manager.set_mode('gaming')
         self.assertEqual(self.manager.parse('игра Minecraft',self.installed).kind,'game_launch')
