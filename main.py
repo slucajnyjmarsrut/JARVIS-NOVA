@@ -26,7 +26,7 @@ class Jarvis(tk.Tk):
         self.executing=False
         self.control_allowed=False
         self.vision_allowed=False
-        self.engine="none"\n        self._engine_description="Офлайн-команды: не свободный диалог"
+        self.engine="none"
         self.learning=LearningStore()
         self.modes=ModeManager()
         self.games=GameCatalog()
