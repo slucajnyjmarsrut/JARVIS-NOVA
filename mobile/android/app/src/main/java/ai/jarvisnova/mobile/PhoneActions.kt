@@ -10,7 +10,7 @@ import android.media.session.PlaybackState
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.Settings
-import android.widget.AlertDialog
+import android.app.AlertDialog
 
 class PhoneActions(private val activity: Activity, private val feedback: (String) -> Unit) {
     fun dialContact(name: String) {
