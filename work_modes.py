@@ -169,7 +169,7 @@ class ModeManager:
             raise ValueError('Неизвестный режим')
         self.mode=target
         self.awaiting_game=(target=='gaming')
-        if target!='gaming':self.game_name=''
+        self.game_name=''  # Re-entering gaming always asks which game
         if target=='neutral':
             return ModeCommand('switch','Обычный режим. Ничего не запускаю.',target)
         if target=='gaming':
