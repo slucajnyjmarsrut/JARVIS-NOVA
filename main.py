@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """JARVIS NOVA Python Agent — one-window desktop assistant."""
-import os, queue, sys, threading, tkinter as tk
+import os, queue, sys, threading, time, math, tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 from agent_core import Plan, parse_local, validate_plan, ask_ai_for_plan
 from desktop import Desktop, AppSuggestion
@@ -8,6 +8,7 @@ from speaker import Speaker
 from voice_engine import Voice
 from self_improve import LearningStore, safe_name
 from trimodal_service import TrimodalService
+from work_modes import ModeManager, ModeCommand, MODES
 from voice_engine import Voice as RC4Voice
 
 class Jarvis(tk.Tk):
@@ -27,6 +28,9 @@ class Jarvis(tk.Tk):
         self.vision_allowed=False
         self.engine="none"
         self.learning=LearningStore()
+        self.modes=ModeManager()
+        self._focus_deadline=None
+        self._focus_epoch=0
         self._pending_alias=None
         self.speaker=Speaker()
         self.trimodal=TrimodalService()
@@ -72,6 +76,20 @@ class Jarvis(tk.Tk):
                                 command=lambda:self.request_trimodal("camera"))
         menu.add_cascade(label="Зрение",menu=vision_menu)
         menu.add_command(label="Видео / Вирусные ролики",command=self.open_viral_studio)
+        modes_menu=tk.Menu(menu,tearoff=False)
+        self._selected_mode=tk.StringVar(value='neutral')
+        for key,label in [('neutral','Обычный'),('gaming','Игры'),('work','Работа'),
+                          ('office','Офис'),('study','Учёба')]:
+            modes_menu.add_radiobutton(label=label,variable=self._selected_mode,value=key,
+                command=lambda value=key:self.activate_mode(value))
+        modes_menu.add_separator()
+        modes_menu.add_command(label='Запустить приложения режима',command=self.start_mode_apps)
+        modes_menu.add_command(label='Настроить приложения…',command=self.configure_mode_apps)
+        modes_menu.add_command(label='Команды текущего режима',command=lambda:self.reply(self.modes.help()))
+        modes_menu.add_command(label='Фокус-таймер 25 минут',command=lambda:self.handle_mode_command(
+            ModeCommand('timer_start','Фокус-таймер на 25 минут.',minutes=25)))
+        modes_menu.add_command(label='Остановить таймер',command=self.stop_focus_timer)
+        menu.add_cascade(label='Режимы',menu=modes_menu)
         ai=tk.Menu(menu,tearoff=False)
         for title,choice in [("Офлайн-команды","none"),("Локальная Ollama","ollama"),
                              ("OpenAI API (нужен ключ)","openai"),
@@ -196,14 +214,103 @@ class Jarvis(tk.Tk):
         messagebox.showinfo("Проверка движков","\n".join(lines),parent=self)
 
     def open_viral_studio(self):
-        """Open a consent-gated local video editor in a separate Tk window."""
+        """One in-app window for trend research, a shot list and local video editing."""
         if self._closing:return
         from viral_studio_ui import ViralStudioWindow
-        existing=getattr(self,'_viral_window',None)
-        if existing is not None and existing.winfo_exists():
-            existing.lift()
+        previous=getattr(self,'_viral_window',None)
+        if previous is not None and previous.winfo_exists():
+            previous.lift()
             return
         self._viral_window=ViralStudioWindow(self,speaker=self.speaker)
+
+    def activate_mode(self,key):
+        if key not in MODES and key!='neutral':
+            return
+        self.modes.mode=key
+        self._selected_mode.set(key)
+        self.reply(self.modes.help() if key!='neutral' else 'Обычный режим включён.')
+
+    def configure_mode_apps(self):
+        key=self.modes.mode
+        if key=='neutral':
+            messagebox.showinfo('Режимы','Сначала выбери Игры, Работа, Офис или Учёба.',parent=self)
+            return
+        existing=', '.join(self.modes.apps(key))
+        answer=simpledialog.askstring('Приложения режима '+MODES[key].label,
+              'Введи до трёх ТОЧНЫХ названий из меню Пуск через запятую.\n'
+              'Команды и пути к EXE запрещены.\n'
+              'Перед записью JARVIS проверит все программы.',
+              initialvalue=existing,parent=self)
+        if answer is None:return
+        items=[x.strip() for x in answer.split(',')]
+        try:
+            if not messagebox.askyesno('Проверка запуска',
+                'Разрешить сохранить в этом режиме следующие программы?\n'+
+                '\n'.join(items)+'\nОни будут запускаться только по команде с подтверждением.',parent=self):
+                return
+            self.modes.configure(key,items,self.desktop.is_installed)
+        except (OSError,ValueError) as exc:
+            messagebox.showerror('Недопустимые приложения',str(exc),parent=self)
+            return
+        self.reply('Приложения режима сохранены. Ничего не запускаю без команды.')
+
+    def start_mode_apps(self):
+        if self.modes.mode=='neutral':
+            self.reply('Выбери один из режимов в меню.');return
+        self.handle_mode_command(self.modes.build_launch(self.modes.mode,self.desktop.is_installed))
+
+    def _focus_tick(self,epoch):
+        if self._closing or epoch!=self._focus_epoch or self._focus_deadline is None:
+            return
+        remaining=self._focus_deadline-time.monotonic()
+        if remaining<=0:
+            self._focus_deadline=None
+            self.reply('Фокус-сессия завершилась. Сделай перерыв.')
+            return
+        self.after(min(1000,max(100,int(remaining*1000))),lambda:self._focus_tick(epoch))
+
+    def start_focus_timer(self,minutes:int):
+        if self.modes.mode not in {'work','office','study'}:
+            self.reply('Фокус-таймер доступен в режимах Работа, Офис, Учёба.')
+            return
+        if not isinstance(minutes,int) or not 1<=minutes<=120:
+            self.reply('Фокус-таймер должен быть от 1 до 120 минут.')
+            return
+        if self._focus_deadline and self._focus_deadline>time.monotonic():
+            if not messagebox.askyesno('Фокус-таймер','Заменить уже работающий таймер?',parent=self):return
+        self._focus_epoch+=1
+        self._focus_deadline=time.monotonic()+60*minutes
+        epoch=self._focus_epoch
+        self.after(1000,lambda:self._focus_tick(epoch))
+        self.reply(f'Начинаю фокус-сессию на {minutes} минут.')
+
+    def stop_focus_timer(self):
+        self._focus_epoch+=1
+        if self._focus_deadline is not None:
+            self._focus_deadline=None
+            self.reply('Фокус-таймер остановлен.')
+        else:self.reply('Фокус-таймер не запущен.')
+
+    def focus_status(self):
+        if self._focus_deadline is None:return 'Сейчас нет активного таймера.'
+        remaining=max(0,math.ceil(self._focus_deadline-time.monotonic()))
+        if remaining==0:return 'Фокус-сессия завершилась.'
+        return f'Осталось {remaining//60} минут {remaining%60} секунд.'
+
+    def handle_mode_command(self,command:ModeCommand):
+        if command.kind=='switch':
+            self._selected_mode.set(command.mode)
+            self.reply(command.message)
+        elif command.kind=='launch':
+            self.log('Профиль',command.message)
+            self.execute_plan(command.plan)
+        elif command.kind=='timer_start':
+            self.start_focus_timer(command.minutes)
+        elif command.kind=='timer_status':
+            self.reply(self.focus_status())
+        elif command.kind=='timer_stop':
+            self.stop_focus_timer()
+        else:self.reply(command.message)
 
     def set_engine(self,engine):
         self.engine=engine
@@ -219,6 +326,10 @@ class Jarvis(tk.Tk):
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        mode_command=self.modes.parse(text,self.desktop.is_installed)
+        if mode_command is not None:
+            self.handle_mode_command(mode_command)
+            return
         if any(token in text.casefold() for token in (
             'смонтируй ролик', 'вирусный ролик', 'вирусное видео',
             'сценарий для рилс', 'сценарий для шортс', 'снять тикток')):
@@ -403,6 +514,8 @@ class Jarvis(tk.Tk):
             try: studio.cancel()
             except Exception:pass
         self.voice_enabled=False
+        self._focus_epoch=getattr(self,'_focus_epoch',0)+1
+        self._focus_deadline=None
         self.control_allowed=False;self.vision_allowed=False
         self.voice.stopping=True
         self.voice.running=False
