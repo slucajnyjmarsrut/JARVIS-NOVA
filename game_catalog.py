@@ -18,7 +18,7 @@ class GameChoice:
 
 
 def _vdf_string(text: str, key: str) -> str:
-    match = re.search(r'^\\s*"'+re.escape(key)+r'"\\s+"((?:\\\\.|[^"\\\\])*)"', text, re.I | re.M)
+    match = re.search(r'^\s*"'+re.escape(key)+r'"\s+"((?:\\.|[^"\\])*)"', text, re.I | re.M)
     return match.group(1).replace('\\\\', '\\') if match else ''
 
 
@@ -42,7 +42,7 @@ class GameCatalog:
                 if not vdf.is_file() or vdf.stat().st_size > 1_000_000:
                     continue
                 data = vdf.read_text('utf-8-sig', errors='replace')
-                for match in re.finditer(r'"path"\\s+"((?:\\\\.|[^"\\\\]){1,600})"', data, re.I):
+                for match in re.finditer(r'"path"\s+"((?:\\.|[^"\\]){1,600})"', data, re.I):
                     target = Path(match.group(1).replace('\\\\', '\\')) / 'steamapps'
                     if target.is_dir():
                         found.add(target)
