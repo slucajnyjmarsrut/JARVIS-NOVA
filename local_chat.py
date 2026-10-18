@@ -99,6 +99,8 @@ class LocalChat:
         except Exception as exc:
             raise ChatError(f"Не удалось получить локальный ответ: {str(exc)[:150]}") from exc
         finally:
-            if runtime is not None:
-                runtime.stop()
-            self._lock.release()
+            try:
+                if runtime is not None:
+                    runtime.stop()
+            finally:
+                self._lock.release()
