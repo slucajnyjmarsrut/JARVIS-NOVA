@@ -56,8 +56,7 @@ try {
 # The portable official archive includes heavy CUDA GPU runtime DLLs.
 # JARVIS NOVA's CPU-only offline Windows installer must stay below 4.2 GB.
 # Prune GPU-only libraries; real model inference is retested on CPU AFTER pruning.
-$GpuDirPattern = '^(cuda(?:[_-].*)?|rocm(?:[_-].*)?|vulkan(?:[_-].*)?|mlx(?:[_-].*)?|metal(?:[_-].*)?|sycl(?:[_-].*)?|hip(?:[_-].*)?|oneapi(?:[_-].*)?)
-    Set-Content -Path (Join-Path $Assets 'BUNDLE_BUILD_INFO.txt') -Encoding utf8
+$GpuDirPattern = '^(cuda(?:[_-].*)?|rocm(?:[_-].*)?|vulkan(?:[_-].*)?|mlx(?:[_-].*)?|metal(?:[_-].*)?|sycl(?:[_-].*)?|hip(?:[_-].*)?|oneapi(?:[_-].*)?)$'
 
 $GpuFilePattern = '^(ggml-(cuda|vulkan|hip|sycl|metal)|cudart|cublas|cudnn|nvrtc|rocblas|amdhip|hipblas)'
 $BytesPruned = [long]0
