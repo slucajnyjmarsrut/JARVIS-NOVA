@@ -30,10 +30,10 @@ class ModeSpec:
 
 MODES: dict[str, ModeSpec] = {
     'gaming': ModeSpec('Игры', ('игровой', 'игры', 'игровой режим', 'гейминг'),
-        ('Steam', 'Discord'),
+        (),
         (('лаунчер', ('открой лаунчер', 'запусти лаунчер'), 'Steam'),
          ('общение', ('открой связь', 'открой дискорд'), 'Discord')),
-        'Игровой режим: запуск Steam и Discord, управление громкостью и пауза вручную.'),
+        'Игровой режим: сначала спрошу, какую игру ты хочешь запустить.'),
     'work': ModeSpec('Работа', ('рабочий', 'работа', 'рабочий режим'),
         ('Google Chrome', 'Notepad'),
         (('заметки', ('открой заметки', 'запусти заметки'), 'Notepad'),
@@ -50,8 +50,24 @@ MODES: dict[str, ModeSpec] = {
         (('конспект', ('открой конспект', 'создай конспект'), 'Notepad'),
          ('практика', ('открой задачи', 'открой калькулятор'), 'Calculator')),
         'Учебный режим: конспект, практика и 25-минутные учебные блоки.'),
+    'videos': ModeSpec('Ролики', ('ролики', 'роликов', 'видео', 'видео режим', 'режим роликов', 'контент'),
+        (), (), 'Ролики: сначала анализ аудитории, затем идея и сценарий.'),
+    'video_shoot': ModeSpec('Съёмка ролика', ('съемка роликов', 'съёмка роликов', 'съемки', 'съемка', 'съёмка', 'режим съемки', 'режим съёмки'),
+        (), (), 'Съёмка: подскажу список кадров из сценария.'),
+    'video_edit': ModeSpec('Монтаж ролика', ('монтаж', 'монтажа', 'монтажный', 'монтаж роликов', 'режим монтажа'),
+        (), (), 'Монтаж: объединение собственных кадров локальным FFmpeg.'),
+    'video_review': ModeSpec('Проверка ролика', ('оценка ролика', 'оценки ролика', 'проверка ролика', 'анализ ролика', 'режим оценки'),
+        (), (), 'Оценка: соответствие ролика аудитории, не гарантия просмотров.'),
 }
 
+VIDEO_STAGES = {'videos':'audience', 'video_shoot':'shoot', 'video_edit':'edit', 'video_review':'review'}
+VIDEO_COMMANDS = {
+    'audience': ('анализ аудитории', 'проанализируй канал', 'изучи аудиторию', 'посмотри статистику'),
+    'script': ('напиши сценарий', 'подбери идею', 'создай сценарий ролика'),
+    'shoot': ('что снимать', 'подскажи кадры', 'озвучь кадры'),
+    'edit': ('смонтируй ролик', 'начни монтаж', 'монтируй видео'),
+    'review': ('оцени ролик', 'проверь ролик', 'оцени монтаж'),
+}
 _MODE_ALIASES={normalize(alias):mode for mode,spec in MODES.items() for alias in spec.variants}
 _NEUTRAL={'нейтральный режим','обычный режим','выключи режим',
           'выйди из режима','отключи режим','режим по умолчанию'}
@@ -75,6 +91,9 @@ class ModeCommand:
     mode: str = ''
     plan: Plan | None = None
     minutes: int = 0
+    game: str = ''
+    stage: str = ''
+    action: str = ''
 
 
 def _switch_target(text: str) -> str | None:
@@ -97,6 +116,8 @@ class ModeManager:
 
     def __init__(self, path: Path | None = None):
         self.mode='neutral'  # ephemeral session state, does not leak into next launch
+        self.game_name=''
+        self.awaiting_game=False
         self.path=Path(path) if path is not None else default_data_file().with_name('modes-v1.json')
         self.overrides: dict[str,tuple[str,...]]={}
         self._load()
@@ -143,15 +164,43 @@ class ModeManager:
         if key not in MODES:return ()
         return self.overrides.get(key,MODES[key].defaults)
 
+    def set_mode(self, target: str) -> ModeCommand:
+        if target not in MODES and target != 'neutral':
+            raise ValueError('Неизвестный режим')
+        self.mode=target
+        self.awaiting_game=(target=='gaming')
+        if target!='gaming':self.game_name=''
+        if target=='neutral':
+            return ModeCommand('switch','Обычный режим. Ничего не запускаю.',target)
+        if target=='gaming':
+            return ModeCommand('game_prompt','Игровой режим. В какую игру хочешь поиграть? Назови установленную игру.',target)
+        if target in VIDEO_STAGES:
+            return ModeCommand('video_stage',self.help(),target,stage=VIDEO_STAGES[target])
+        return ModeCommand('switch',self.help(),target)
+
     def help(self):
         if self.mode=='neutral':
-            return ('Режимы: Игры, Работа, Офис, Учёба. Скажи «Джарвис, включи игровой режим» '
-                    'или выбери режим в меню. Есть пакетный запуск приложений и фокус-таймер.')
+            return ('Режимы: Игры, Работа, Офис, Учёба, Ролики, Съёмка, Монтаж, Оценка. '
+                    'Скажи «включи игровой режим» либо выбери режим в меню.')
+        if self.mode=='gaming':
+            return 'Игровой режим. Назови игру. Доступны «выбери игру», «начни сессию», «открой лаунчер» и «обычный режим». Запуск только с подтверждением.'
+        if self.mode in VIDEO_STAGES:
+            return (f'Режим «{MODES[self.mode].label}». Сначала статистика канала, затем сценарий, '
+                    'съёмка, монтаж и оценка. Команды: «проанализируй канал», «напиши сценарий», '
+                    '«что снимать», «смонтируй ролик», «оцени ролик».')
         spec=MODES[self.mode]
         commands=', '.join(v[0] for v in spec.shortcuts)
         return (f'Режим «{spec.label}». {spec.introduction} '
                 f'Команды: «начни сессию», {commands}, «таймер 25 минут», '
                 '«сколько осталось», «останови таймер», «обычный режим».')
+ 
+    def choose_game(self, name: str) -> ModeCommand:
+        if self.mode!='gaming':return ModeCommand('message','Сначала включи игровой режим.')
+        if not safe_name(name):
+            return ModeCommand('game_prompt','Назови игру по её названию, без путей и команд.',self.mode)
+        self.game_name=name.strip()
+        self.awaiting_game=False
+        return ModeCommand('game_launch','Проверяю установленную игру: '+self.game_name,self.mode,game=self.game_name)
 
     def build_launch(self,mode:str,is_installed:Callable[[str],bool],apps:tuple[str,...]|None=None):
         desired=apps if apps is not None else self.apps(mode)
@@ -175,11 +224,34 @@ class ModeManager:
         if re.match(r'^(?:не|не надо|пожалуйста не)\s+',phrase):return None
         target=_switch_target(phrase)
         if target:
-            self.mode=target
-            if target=='neutral':return ModeCommand('switch','Обычный режим. Без автоматического запуска программ.',target)
-            return ModeCommand('switch',self.help(),target)
+            return self.set_mode(target)
         if phrase in _HELP:
             return ModeCommand('message',self.help(),self.mode)
+        if self.mode=='gaming':
+            if phrase in {'отмена', 'отмени выбор игры', 'не хочу играть'}:
+                self.game_name=''
+                self.awaiting_game=False
+                return ModeCommand('message','Хорошо, игру не запускаю.',self.mode)
+            if phrase in {'выбери игру','сменить игру','другая игра','какую игру','во что поиграть'}:
+                self.awaiting_game=True
+                return ModeCommand('game_prompt','В какую установленную игру хочешь поиграть?',self.mode)
+            if phrase in _START or phrase in _MODE_START['gaming']:
+                if not self.game_name:
+                    self.awaiting_game=True
+                    return ModeCommand('game_prompt','Сначала скажи, какую игру запустить.',self.mode)
+                return self.choose_game(self.game_name)
+            selected=re.fullmatch(r'(?:запусти игру|хочу играть в|играю в|игра)\s+(.+)',phrase)
+            if selected:return self.choose_game(selected.group(1))
+            if self.awaiting_game and not any(phrase.startswith(x) for x in
+                ('открой ','запусти ','включи ','таймер ','сделай ','посмотри ','помоги ','сверни ', 'смонтируй ', 'оцени ', 'проанализируй ', 'напиши ', 'что ')):
+                if safe_name(phrase):return self.choose_game(phrase)
+        if self.mode in VIDEO_STAGES:
+            for stage,phrases in VIDEO_COMMANDS.items():
+                if phrase in phrases:
+                    return ModeCommand('video_stage','Открываю нужный этап видео-студии.',self.mode,stage=stage,action=stage)
+            if phrase in _START or phrase in {'начни создание ролика','открой видео студию'}:
+                return ModeCommand('video_stage',self.help(),self.mode,stage=VIDEO_STAGES[self.mode])
+
         if phrase in _STOP_TIMER:
             return ModeCommand('timer_stop','Останавливаю фокус-таймер.',self.mode)
         if phrase in _TIMER_STATUS:
@@ -196,7 +268,7 @@ class ModeManager:
             if minutes<1 or minutes>120:
                 return ModeCommand('message','Укажи от 1 до 120 минут.')
             return ModeCommand('timer_start',f'Фокус-таймер на {minutes} минут.',self.mode,minutes=minutes)
-        if self.mode=='neutral':return None
+        if self.mode=='neutral' or self.mode in VIDEO_STAGES:return None
         if phrase in _START or phrase in _MODE_START[self.mode]:
             return self.build_launch(self.mode,is_installed)
         for title,aliases,app in MODES[self.mode].shortcuts:
