@@ -16,6 +16,14 @@ for item in critical:
     if not item.is_file():
         raise RuntimeError(f'Cannot build incomplete offline release. Missing: {item}')
 
+# Exclude developer-only PyTorch C++ headers from frozen runtime.
+# They are bundled by broad collect_all("torch") but neither Whisper nor
+# Silero needs them for inference. Keep every DLL and checkpoint.
+def development_header(entry):
+    # PyInstaller datas: (source, destination); analysis TOC: (dest, source, type).
+    destination = str(entry[1] if len(entry) == 2 else entry[0]).replace('\\', '/').lower()
+    return destination == 'torch/include' or destination.startswith('torch/include/')
+
 binaries=[]
 datas=[(str(assets),'assets')]
 hiddenimports=['win32com.client','pythoncom','pywintypes','PIL.ImageGrab',
@@ -36,12 +44,17 @@ for library in ('vosk','whisper','torch','sounddevice','_sounddevice_data',
         ignored=('.lib', '.pdb', '.exp', '.ilk', '.pyi', '.pyc')
         return [item for item in entries
                 if not str(item[0]).lower().endswith(ignored)]
-    datas+=runtime_files(d); binaries+=runtime_files(b); hiddenimports+=h
+    datas += [item for item in runtime_files(d) if not development_header(item)]
+    binaries += runtime_files(b)
+    hiddenimports += h
 
 analysis=Analysis(['bootstrap.py'],pathex=[str(project)],binaries=binaries,
     datas=datas,hiddenimports=hiddenimports,hookspath=[],hooksconfig={},
     runtime_hooks=[],excludes=['torch.testing','pytest','matplotlib','IPython',
     'tensorflow','jupyter','notebook'],noarchive=False)
+# PyInstaller torch hooks may append headers after collect_all processing.
+# Explicitly remove them from the final data TOC, after all hooks have run.
+analysis.datas = [entry for entry in analysis.datas if not development_header(entry)]
 pyz=PYZ(analysis.pure)
 exe=EXE(pyz,analysis.scripts,[],exclude_binaries=True,
         name='JarvisNova',debug=False,bootloader_ignore_signals=False,
