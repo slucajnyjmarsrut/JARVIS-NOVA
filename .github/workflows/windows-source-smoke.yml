@@ -1,0 +1,45 @@
+name: JARVIS NOVA - Windows source smoke
+on:
+  push:
+    branches:
+      - 'dev/trimodal-integration-2026-10'
+    paths:
+      - '.github/workflows/windows-source-smoke.yml'
+      - 'scripts/restore_source.py'
+      - 'source/**'
+      - 'scripts/fetch_vosk.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Unpack source into a clean workspace
+        shell: pwsh
+        run: |
+          python scripts/restore_source.py
+          if ($LASTEXITCODE -ne 0) { throw 'Failed source restoration' }
+          if (!(Test-Path 'main.py')) { throw 'Restoration missing main.py' }
+          if (!(Test-Path 'assets/jarvis.ico')) { throw 'Missing icon' }
+      - name: Install unit test requirements
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check numpy scipy pillow
+          if ($LASTEXITCODE -ne 0) { throw 'pip failed' }
+      - name: Run tests (not a model inference test)
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed' }
+      - name: Compile Python syntax
+        shell: pwsh
+        run: |
+          python -m compileall -q .
+          if ($LASTEXITCODE -ne 0) { throw 'Compileall failed' }
