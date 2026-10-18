@@ -1,0 +1,35 @@
+name: JARVIS NOVA Android MVP build (phone and music)
+on:
+  push:
+    branches: [dev/mobile-voice-android-2026-10]
+    paths:
+      - 'mobile/android/**'
+      - '.github/workflows/android-mobile.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Install Android platform 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Compile APK and test command parser
+        working-directory: mobile/android
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: JARVIS-NOVA-ANDROID-DEV-UNVERIFIED-LOCKSCREEN
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
