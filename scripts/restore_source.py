@@ -31,10 +31,10 @@ def main():
     icon=assets/'jarvis.ico'
     if not icon.exists():
         width=32
-        raw=b''.join(b'\\x00'+b'\\x18\\x28\\x44'*width for _ in range(width))
+        raw=b''.join(b'\x00'+b'\x18\x28\x44'*width for _ in range(width))
         def chunk(kind,data):
             return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
-        png=(b'\\x89PNG\\r\\n\\x1a\\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',width,width,8,2,0,0,0))+
+        png=(b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',width,width,8,2,0,0,0))+
              chunk(b'IDAT',zlib.compress(raw))+chunk(b'IEND',b''))
         with icon.open('wb') as stream:
             stream.write(struct.pack('<HHH',0,1,1))
