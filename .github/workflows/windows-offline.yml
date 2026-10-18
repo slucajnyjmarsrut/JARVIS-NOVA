@@ -17,6 +17,9 @@ on:
       - 'tests/test_trimodal_integration.py'
       - 'tests/test_bootstrap.py'
       - 'bootstrap.py'
+      - 'installer/JarvisNova.iss'
+      - 'scripts/verify_installer_payload.py'
+      - 'scripts/test_installer.ps1'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
@@ -81,6 +84,9 @@ jobs:
         timeout-minutes: 45
         shell: pwsh
         run: ./scripts/verify_offline_distribution.ps1
+      - name: Verify packaged AMD64 app and all THREE offline model stores with blob digests
+        timeout-minutes: 15
+        run: python scripts/verify_installer_payload.py --dir dist/JarvisNova
       - name: Install official Inno Setup via Chocolatey
         timeout-minutes: 15
         shell: pwsh
@@ -99,23 +105,10 @@ jobs:
           if ($setups.Count -ne 1) { throw 'Expected exactly one installer EXE' }
           Write-Host "Real Windows installer bytes: $($setups[0].Length)"
           Get-FileHash $setups[0].FullName -Algorithm SHA256 | Format-List
-      - name: Install actual EXE silently and run its real models (staged Windows environment)
+      - name: Test single EXE installer, real installed E2E, uninstall and user-data retention
         shell: pwsh
-        timeout-minutes: 40
-        run: |
-          $installer=Get-ChildItem 'dist/installer/*.exe' | Select-Object -First 1
-          $target=Join-Path $env:RUNNER_TEMP 'jarvis-fresh-install'
-          $args=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$target")
-          $process=Start-Process -FilePath $installer.FullName -ArgumentList $args -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Installer returned $($process.ExitCode)" }
-          $exe=Join-Path $target 'JarvisNova.exe'
-          if (!(Test-Path $exe)) { throw 'Installer did not create JarvisNova.exe' }
-          $smoke=Start-Process -FilePath $exe -ArgumentList '--self-test' -Wait -PassThru -WindowStyle Hidden
-          if ($smoke.ExitCode -ne 0) { throw "Installed app incomplete: $($smoke.ExitCode)" }
-          $e2e=Start-Process -FilePath $exe -ArgumentList '--real-e2e' -Wait -PassThru -WindowStyle Hidden
-          if ($e2e.ExitCode -ne 0) { throw "Installed application real model test failed: $($e2e.ExitCode)" }
-          Write-Host 'Installed application passed real synthetic Whisper + Vision + Silero inference'
-          Write-Host 'CAVEAT: this runner still has Python; clean offline Windows PC is still an external acceptance gate'
+        timeout-minutes: 50
+        run: ./scripts/test_installer.ps1
       - name: Validate model store (FULL checksums at build-time)
         shell: pwsh
         run: |
