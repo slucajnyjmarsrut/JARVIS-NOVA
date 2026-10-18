@@ -1,0 +1,14 @@
+Uploaded files reviewed (not executed):
+whisper-20250625.zip | size=7269208 | SHA256=6f71c98e3d92bf9e1553dd1bad41456a73af4f291a1d03cf22a5161215d63c0e
+SileroTTS_Ru_Setup_1.0.2.exe | size=194324977 | SHA256=295c4fe0f5add4e6ef4cb5882f931d7ff27c09020c8ae43752fcdf31361364a1
+
+Whisper ZIP: official-style Python source tree, 54 members, no model weights.
+Silero Setup: Windows PE installer; Inno Setup signatures found, contents NOT executed/extracted.
+Silero Setup IS NOT INCLUDED in agent bundle; official model downloaded during Windows build.
+Vosk model from prior project source bundle; license included.
+No Windows PyInstaller EXE created in this Linux environment.
+Agent code checks: 24 unit tests passed; all project Python files syntax-checked.
+PyInstaller/torch/sounddevice/real microphone tests require Windows.
+
+RC1: added verify_models.py, checksums, Whisper retry and UI async execution.
+Windows executable not built, Windows runner not executed.

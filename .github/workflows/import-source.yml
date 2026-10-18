@@ -1,0 +1,30 @@
+name: Audit historical RC4 source snapshot (non-destructive)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate snapshot without overwriting developed sources
+        run: |
+          python - <<'PY'
+          import base64,hashlib,io,lzma,pathlib,tarfile,tempfile
+          b64=pathlib.Path('source-import/JARVIS_NOVA_SOURCE.tar.xz.base64')
+          data=base64.b64decode(''.join(b64.read_text().split()),validate=True)
+          expected='107548f881aa464176e2cd30ca59c4c2cd94b73c76b6423894024196e43220ac'
+          assert hashlib.sha256(data).hexdigest()==expected
+          with tempfile.TemporaryDirectory() as d:
+              root=pathlib.Path(d)
+              with tarfile.open(fileobj=io.BytesIO(lzma.decompress(data))) as archive:
+                  for entry in archive:
+                      path=pathlib.PurePosixPath(entry.name)
+                      assert not path.is_absolute() and '..' not in path.parts and entry.isfile()
+                      dst=root.joinpath(*path.parts)
+                      dst.parent.mkdir(parents=True,exist_ok=True)
+                      dst.write_bytes(archive.extractfile(entry).read())
+              assert (root/'main.py').is_file()
+              print('Historical snapshot verified; current repository files unchanged.')
+          PY

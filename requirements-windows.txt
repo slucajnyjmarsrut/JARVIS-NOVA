@@ -1,0 +1,15 @@
+pyinstaller==6.15.0
+numpy>=1.26,<3
+Pillow>=10,<13
+vosk>=0.3.45,<1
+sounddevice>=0.5,<1
+pyautogui>=0.9.54,<1
+PyGetWindow>=0.0.9,<1
+pyttsx3>=2.90,<3
+pywin32>=306
+comtypes>=1.4,<2
+openai-whisper==20250625
+
+# Stage 2 real tri-modal dependencies
+scipy>=1.11,<2
+opencv-python>=4.8,<5

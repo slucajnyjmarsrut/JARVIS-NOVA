@@ -1,0 +1,93 @@
+name: JARVIS NOVA Windows offline build (experimental)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-pack:
+    runs-on: windows-2022
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: x64
+      - name: Restore integrated RC4 and Stage2 source archive
+        shell: pwsh
+        run: |
+          python scripts/restore_source.py
+          if ($LASTEXITCODE -ne 0) { throw 'Source archive restoration failed' }
+      - name: Get official Vosk Russian wake-word model
+        shell: pwsh
+        run: |
+          python scripts/fetch_vosk.py
+          if ($LASTEXITCODE -ne 0) { throw 'Verified Vosk model acquisition failed' }
+      - name: Test integrated source
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { throw 'Unit tests failed' }
+      - name: Prepare Windows Python stack
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
+          if ($LASTEXITCODE -ne 0) { throw 'CPU torch install failed' }
+          python -m pip install -r requirements-windows.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependencies failed' }
+      - name: Download checked Whisper and Silero on the build runner
+        shell: pwsh
+        run: |
+          python build_models.py
+          if ($LASTEXITCODE -ne 0) { throw 'Model acquisition failed' }
+          python verify_models.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real model loading failed' }
+      - name: Obtain portable Ollama and multimodal Vision weights
+        shell: pwsh
+        run: |
+          ./scripts/prepare_ollama.ps1 -Tag latest
+          if ($LASTEXITCODE -ne 0) { throw 'Vision download failed' }
+      - name: Actual three-network synthetic offline E2E (no mocks)
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          python offline_e2e_test.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real inference NOT confirmed' }
+      - name: Package onedir Windows GUI
+        shell: pwsh
+        timeout-minutes: 60
+        run: |
+          python -m PyInstaller --clean --noconfirm jarvis_nova.spec
+          if ($LASTEXITCODE -ne 0) { throw 'PyInstaller failed' }
+          ./scripts/verify_offline_distribution.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged real E2E failed' }
+      - name: Build one installer EXE
+        shell: pwsh
+        timeout-minutes: 60
+        run: |
+          choco install innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
+          python scripts/verify_installer_inputs.py
+          if ($LASTEXITCODE -ne 0) { throw 'Installer payload is missing genuine offline models' }
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'installer\JarvisNova_v2.iss'
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          $setup = Get-ChildItem 'dist/installer/*.exe' | Select-Object -First 1
+          if (!$setup) { throw 'Installer absent' }
+          Get-FileHash $setup.FullName -Algorithm SHA256 | Format-List
+          python scripts/write_release_manifest.py --root dist/JarvisNova --out dist/installer/FULL_FILE_SHA256_MANIFEST.json
+          Get-ChildItem dist/installer/*.exe | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
+            Set-Content dist/installer/SHA256SUMS.txt -Encoding ascii
+      - name: CI is not a hardware test
+        shell: pwsh
+        run: |
+          'Even on success: physical Windows mic, camera, speaker, offline clean install and X-close test are NOT verified by this runner.' | Add-Content $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-NOVA-WINDOWS-INSTALLER-UNVERIFIED-HARDWARE
+          path: |
+            dist/installer/*.exe
+            dist/installer/SHA256SUMS.txt
+            dist/installer/FULL_FILE_SHA256_MANIFEST.json
+          if-no-files-found: error
