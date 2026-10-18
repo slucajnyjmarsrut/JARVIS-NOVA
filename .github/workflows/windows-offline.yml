@@ -1,8 +1,8 @@
-name: JARVIS NOVA size-optimized Windows DEV build - REAL models, fail closed
+name: JARVIS NOVA 0.5.1 Voice/Chat/UI Windows build
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [dev/size-optimization-2026-10]
+    branches: [dev/voice-chat-ui-fix-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -16,6 +16,14 @@ on:
       - 'jarvis_nova.spec'
       - 'scripts/size_audit.py'
       - 'tests/test_size_audit.py'
+      - 'local_chat.py'
+      - 'tests/test_local_chat.py'
+      - 'tests/test_voice_chat_ui.py'
+      - 'tests/test_voice_fallback.py'
+      - 'voice_engine.py'
+      - 'scripts/verify_offline_distribution.ps1'
+      - 'scripts/test_installer.ps1'
+      - 'bootstrap.py'
       - 'tests/test_trimodal_integration.py'
       - 'tests/test_bootstrap.py'
       - 'bootstrap.py'
