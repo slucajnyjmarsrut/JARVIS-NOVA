@@ -2,7 +2,7 @@ name: JARVIS NOVA offline Windows build - REAL models, fail closed
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [dev/trimodal-integration-2026-10]
+    branches: [dev/modes-video-game-cleanup-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -20,6 +20,26 @@ on:
       - 'installer/JarvisNova.iss'
       - 'scripts/verify_installer_payload.py'
       - 'scripts/test_installer.ps1'
+      - 'work_modes.py'
+      - 'game_catalog.py'
+      - 'main.py'
+      - 'viral_studio.py'
+      - 'viral_studio_ui.py'
+      - 'video_forecast.py'
+      - 'creator_experts.py'
+      - 'channel_audience.py'
+      - 'tests/test_game_video_modes.py'
+      - 'tests/test_audience_pipeline.py'
+      - 'tests/test_viral_studio.py'
+      - 'tests/test_viral_integration.py'
+      - 'tests/test_work_modes.py'
+      - 'tests/test_audience_first.py'
+      - 'creator_experts.py'
+      - 'video_forecast.py'
+      - 'scripts/verify_offline_distribution.ps1'
+      - 'docs/MODES_VIDEO_GAMES_RU.md'
+      - 'docs/AUDIENCE_FIRST_RU.md'
+      - 'scripts/prepare_ffmpeg.ps1'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
@@ -71,12 +91,33 @@ jobs:
       - name: Download official portable Ollama and full Qwen Vision weights
         timeout-minutes: 75
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/prepare_ollama.ps1 -Tag "${{ inputs.ollama_release_tag || 'latest' }}"
       - name: Real Whisper-to-Vision-to-Silero synthetic E2E (no mocks)
         timeout-minutes: 35
         run: python offline_e2e_test.py
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
+      - name: Include audited FFmpeg + FFprobe in OFFLINE installer for Video Studio
+        timeout-minutes: 30
+        shell: pwsh
+        run: |
+          ./scripts/prepare_ffmpeg.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Offline FFmpeg download or SHA256 audit failed' }
+          foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
+            if (!(Test-Path (Join-Path 'assets/bin' $name))) { throw "Video module missing $name" }
+          }
+      - name: Validate local Video Studio rendering with bundled FFmpeg on Windows
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_viral*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Real Video Studio tests failed' }
+          python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Audience integration tests failed' }
+          python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Game/video modes tests failed' }
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
@@ -124,7 +165,7 @@ jobs:
         shell: pwsh
         run: |
           @'
-          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE.
+          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE. Video Studio import and real H264 FFmpeg encoding are also checked inside the installed application.
           CI does NOT prove real microphone, camera, Bluetooth, audio output, foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4

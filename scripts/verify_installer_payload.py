@@ -37,6 +37,11 @@ def verify(root):
             raise RuntimeError('Missing or truncated '+name)
     if not is_windows_64_executable(assets/'ollama'/'ollama.exe'):
         raise RuntimeError('Missing x64 portable Ollama')
+    # Video Studio must work with no system FFmpeg/Python installation.
+    for tool in ('ffmpeg.exe','ffprobe.exe'):
+        bundled=assets/'bin'/tool
+        if not is_windows_64_executable(bundled):
+            raise RuntimeError('Missing offline Windows x64 video editing engine: '+tool)
     validate_offline_model_store(assets,verify_hashes=True)
     partial=list(root.rglob('*.partial'))
     if partial:

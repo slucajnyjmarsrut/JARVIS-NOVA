@@ -64,10 +64,52 @@ def _acquire_windows_single_instance():
     return api, handle
 
 
+def video_self_test():
+    """Test bundled editing tools inside the frozen GUI EXE, offline and headless."""
+    import json
+    import subprocess
+    import tempfile
+    from pathlib import Path
+
+    # Real imports must work from the PyInstaller bundle, not only on the build host.
+    from viral_studio import ffmpeg_tools
+    import viral_studio_ui
+    import channel_audience
+    import creator_experts
+    import video_forecast
+    import work_modes
+    import game_catalog
+    from main import Jarvis
+    if not callable(Jarvis.open_viral_studio):
+        raise RuntimeError("Video Studio GUI entry point unavailable")
+    ffmpeg, ffprobe = ffmpeg_tools()
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    with tempfile.TemporaryDirectory(prefix="jarvis-video-check-") as tmp:
+        out = Path(tmp) / "render.mp4"
+        subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error",
+                        "-f", "lavfi", "-i", "color=c=blue:s=360x640:r=12:d=1",
+                        "-t", "1", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        "-y", str(out)], check=True, capture_output=True,
+                       timeout=60, creationflags=flags)
+        if not out.is_file() or out.stat().st_size < 1000:
+            raise RuntimeError("Bundled FFmpeg failed to encode MP4")
+        info = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "stream=codec_type",
+             "-of", "json", str(out)], check=True, capture_output=True,
+            timeout=20, creationflags=flags)
+        streams = json.loads(info.stdout).get("streams", [])
+        if not any(s.get("codec_type") == "video" for s in streams):
+            raise RuntimeError("Bundled FFprobe cannot read the generated MP4")
+    print("Video Studio headless package test OK; real FFmpeg generated MP4", flush=True)
+    return 0
+
+
 def main():
     import sys
     if "--self-test" in sys.argv:
         return smoke_test()
+    if "--video-self-test" in sys.argv:
+        return video_self_test()
     if "--real-e2e" in sys.argv:
         from offline_e2e_test import main as real_test
         return real_test()

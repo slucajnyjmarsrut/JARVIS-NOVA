@@ -8,7 +8,10 @@ $Dst = Join-Path $Assets 'ollama'
 $Models = Join-Path $Assets 'models/ollama'
 New-Item -ItemType Directory -Path $Dst,$Models -Force | Out-Null
 $Api = 'https://api.github.com/repos/ollama/ollama/releases/' + $(if ($Tag -eq 'latest') { 'latest' } else { 'tags/' + $Tag })
-$Release = Invoke-RestMethod -Uri $Api -Headers @{'User-Agent'='Jarvis-Nova-Windows-Build';'Accept'='application/vnd.github+json'}
+# Use the ephemeral GitHub Actions token to avoid shared public-runner API rate limits.
+$Headers = @{'User-Agent'='Jarvis-Nova-Windows-Build';'Accept'='application/vnd.github+json';'X-GitHub-Api-Version'='2022-11-28'}
+if ($env:GH_TOKEN) { $Headers['Authorization'] = "Bearer $($env:GH_TOKEN)" }
+$Release = Invoke-RestMethod -Uri $Api -Headers $Headers
 $Artifact = @($Release.assets) | Where-Object { $_.name -eq 'ollama-windows-amd64.zip' } | Select-Object -First 1
 if (!$Artifact) { throw "Portable official ollama-windows-amd64.zip missing from $($Release.tag_name)" }
 $Expected = $Artifact.digest

@@ -19,9 +19,9 @@ try {
     if ($install.ExitCode -ne 0) { throw "Setup failed: $($install.ExitCode)" }
     $Exe=Join-Path $Target 'JarvisNova.exe'
     if (!(Test-Path $Exe)) { throw 'Installed JarvisNova.exe missing' }
-    foreach ($Mode in @('--self-test','--real-e2e')) {
+    foreach ($Mode in @('--self-test','--video-self-test','--real-e2e')) {
         $Run=Start-Process -FilePath $Exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden
-        if ($Run.ExitCode -ne 0) { throw "Installed EXE failed $Mode: $($Run.ExitCode)" }
+        if ($Run.ExitCode -ne 0) { throw "Installed EXE failed ${Mode}: $($Run.ExitCode)" }
     }
     $Uninstall=Join-Path $Target 'unins000.exe'
     if (!(Test-Path $Uninstall)) { throw 'No uninstaller' }

@@ -1,0 +1,53 @@
+name: Viral Studio Windows video-render smoke
+on:
+  push:
+    branches: [dev/viral-studio-2026-10, dev/modes-video-game-cleanup-2026-10]
+    paths:
+      - '.github/workflows/viral-studio-smoke.yml'
+      - 'viral_studio.py'
+      - 'viral_studio_ui.py'
+      - 'tests/test_viral*'
+      - 'tests/test_audience_pipeline.py'
+      - 'tests/test_work_modes.py'
+      - 'work_modes.py'
+      - 'game_catalog.py'
+      - 'tests/test_game_video_modes.py'
+      - 'docs/MODES_VIDEO_GAMES_RU.md'
+      - 'main.py'
+      - 'channel_audience.py'
+      - 'creator_experts.py'
+      - 'video_forecast.py'
+      - 'scripts/prepare_ffmpeg.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: 'x64'
+      - name: Install CSV and caption dependencies
+        run: python -m pip install pillow numpy scipy
+      - name: Obtain exact audited FFmpeg for offline installer
+        shell: pwsh
+        run: ./scripts/prepare_ffmpeg.ps1
+      - name: Verify real Windows FFmpeg works (with x264 and ASS)
+        shell: pwsh
+        run: |
+          & './assets/bin/ffmpeg.exe' -hide_banner -version
+          & './assets/bin/ffprobe.exe' -hide_banner -version
+          python -m unittest discover -s tests -p 'test_viral*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Viral Studio test failed' }
+          python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Audience-first test failed' }
+          python -m unittest discover -s tests -p 'test_work_modes.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Profile mode tests failed' }
+          python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Game and video stage tests failed' }
+      - name: Compile UI and editing modules
+        run: python -m py_compile viral_studio.py viral_studio_ui.py channel_audience.py creator_experts.py video_forecast.py main.py work_modes.py game_catalog.py
