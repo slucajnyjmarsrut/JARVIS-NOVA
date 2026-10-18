@@ -10,6 +10,7 @@ from trimodal_service import TrimodalService
 from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
 from voice_engine import Voice as RC4Voice
+from local_chat import LocalChat
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -26,7 +27,7 @@ class Jarvis(tk.Tk):
         self.executing=False
         self.control_allowed=False
         self.vision_allowed=False
-        self.engine="none"
+        self.engine="bundled"
         self.learning=LearningStore()
         self.modes=ModeManager()
         self.games=GameCatalog()
@@ -35,6 +36,7 @@ class Jarvis(tk.Tk):
         self._pending_alias=None
         self.speaker=Speaker()
         self.trimodal=TrimodalService()
+        self.local_chat=LocalChat(self.trimodal.runtime)
         self.desktop=Desktop(lambda:self.control_allowed,lambda:self.vision_allowed,
                              learning=self.learning)
         self.voice=RC4Voice(lambda s:self.q.put(("heard",s)),
@@ -47,7 +49,7 @@ class Jarvis(tk.Tk):
         header=tk.Label(self,text="JARVIS NOVA",font=("Segoe UI",22,"bold"),
                          fg="#b5d9ff",bg="#101726")
         header.pack(anchor="w",padx=24,pady=(18,4))
-        self.status=tk.StringVar(value="Запускаю офлайн-голос…")
+        self.status=tk.StringVar(value="Запускаю микрофон… Для общения доступна встроенная Qwen.")
         label=tk.Label(self,textvariable=self.status,font=("Segoe UI",10),
                        fg="#93aecb",bg="#101726")
         label.pack(anchor="w",padx=26,pady=(0,14))
@@ -111,7 +113,8 @@ class Jarvis(tk.Tk):
         modes_menu.add_command(label='Остановить таймер',command=self.stop_focus_timer)
         menu.add_cascade(label='Режимы',menu=modes_menu)
         ai=tk.Menu(menu,tearoff=False)
-        for title,choice in [("Офлайн-команды","none"),("Локальная Ollama","ollama"),
+        for title,choice in [("Свободный разговор (встроенная Qwen, офлайн)","bundled"),
+                             ("Только офлайн-команды","none"),("Внешняя Ollama","ollama"),
                              ("OpenAI API (нужен ключ)","openai"),
                              ("Claude API (нужен ключ)","anthropic")]:
             ai.add_command(label=title,command=lambda v=choice:self.set_engine(v))
@@ -415,7 +418,8 @@ class Jarvis(tk.Tk):
 
     def set_engine(self,engine):
         self.engine=engine
-        self.status.set({"none":"Офлайн-команды","ollama":"AI: локальная Ollama",
+        self.status.set({"bundled":"Разговор: встроенная Qwen (без интернета)",
+                         "none":"Только команды","ollama":"AI: внешняя Ollama",
                          "openai":"AI: OpenAI API (ключ из окружения)",
                          "anthropic":"AI: Claude API (ключ из окружения)"}[engine])
 
@@ -449,6 +453,19 @@ class Jarvis(tk.Tk):
         local=parse_local(text)
         if self.engine=="none" or local.steps or local.answer or text.casefold().strip() in {"открой","запусти","включи"}:
             self.execute_plan(local)
+        elif self.engine=="bundled":
+            if self.executing:
+                self.reply("Подожди, пока я закончу предыдущий запрос.")
+                return
+            self.executing=True
+            self.status.set("Думаю локально — первый ответ может занять время…")
+            def chat_worker():
+                try:
+                    result=(True,self.local_chat.ask(text))
+                except Exception as exc:
+                    result=(False,"Локальный разговор недоступен: "+str(exc)[:200])
+                self.q.put(("chat_result",result))
+            threading.Thread(target=chat_worker,daemon=True,name="jarvis-local-chat").start()
         else:
             self.status.set("Обдумываю запрос…")
             def worker():
@@ -573,6 +590,11 @@ class Jarvis(tk.Tk):
                         self.status.set("Ошибка Whisper/Vision/Silero — подробности в журнале")
                 elif op=="trimodal_complete":
                     self.executing=False
+                elif op=="chat_result":
+                    self.executing=False
+                    success,answer=val
+                    if success:self.reply(answer)
+                    else:self.reply(answer+" Проверь установку моделей.")
                 elif op=="status":self.status.set(val)
                 elif op=="plan":self.execute_plan(val)
                 elif op=="action_result":
