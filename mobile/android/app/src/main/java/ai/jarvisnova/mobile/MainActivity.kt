@@ -36,7 +36,7 @@ class MainActivity : Activity() {
         layout.addView(text)
         layout.addView(Button(this).apply {
             this.text = "Выполнить команду"
-            setOnClickListener { execute(text.text.toString()) }
+            setOnClickListener { execute(this@MainActivity.text.text.toString()) }
         })
         layout.addView(Button(this).apply {
             this.text = "Сказать голосом"
