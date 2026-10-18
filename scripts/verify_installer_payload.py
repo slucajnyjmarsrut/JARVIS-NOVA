@@ -16,7 +16,7 @@ def is_windows_64_executable(path):
     if len(head)<128 or head[:2]!=b'MZ':
         return False
     pe_offset=struct.unpack_from('<I',head,0x3c)[0]
-    if pe_offset+26>len(head) or head[pe_offset:pe_offset+4]!=b'PE\\0\\0':
+    if pe_offset+26>len(head) or head[pe_offset:pe_offset+4]!=b'PE\0\0':
         return False
     machine=struct.unpack_from('<H',head,pe_offset+4)[0]
     magic=struct.unpack_from('<H',head,pe_offset+24)[0]
