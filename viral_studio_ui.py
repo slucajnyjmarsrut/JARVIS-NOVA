@@ -75,6 +75,20 @@ class ViralStudioWindow(tk.Toplevel):
         self.focus_set()
         self.after(100,self._pump_notifications)
 
+    def focus_stage(self, stage: str):
+        """Navigate without triggering filesystem dialogs, web requests or rendering."""
+        descriptions={
+            'audience':('1. Анализ аудитории: импортируй свою статистику CSV.',self.audience_button),
+            'script':('2. Сценарий: сначала нужен анализ аудитории канала.',self.make_button),
+            'shoot':('3. Съёмка: открой сценарий и озвучь список кадров.',self.speak_button),
+            'edit':('4. Монтаж: выбери отснятые кадры и подтверди обработку.',self.edit_button),
+            'review':('5. Оценка: проверь готовый MP4 относительно данных аудитории.',self.review_button),
+        }
+        message,button=descriptions.get(stage,descriptions['audience'])
+        self.status.set(message)
+        try:button.focus_set()
+        except tk.TclError:pass
+
     def _show(self, text):
         if not self.winfo_exists():return
         self.viewer.configure(state='normal')
