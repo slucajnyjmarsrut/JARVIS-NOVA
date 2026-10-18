@@ -72,38 +72,58 @@ class Voice:
         self.running=False
         if self.thread and self.thread.is_alive(): self.thread.join(timeout=3)
 
-    def _try_whisper(self,pcm:bytes, did_wake:bool):
-        """Second-pass transcription when Vosk did not detect the wake word.
+    def _try_whisper(self, pcm: bytes, did_wake: bool, vosk_text: str = "", force: bool = False):
+        """Whisper is authoritative for completed speech; Vosk supplies wake detection.
 
-        At most one Whisper task runs at a time, with a cooldown to prevent
-        background noise exhausting CPU or duplicating previous commands.
+        Vosk text is used ONLY if a real Whisper model is unavailable or fails.
+        An explicit wake/manual activation bypasses cooldown, so a quiet command
+        is not discarded after a recognition mistake. Audio stays in RAM.
         """
         now=time.monotonic()
         with self.lock:
-            if (self.stopping or did_wake or self.whisper_busy or len(pcm)<16000 or
-                    now-self.whisper_last_at<2.0 or self.speaking()):
+            active = did_wake or force or now < self.until
+            if self.stopping or self.whisper_busy or self.speaking() or len(pcm) < 16000:
+                return
+            if not active and now-self.whisper_last_at < 3.0:
                 return
             path=assets()/"base.pt"
-            if not path.exists():return
+            if not path.is_file():
+                if vosk_text:
+                    self.accept_text(vosk_text)
+                else:
+                    self.on_status("Whisper отсутствует: проверь встроенные модели")
+                return
             self.whisper_busy=True
             self.whisper_last_at=now
         def work():
             try:
+                self.on_status("Whisper распознаёт фразу…")
                 if self.whisper_model is None:
-                    self.on_status("Загружаю Whisper…")
                     import whisper
                     self.whisper_model=whisper.load_model(str(path),device="cpu")
                 import numpy as np
-                samples=np.frombuffer(pcm,dtype="<i2").astype(np.float32)/32768
-                result=self.whisper_model.transcribe(samples,language="ru",fp16=False,
-                    condition_on_previous_text=False,temperature=0)
-                text=result.get("text","").strip()
-                if text:self.accept_text(text)
+                samples=np.frombuffer(pcm,dtype="<i2").astype(np.float32)/32768.0
+                result=self.whisper_model.transcribe(
+                    samples,language="ru",fp16=False,condition_on_previous_text=False,
+                    temperature=0,beam_size=3)
+                text=str(result.get("text","") or "").strip()
+                # Hallucinations during silence are a real Whisper failure mode.
+                if text:
+                    if did_wake or force:
+                        with self.lock:
+                            self.until=max(self.until,time.monotonic()+5)
+                    self.accept_text(text)
+                elif active:
+                    self.on_status("Не расслышал. Попробуй повторить немного громче.")
             except Exception as exc:
-                self.on_status("Whisper недоступен: "+str(exc)[:90])
+                self.on_status("Whisper: "+str(exc)[:90])
+                if vosk_text and not self.stopping:
+                    if did_wake or force:
+                        with self.lock: self.until=time.monotonic()+5
+                    self.accept_text(vosk_text)
             finally:
                 with self.lock: self.whisper_busy=False
-        threading.Thread(target=work,daemon=True,name="whisper-fallback").start()
+        threading.Thread(target=work,daemon=True,name="whisper-command").start()
 
     @staticmethod
     def vision_source(text: str) -> str | None:
@@ -128,6 +148,9 @@ class Voice:
             segment=bytearray()
             silent=0
             max_segment=16000*2*11
+            vosk_parts=[]
+            # Lower gate for quiet speech; Whisper filters recognized text.
+            speech_threshold=55
             segment_vosk_wake=False
             vision_pending=None
             was_speaking=False
@@ -150,15 +173,16 @@ class Voice:
                     if self.speaking():
                         if not was_speaking:
                             segment.clear();silent=0;segment_vosk_wake=False;vision_pending=None
+                            vosk_parts.clear()
                             recognizer=KaldiRecognizer(model,16000)
                         was_speaking=True
                         continue
                     was_speaking=False
                     data=np.frombuffer(packet,dtype="<i2")
                     rms=float(np.sqrt(np.mean(data.astype(np.float64)**2))) if data.size else 0
-                    if rms>125 or segment:
+                    if rms>speech_threshold or segment:
                         segment.extend(packet)
-                        silent=0 if rms>125 else silent+1
+                        silent=0 if rms>speech_threshold else silent+1
                         if len(segment)>max_segment:
                             # Avoid unbounded RAM on constant noise.
                             segment=segment[-max_segment:]
@@ -166,36 +190,37 @@ class Voice:
                         result=json.loads(recognizer.Result())
                         text=result.get("text","").strip()
                         if text:
-                            segment_vosk_wake |= bool(WAKE.match(text))
+                            vosk_parts.append(text)
+                            if WAKE.match(text):
+                                segment_vosk_wake=True
+                                # Wake word alone should open the command window,
+                                # but Vosk's potentially wrong words are NEVER executed yet.
+                                with self.lock: self.until=time.monotonic()+10
+                                self.on_status("Слышу «Джарвис». Уточняю через Whisper…")
                             candidate=self.vision_source(text)
-                            # Hold vision commands until we have the actual utterance PCM.
-                            # Whisper will transcribe those SAME samples; no second mic turn.
                             if candidate and self.on_vision_audio and (WAKE.match(text) or time.monotonic()<self.until):
                                 vision_pending=candidate
-                            elif not vision_pending:
-                                self.accept_text(text)
                     if segment and (silent>=10 or len(segment)>=max_segment):
                         utterance=bytes(segment)
                         segment.clear();silent=0
                         text=json.loads(recognizer.FinalResult()).get("text","").strip()
+                        combined=" ".join([*vosk_parts, text]).strip()
+                        vosk_parts.clear()
                         recognizer=KaldiRecognizer(model,16000)
                         recognizer.SetWords(True)
-                        has_wake=segment_vosk_wake or bool(WAKE.match(text))
+                        has_wake=segment_vosk_wake or bool(WAKE.match(combined))
                         segment_vosk_wake=False
-                        candidate=self.vision_source(text)
+                        candidate=self.vision_source(combined)
                         if (candidate and self.on_vision_audio and
-                                (WAKE.match(text) or time.monotonic()<self.until)):
+                                (has_wake or time.monotonic()<self.until)):
                             vision_pending=candidate
                         if vision_pending and self.on_vision_audio and not self.stopping:
                             self.on_vision_audio(utterance,vision_pending)
                             vision_pending=None
                             continue
-                        if text: self.accept_text(text)
-                        # Recheck *unmatched* Vosk speech, including cases where
-                        # Vosk heard other words but missed the wake word.
-                        # Whisper consumes bytes only from RAM: no WAV files.
-                        if not has_wake:
-                            self._try_whisper(utterance,False)
+                        # Never dispatch raw Vosk command text before the more
+                        # accurate Whisper pass has had a chance to recognize it.
+                        self._try_whisper(utterance,has_wake,combined)
         except Exception as exc:
             self.on_status("Ошибка микрофона: "+str(exc)[:180])
         finally:
