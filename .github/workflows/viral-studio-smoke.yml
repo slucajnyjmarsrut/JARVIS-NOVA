@@ -1,7 +1,7 @@
 name: Viral Studio Windows video-render smoke
 on:
   push:
-    branches: [dev/viral-studio-2026-10]
+    branches: [dev/viral-studio-2026-10, dev/modes-video-game-cleanup-2026-10]
     paths:
       - '.github/workflows/viral-studio-smoke.yml'
       - 'viral_studio.py'
@@ -10,6 +10,9 @@ on:
       - 'tests/test_audience_pipeline.py'
       - 'tests/test_work_modes.py'
       - 'work_modes.py'
+      - 'game_catalog.py'
+      - 'tests/test_game_video_modes.py'
+      - 'docs/MODES_VIDEO_GAMES_RU.md'
       - 'main.py'
       - 'channel_audience.py'
       - 'creator_experts.py'
@@ -44,5 +47,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Audience-first test failed' }
           python -m unittest discover -s tests -p 'test_work_modes.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Profile mode tests failed' }
+          python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Game and video stage tests failed' }
       - name: Compile UI and editing modules
-        run: python -m py_compile viral_studio.py viral_studio_ui.py channel_audience.py creator_experts.py video_forecast.py main.py work_modes.py
+        run: python -m py_compile viral_studio.py viral_studio_ui.py channel_audience.py creator_experts.py video_forecast.py main.py work_modes.py game_catalog.py
