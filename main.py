@@ -63,6 +63,7 @@ class Jarvis(tk.Tk):
             ("🎬 Видео-студия",lambda:self.open_viral_studio("audience")),
             ("👁 Посмотреть экран",lambda:self.request_trimodal("screen")),
             ("🎮 Игровой режим",lambda:self.activate_mode("gaming")),
+            ("🎤 Микрофон",self.toggle_voice),
             ("❔ Возможности",self.show_capabilities)]:
             tk.Button(shortcuts,text=label,command=action,
                       bg="#263852",fg="#ffffff",activebackground="#365275",
