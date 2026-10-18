@@ -1,52 +1,30 @@
-name: Import checksum-verified JARVIS NOVA Python sources
+name: Audit historical RC4 source snapshot (non-destructive)
 on:
-  push:
-    branches: [dev/trimodal-integration-2026-10]
-    paths:
-      - '.github/workflows/import-source.yml'
-      - 'source-import/JARVIS_NOVA_SOURCE.tar.xz.base64'
   workflow_dispatch:
 permissions:
-  contents: write
+  contents: read
 jobs:
-  import-source:
+  audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-      - name: Securely unpack source snapshot
+      - name: Validate snapshot without overwriting developed sources
         run: |
           python - <<'PY'
-          import base64, hashlib, io, lzma, pathlib, tarfile
-          root = pathlib.Path.cwd()
-          source = root / 'source-import/JARVIS_NOVA_SOURCE.tar.xz.base64'
-          data = base64.b64decode(''.join(source.read_text().split()),validate=True)
-          expected = '107548f881aa464176e2cd30ca59c4c2cd94b73c76b6423894024196e43220ac'
-          assert hashlib.sha256(data).hexdigest() == expected, 'Source snapshot SHA256 mismatch'
-          with tarfile.open(fileobj=io.BytesIO(lzma.decompress(data)),mode='r:') as archive:
-              for entry in archive:
-                  path = pathlib.PurePosixPath(entry.name)
-                  assert not path.is_absolute() and path.parts and '..' not in path.parts, entry.name
-                  assert entry.isfile(), 'Symlinks and non-regular files are prohibited'
-                  out = root.joinpath(*path.parts)
-                  assert not out.is_symlink()
-                  out.parent.mkdir(parents=True,exist_ok=True)
-                  out.write_bytes(archive.extractfile(entry).read())
-          assert (root/'main.py').is_file()
-          assert (root/'trimodal_service.py').is_file()
+          import base64,hashlib,io,lzma,pathlib,tarfile,tempfile
+          b64=pathlib.Path('source-import/JARVIS_NOVA_SOURCE.tar.xz.base64')
+          data=base64.b64decode(''.join(b64.read_text().split()),validate=True)
+          expected='107548f881aa464176e2cd30ca59c4c2cd94b73c76b6423894024196e43220ac'
+          assert hashlib.sha256(data).hexdigest()==expected
+          with tempfile.TemporaryDirectory() as d:
+              root=pathlib.Path(d)
+              with tarfile.open(fileobj=io.BytesIO(lzma.decompress(data))) as archive:
+                  for entry in archive:
+                      path=pathlib.PurePosixPath(entry.name)
+                      assert not path.is_absolute() and '..' not in path.parts and entry.isfile()
+                      dst=root.joinpath(*path.parts)
+                      dst.parent.mkdir(parents=True,exist_ok=True)
+                      dst.write_bytes(archive.extractfile(entry).read())
+              assert (root/'main.py').is_file()
+              print('Historical snapshot verified; current repository files unchanged.')
           PY
-      - name: Check syntax and isolated unit tests
-        run: |
-          python -m compileall -q .
-          python -m pip install numpy pillow
-          python -m unittest discover -s tests -v
-      - name: Commit imported sources on dev only
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- '*.py' '*.spec' '*.cmd' '*.ps1' '*.txt' '*.md' '*.iss' '*.yml'
-          if ! git diff --cached --quiet; then
-            git commit -m "source: import Stage 2 and RC4 code tested on Linux"
-            git push origin HEAD:dev/trimodal-integration-2026-10
-          fi
