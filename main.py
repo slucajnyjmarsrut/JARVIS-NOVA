@@ -14,9 +14,9 @@ from voice_engine import Voice as RC4Voice
 class Jarvis(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS NOVA — Agent")
-        self.geometry("650x460")
-        self.minsize(510,350)
+        self.title("JARVIS NOVA — Голос, зрение, видео и режимы")
+        self.geometry("810x610")
+        self.minsize(650,500)
         self.configure(bg="#101726")
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.q=queue.Queue()
@@ -26,7 +26,7 @@ class Jarvis(tk.Tk):
         self.executing=False
         self.control_allowed=False
         self.vision_allowed=False
-        self.engine="none"
+        self.engine="none"\n        self._engine_description="Офлайн-команды: не свободный диалог"
         self.learning=LearningStore()
         self.modes=ModeManager()
         self.games=GameCatalog()
@@ -55,6 +55,19 @@ class Jarvis(tk.Tk):
                              insertbackground="white",relief="flat",font=("Segoe UI",11),
                              padx=15,pady=12,state="disabled")
         self.history.pack(fill="both",expand=True,padx=24)
+        shortcuts=tk.Frame(self,bg="#101726")
+        shortcuts.pack(fill="x",padx=24,pady=(10,0))
+        for label,action in [
+            ("🎬 Видео-студия",lambda:self.open_viral_studio("audience")),
+            ("👁 Посмотреть экран",lambda:self.request_trimodal("screen")),
+            ("🎮 Игровой режим",lambda:self.activate_mode("gaming")),
+            ("❔ Возможности",self.show_capabilities)]:
+            tk.Button(shortcuts,text=label,command=action,
+                      bg="#263852",fg="#ffffff",activebackground="#365275",
+                      relief="flat",padx=9,pady=8).pack(side="left",padx=(0,6))
+        tk.Label(self,text="Разговор: AI → выбери движок. Whisper используется для распознавания команд.",
+                 font=("Segoe UI",9),fg="#93aecb",bg="#101726").pack(
+                 anchor="w",padx=26,pady=(8,0))
         bottom=tk.Frame(self,bg="#101726")
         bottom.pack(fill="x",padx=24,pady=(12,20))
         self.entry=tk.Entry(bottom,bg="#18243a",fg="white",insertbackground="white",
@@ -115,6 +128,17 @@ class Jarvis(tk.Tk):
         self.log("Система","Управление голосом: «Джарвис, открой Chrome». F9 — ручная активация.")
         self.after(100,self.pump)
         threading.Thread(target=self.init_voice,daemon=True).start()
+
+    def show_capabilities(self):
+        messagebox.showinfo("Что умеет JARVIS NOVA",
+            "Голосовые команды: «Джарвис, открой блокнот» (микрофон должен быть включён).\n\n"
+            "Свободный разговор: AI → выбери локальную Ollama или настроенный облачный API.\n"
+            "Зрение: меню Зрение или кнопка «Посмотреть экран» — спрашивает разрешение.\n"
+            "Видео: кнопка «Видео-студия» — сначала CSV статистики канала, потом сценарий и монтаж.\n"
+            "Режимы: Игры, Работа, Офис, Учёба и этапы роликов в верхнем меню.\n\n"
+            "Whisper: распознавание речи; Vision: ответы о кадре; Silero: синтез речи. "
+            "Все модели проверены автоматически, но качество микрофона зависит от устройства.",
+            parent=self)
 
     def log(self,person,message):
         self.history.configure(state="normal")
