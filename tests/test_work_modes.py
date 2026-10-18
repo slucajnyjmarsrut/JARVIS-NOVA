@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 import sys
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
-from work_modes import ModeManager, MODES
+from work_modes import ModeManager, MODES, VIDEO_STAGES
 from main import Jarvis
 
 
@@ -26,7 +26,7 @@ class ModesTest(unittest.TestCase):
                             ('включи учебный режим','study')]:
             with self.subTest(phrase=phrase):
                 result=self.manager.parse(phrase,self.check)
-                self.assertEqual(result.kind,'switch')
+                self.assertEqual(result.kind,'game_prompt' if mode=='gaming' else 'switch')
                 self.assertEqual(self.manager.mode,mode)
 
     def test_neutral_does_not_run_programs(self):
@@ -36,12 +36,18 @@ class ModesTest(unittest.TestCase):
         self.assertIsNone(result.plan)
         self.assertEqual(self.manager.mode,'neutral')
 
-    def test_games_starts_two_apps_and_confirmation(self):
-        self.manager.parse('включи игровой режим',self.check)
-        result=self.manager.parse('Джарвис начни игровой сеанс',self.check)
-        self.assertEqual([s.value for s in result.plan.steps],['Steam','Discord'])
-        self.assertTrue(result.plan.need_confirmation)
-        self.assertEqual(result.plan.source,'mode')
+    def test_game_mode_asks_before_launch(self):
+        intro=self.manager.parse('включи игровой режим',self.check)
+        self.assertEqual(intro.kind,'game_prompt')
+        self.assertTrue(self.manager.awaiting_game)
+        self.assertFalse(self.manager.game_name)
+        self.assertIsNone(intro.plan)
+        self.assertEqual(self.manager.parse('начни игровой сеанс',self.check).kind,'game_prompt')
+        selected=self.manager.parse('Portal 2',self.check)
+        self.assertEqual(selected.kind,'game_launch')
+        self.assertEqual(selected.game,'portal 2')
+        self.assertIsNone(selected.plan)
+        self.assertEqual(self.manager.parse('начни сессию',self.check).game,'portal 2')
 
     def test_office_runs_three_safe_actions(self):
         self.manager.parse('включи офисный режим',self.check)
@@ -60,16 +66,16 @@ class ModesTest(unittest.TestCase):
         self.assertEqual([s.value for s in result.plan.steps],['Notepad','Calculator'])
         self.assertIsNone(self.manager.parse('начни игровой сеанс',self.check))
 
-    def test_absent_apps_skipped(self):
-        self.installed.remove('Discord')
-        self.manager.parse('включи игровой режим',self.check)
+    def test_work_apps_skipped_without_auto_launch(self):
+        self.installed.remove('Google Chrome')
+        self.manager.parse('включи рабочий режим',self.check)
         result=self.manager.parse('начни сессию',self.check)
-        self.assertEqual([s.value for s in result.plan.steps],['Steam'])
+        self.assertEqual([s.value for s in result.plan.steps],['Notepad'])
         self.assertIn('Пропущены',result.message)
 
-    def test_all_missing_no_action(self):
+    def test_missing_apps_gives_message(self):
         self.installed.clear()
-        self.manager.parse('включи игровой режим',self.check)
+        self.manager.parse('включи рабочий режим',self.check)
         result=self.manager.parse('начни сессию',self.check)
         self.assertEqual(result.kind,'message')
         self.assertIsNone(result.plan)
@@ -105,20 +111,20 @@ class ModesTest(unittest.TestCase):
         self.assertFalse(self.path.exists())
 
     def test_persistence_across_restart_not_mode(self):
-        self.manager.parse('включи игровой режим',self.check)
-        self.manager.configure('gaming',['Notepad','Calculator'],self.check)
+        self.manager.parse('включи рабочий режим',self.check)
+        self.manager.configure('work',['Notepad','Calculator'],self.check)
         again=ModeManager(self.path)
         self.assertEqual(again.mode,'neutral')
-        self.assertEqual(again.apps('gaming'),('Notepad','Calculator'))
-        again.parse('включи игровой режим',self.check)
+        self.assertEqual(again.apps('work'),('Notepad','Calculator'))
+        again.parse('включи рабочий режим',self.check)
         self.assertEqual([s.value for s in again.parse('начни сессию',self.check).plan.steps],
                          ['Notepad','Calculator'])
 
     def test_tampered_json_does_not_inject_shell(self):
-        self.path.write_text(json.dumps({'version':1,'apps':{'gaming':['cmd.exe /c echo hack']}},
+        self.path.write_text(json.dumps({'version':1,'apps':{'work':['cmd.exe /c echo hack']}},
                                         ensure_ascii=False),encoding='utf-8')
         other=ModeManager(self.path)
-        self.assertEqual(other.apps('gaming'),MODES['gaming'].defaults)
+        self.assertEqual(other.apps('work'),MODES['work'].defaults)
 
     def test_truncated_json_not_brick_app(self):
         self.path.write_text('not json',encoding='utf-8')
@@ -134,7 +140,7 @@ class ModesTest(unittest.TestCase):
         ui.handle_mode_command=Mock()
         self.manager.parse('включи игровой режим',self.check)
         Jarvis.handle_text(ui,'начни сессию')
-        self.assertEqual(ui.handle_mode_command.call_args[0][0].kind,'launch')
+        self.assertEqual(ui.handle_mode_command.call_args[0][0].kind,'game_prompt')
         self.assertFalse(ui.voice.vision_source.called)
 
     def test_timer_runs_and_announces_finish_only_once(self):
