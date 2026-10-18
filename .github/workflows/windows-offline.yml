@@ -29,6 +29,16 @@ on:
       - 'creator_experts.py'
       - 'channel_audience.py'
       - 'tests/test_game_video_modes.py'
+      - 'tests/test_audience_pipeline.py'
+      - 'tests/test_viral_studio.py'
+      - 'tests/test_viral_integration.py'
+      - 'tests/test_work_modes.py'
+      - 'tests/test_audience_first.py'
+      - 'creator_experts.py'
+      - 'video_forecast.py'
+      - 'scripts/verify_offline_distribution.ps1'
+      - 'docs/MODES_VIDEO_GAMES_RU.md'
+      - 'docs/AUDIENCE_FIRST_RU.md'
       - 'scripts/prepare_ffmpeg.ps1'
   workflow_dispatch:
     inputs:
@@ -98,6 +108,16 @@ jobs:
           foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
             if (!(Test-Path (Join-Path 'assets/bin' $name))) { throw "Video module missing $name" }
           }
+      - name: Validate local Video Studio rendering with bundled FFmpeg on Windows
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_viral*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Real Video Studio tests failed' }
+          python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Audience integration tests failed' }
+          python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Game/video modes tests failed' }
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
@@ -145,7 +165,7 @@ jobs:
         shell: pwsh
         run: |
           @'
-          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE.
+          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE. Video Studio import and real H264 FFmpeg encoding are also checked inside the installed application.
           CI does NOT prove real microphone, camera, Bluetooth, audio output, foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
