@@ -68,7 +68,9 @@ jobs:
         run: |
           choco install innosetup --yes --no-progress
           if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
-          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'installer\JarvisNova.iss'
+          python scripts/verify_installer_inputs.py
+          if ($LASTEXITCODE -ne 0) { throw 'Installer payload is missing genuine offline models' }
+          & 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' 'installer\JarvisNova_v2.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
           $setup = Get-ChildItem 'dist/installer/*.exe' | Select-Object -First 1
           if (!$setup) { throw 'Installer absent' }
