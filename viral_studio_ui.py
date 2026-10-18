@@ -12,6 +12,9 @@ from uuid import uuid4
 
 from viral_studio import (ViralStudioError, create_local_brief, research_trends,
                           template_brief, save_brief, load_brief, render_video)
+from channel_audience import import_csv, analyze, recommend_topic, report as channel_report
+from creator_experts import expert_report
+from video_forecast import assess_video, store_assessment
 
 
 def _home():
@@ -23,12 +26,14 @@ class ViralStudioWindow(tk.Toplevel):
     def __init__(self, parent, speaker=None):
         super().__init__(parent)
         self.title('JARVIS NOVA — Вирусные ролики')
-        self.geometry('740x650')
+        self.geometry('820x700')
         self.minsize(640,520)
         self.parent=parent
         self.speaker=speaker
         self.brief=None
         self.project=None
+        self.audience=None
+        self.rendered_video=None
         self.running=False
         self.stop_event=threading.Event()
         self._notifications=queue.Queue()
@@ -36,25 +41,29 @@ class ViralStudioWindow(tk.Toplevel):
         self.topic=tk.StringVar(value='')
         self.country=tk.StringVar(value='RU')
         self.web_enabled=tk.BooleanVar(value=False)
-        self.status=tk.StringVar(value='Укажи тему. Интернет для трендов включается только с разрешения.')
+        self.status=tk.StringVar(value='Сначала проанализируй статистику своего канала через CSV.')
         header=ttk.Frame(self,padding=12)
         header.pack(fill='x')
-        ttk.Label(header,text='Тема ролика (ниша, продукт, идея):').grid(row=0,column=0,sticky='w')
+        ttk.Label(header,text='Тема (можно оставить пустой — предложу по результатам канала):').grid(row=0,column=0,sticky='w')
         ttk.Entry(header,textvariable=self.topic,width=60).grid(row=1,column=0,columnspan=3,sticky='ew',pady=6)
         ttk.Label(header,text='Тренды страны:').grid(row=2,column=0,sticky='w')
         ttk.Combobox(header,textvariable=self.country,values=['RU','DE','US','GB','UA','KZ'],width=7,state='readonly').grid(row=2,column=1,sticky='w')
         ttk.Checkbutton(header,text='Искать свежие тренды Google (передаётся только страна)',variable=self.web_enabled).grid(row=3,column=0,columnspan=3,sticky='w',pady=7)
         row=ttk.Frame(self,padding=(12,0,12,6))
         row.pack(fill='x')
-        self.make_button=ttk.Button(row,text='1. Найти идею и написать сценарий',command=self.generate)
+        self.channel_button=ttk.Button(row,text='1. Изучить аудиторию (CSV)',command=self.import_channel)
+        self.channel_button.pack(side='left',padx=(0,6))
+        self.make_button=ttk.Button(row,text='2. Сценарий под аудиторию',command=self.generate)
         self.make_button.pack(side='left',padx=(0,6))
         self.load_button=ttk.Button(row,text='Открыть сценарий',command=self.open_brief)
         self.load_button.pack(side='left',padx=(0,6))
         self.speak_button=ttk.Button(row,text='Озвучить, что снимать',command=self.read_shots)
         self.speak_button.pack(side='left')
         second=ttk.Frame(self,padding=(12,0,12,8));second.pack(fill='x')
-        self.edit_button=ttk.Button(second,text='2. Смонтировать мои кадры',command=self.montage)
+        self.edit_button=ttk.Button(second,text='3. Смонтировать мои кадры',command=self.montage)
         self.edit_button.pack(side='left',padx=(0,8))
+        self.review_button=ttk.Button(second,text='4. Оценка готового ролика',command=self.review)
+        self.review_button.pack(side='left',padx=(0,8))
         ttk.Button(second,text='Отменить текущую работу',command=self.cancel).pack(side='left')
         self.viewer=tk.Text(self,wrap='word',font=('Segoe UI',10))
         self.viewer.pack(fill='both',expand=True,padx=12,pady=(2,8))
@@ -76,7 +85,7 @@ class ViralStudioWindow(tk.Toplevel):
     def _busy(self, value):
         self.running=value
         state='disabled' if value else 'normal'
-        for widget in (self.make_button,self.edit_button,self.load_button):
+        for widget in (self.channel_button,self.make_button,self.edit_button,self.review_button,self.load_button):
             widget.configure(state=state)
 
     def _pump_notifications(self):
@@ -111,10 +120,42 @@ class ViralStudioWindow(tk.Toplevel):
         if self.speaker and not self.parent._closing:
             threading.Thread(target=self.speaker.say,args=(text[:500],),daemon=True).start()
 
+    def import_channel(self):
+        csv_path=filedialog.askopenfilename(parent=self,
+            title='Выбери экспорт своего канала из YouTube Studio',
+            filetypes=[('Аналитика канала CSV','*.csv')])
+        if not csv_path:return
+        if not messagebox.askyesno('Разрешить чтение статистики',
+            'Прочитать выбранный CSV только на этом компьютере? '
+            'Пароль канала и видео не передаются.',parent=self):return
+        self.status.set('Анализирую статистику канала…')
+        topic_hint=self.topic.get().strip()
+        def work():
+            audience=analyze(import_csv(csv_path))
+            try:topic=topic_hint or recommend_topic(audience)
+            except ValueError:topic='Тема не выбрана'
+            text=channel_report(audience)+'\n'+expert_report(audience,topic)
+            def done():
+                self.audience=audience
+                if not self.topic.get().strip() and topic!='Тема не выбрана':
+                    self.topic.set(topic)
+                self._show(text)
+                self.status.set(f'Изучено {len(audience.videos)} роликов. Теперь готов сценарий под интересы аудитории.')
+            self._notify(done)
+        self._spawn(work)
+
     def generate(self):
+        if self.audience is None:
+            messagebox.showwarning('Сначала статистика канала',
+                'Импортируй свой CSV из YouTube Studio. Без этих данных нельзя знать, что нравится твоим зрителям.',
+                parent=self)
+            return
         topic=self.topic.get().strip()
         if not topic:
-            messagebox.showwarning('Тема','Напиши тему ролика.',parent=self);return
+            try:topic=recommend_topic(self.audience)
+            except ValueError:
+                messagebox.showwarning('Тема','Укажи тему: в статистике нет повторяющихся интересов.',parent=self)
+                return
         online=self.web_enabled.get()
         if online and not messagebox.askyesno('Разрешение на интернет',
             'Получить публичные поисковые тренды Google Trends по выбранной стране? '\
@@ -129,13 +170,15 @@ class ViralStudioWindow(tk.Toplevel):
                     note=f'Источник трендов недоступен ({str(exc)[:120]}). Будет сценарий без свежих трендов.\n'
             if self.stop_event.is_set():return
             try:
-                brief=create_local_brief(topic,trends)
+                brief=create_local_brief(topic,trends,audience=self.audience)
             except Exception as exc:
                 note+=f'Локальная AI-модель сейчас недоступна ({str(exc)[:160]}). Используется подписанный шаблон.\n'
                 brief=template_brief(topic,trends)
             if self.stop_event.is_set():return
             project=_home()/('video_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
             save_brief(brief,project)
+            (project/'AUDIENCE_EXPERTS_RU.md').write_text(
+                channel_report(self.audience)+'\n'+expert_report(self.audience,topic),encoding='utf-8')
             text=note+f'Заголовок: {brief.title}\nЗацепка: {brief.hook}\n\nСценарий:\n{brief.script}\n\n'
             for i,shot in enumerate(brief.shots,1):
                 text+=f'{i:02d}. [{shot.seconds:g} сек] {shot.film}\n   НА ЭКРАНЕ: {shot.caption}\n'
@@ -184,14 +227,44 @@ class ViralStudioWindow(tk.Toplevel):
         self.status.set('Монтирую локально: кадрирование, склейка, экранные тексты…')
         def work():
             data=render_video(brief,Path(folder),out,cancel=self.stop_event)
+            audience_review=None
+            audit_text=''
+            if not self.stop_event.is_set() and self.audience:
+                try:
+                    audience_review=assess_video(brief,self.audience,out)
+                    report_file=store_assessment(audience_review,project)
+                    audit_text=f'\n\nИтоговая оценка: {audience_review.index}/100 (это НЕ шанс вирусности).\nОтчёт: {report_file}'
+                except Exception as exc:
+                    audit_text='\n\nОценка пока не выполнена: '+str(exc)[:180]
             def done():
-                self.status.set('Ролик готов: '+str(out))
+                self.rendered_video=out
+                self.status.set('Ролик готов: '+str(out)+
+                                (f' | соответствие аудитории: {audience_review.index}/100' if audience_review else ''))
                 self._show('Готово!\n\nФайл: '+data['output']+'\n'
                            'Длительность: '+str(round(data['duration'],1))+' сек.\n'
                            'Соотношение: 9:16\n'
                            'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n\n'
-                           'Проверь результат перед публикацией. JARVIS ничего не публикует автоматически.')
+                           'Проверь результат перед публикацией. JARVIS ничего не публикует автоматически.'+
+                           audit_text)
                 self._speak('Монтаж закончен. Ролик находится в папке проекта.')
+            self._notify(done)
+        self._spawn(work)
+
+    def review(self):
+        if not self.audience or not self.brief or not self.project:
+            messagebox.showwarning('Нет анализа','Сначала импортируй статистику канала и смонтируй видео.',parent=self)
+            return
+        video=self.rendered_video or self.project/'JARVIS_NOVA_VERTICAL.mp4'
+        if not video.is_file():
+            messagebox.showwarning('Нет MP4','Сначала смонтируй ролик.',parent=self)
+            return
+        self.status.set('Проверяю реальный MP4 и его соответствие аудитории…')
+        def work():
+            assessment=assess_video(self.brief,self.audience,video)
+            file=store_assessment(assessment,self.project)
+            def done():
+                self._show(file.read_text('utf-8'))
+                self.status.set(f'Индекс соответствия: {assessment.index}/100. Это НЕ вероятность успеха.')
             self._notify(done)
         self._spawn(work)
 
