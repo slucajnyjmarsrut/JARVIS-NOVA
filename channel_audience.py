@@ -1,135 +1,241 @@
 # -*- coding: utf-8 -*-
-"""Local-only analytics for the owner's CSV. No passwords, OAuth, scraping or uploads."""
+"""Read owner-exported channel analytics, offline, and build evidence-backed audience profile.
+
+No passwords, browser cookies, OAuth tokens, web scraping or outbound requests.
+Never interpret channel titles or CSV cells as executable instructions.
+"""
+from __future__ import annotations
+
 import csv
+from dataclasses import asdict, dataclass
+from datetime import date
 import json
 import math
-from collections import Counter
-from dataclasses import dataclass,asdict
 from pathlib import Path
 import re
-from statistics import median
+import statistics
 
-class AudienceDataError(ValueError):pass
-
-ALIASES={
- 'title':('video title','title','content','название видео','название','заголовок'),
- 'views':('views','video views','просмотры'),
- 'likes':('likes','лайки','отметки «нравится»'),
- 'comments':('comments','комментарии'),
- 'shares':('shares','поделились','репосты'),
- 'retention':('average percentage viewed','average percentage viewed (%)','средний процент просмотра'),
- 'ctr':('impressions click-through rate','impressions click-through rate (%)','ctr','ctr (%)'),
- 'duration':('duration','video duration','длительность видео'),
+MAX_CSV_BYTES = 6_000_000
+MAX_ROWS = 1500
+ALIASES = {
+    'title': ('video title', 'video', 'content', 'title', 'название видео', 'название', 'контент', 'ролик', 'заголовок'),
+    'views': ('views', 'просмотры', 'просмотр', 'video views'),
+    'likes': ('likes', 'лайки', 'отметки нравится', 'отметки «нравится»'),
+    'comments': ('comments', 'комментарии'),
+    'shares': ('shares', 'поделились', 'репосты'),
+    'avg_view_pct': ('average percentage viewed (%)', 'average percentage viewed', 'avg percentage viewed', 'средний процент просмотра', 'средний процент просмотров', 'доля просмотра'),
+    'avg_duration': ('average view duration', 'avg view duration', 'средняя длительность просмотра'),
+    'duration': ('video duration', 'duration', 'длительность видео', 'продолжительность'),
+    'ctr': ('impressions click-through rate (%)', 'impressions click-through rate', 'ctr', 'ctr (%)', 'ctr значков видео', 'ctr значков видео (%)'),
+    'impressions': ('impressions', 'показы', 'показы значков видео'),
+    'published': ('published', 'publish date', 'date', 'дата публикации', 'дата'),
 }
-STOP={'этого','через','только','который','ролик','видео','сегодня','своими','было','будет','новый',
-      'после','перед','когда','почему','смотри','смотреть','как','для','the','with','from','your'}
-def tokens(text):
-    return {x for x in re.findall(r'[а-яёa-z0-9]{4,}',str(text).lower()) if x not in STOP and not x.isnumeric()}
-def number(value,kind='integer'):
-    value=str(value or '').strip().replace('\u00a0','').replace(' ','').replace('%','')
-    if not value:return None
-    if kind=='percent':
-        try: v=float(value.replace(',','.'))
-        except ValueError:raise AudienceDataError('Неверный процент')
-        if not 0<=v<=1000:raise AudienceDataError('Процент вне диапазона')
-        return v
-    if re.fullmatch(r'\d{1,3}([,.]\d{3})+',value):value=value.replace(',','').replace('.','')
-    if not value.isdigit():raise AudienceDataError('Счётчики нужны точные (без K/M)')
-    n=int(value)
-    if n>10**10:raise AudienceDataError('Счётчик слишком велик')
-    return n
+STOP_WORDS = {'как','для','когда','если','видео','этот','это','здесь','сегодня','почему',
+              'будет','было','после','перед','через','просто','чтобы','самый','своими',
+              'только','смотрите','чего','чему','что','тот','ваш','моё','моей','новый',
+              'всем','мои','мне','или','the','and','this','with','how','what','your'}
+
+
+class AudienceDataError(ValueError):
+    pass
+
 
 @dataclass(frozen=True)
-class Video:
-    title:str
-    views:int
-    likes:int|None=None
-    comments:int|None=None
-    shares:int|None=None
-    retention:float|None=None
-    ctr:float|None=None
-    duration:str=''
-@dataclass(frozen=True)
-class Audience:
-    videos:tuple[Video,...]
-    typical_views:int
-    views_low:int
-    views_high:int
-    winning_topics:tuple[str,...]
-    leaders:tuple[dict,...]
-    confidence:str
-    coverage:tuple[str,...]
-    notes:tuple[str,...]
+class VideoMetric:
+    title: str
+    views: int
+    likes: int | None = None
+    comments: int | None = None
+    shares: int | None = None
+    avg_view_pct: float | None = None
+    avg_duration: float | None = None
+    duration: float | None = None
+    ctr: float | None = None
+    impressions: int | None = None
+    published: str = ''
 
-def import_csv(path):
-    path=Path(path)
-    if not path.is_file() or not 0<path.stat().st_size<=6_000_000:
-        raise AudienceDataError('Нет CSV или CSV слишком большой')
-    try:raw=path.read_text('utf-8-sig')
-    except UnicodeError:raise AudienceDataError('Нужен UTF-8 CSV')
-    try:dialect=csv.Sniffer().sniff(raw[:4096],delimiters=',;\t')
-    except csv.Error:dialect=csv.excel
-    reader=csv.DictReader(raw.splitlines(),dialect=dialect)
-    headers={str(x).strip().lower():x for x in reader.fieldnames or [] if x}
-    cols={field:next((headers[a] for a in aliases if a in headers),None) for field,aliases in ALIASES.items()}
-    if not cols['title'] or not cols['views']:
-        raise AudienceDataError('Нужны названия видео и просмотры: Title, Views')
-    videos=[]
+
+@dataclass(frozen=True)
+class AudienceProfile:
+    source: str
+    sample_size: int
+    typical_views: int
+    views_q25: int
+    views_q75: int
+    successful_topics: tuple[str, ...]
+    top_videos: tuple[dict, ...]
+    videos: tuple[VideoMetric, ...]
+    coverage: tuple[str, ...]
+    notes: tuple[str, ...]
+    confidence: str
+
+
+def _header(name):
+    return re.sub(r'\s+', ' ', str(name or '').strip().lower().replace('\ufeff',''))
+
+
+def _integer(value, name, *, blank_ok=True):
+    text = str(value or '').strip().replace('\u00a0', '').replace(' ', '').replace('\u202f', '')
+    if not text:
+        if blank_ok:
+            return None
+        raise AudienceDataError(f'Нет показателя {name}')
+    # No implicit interpretation of localized abbreviations like 1.2K as exact counts.
+    if not re.fullmatch(r'[0-9][0-9.,]*', text):
+        raise AudienceDataError(f'Некорректный показатель {name}: {text[:30]}')
+    if re.fullmatch(r'\d{1,3}([.,]\d{3})+', text):
+        text = text.replace(',', '').replace('.', '')
+    elif re.fullmatch(r'\d+[.,]0+', text):
+        text = text.split(',')[0].split('.')[0]
+    elif not text.isdigit():
+        raise AudienceDataError(f'Число {name} должно быть целым, без округлённых K/M')
+    number = int(text)
+    if number > 10_000_000_000:
+        raise AudienceDataError('Слишком большое количество просмотров')
+    return number
+
+
+def _percentage(value, name):
+    value = str(value or '').strip().replace('%','').replace(' ', '').replace('\u00a0','')
+    if not value:
+        return None
+    if not re.fullmatch(r'\d+(?:[.,]\d+)?', value):
+        raise AudienceDataError(f'Некорректный процент {name}')
+    num = float(value.replace(',','.'))
+    if not math.isfinite(num) or not 0 <= num <= 1000:
+        raise AudienceDataError(f'Процент {name} вне диапазона')
+    return num
+
+
+def _seconds(value, name):
+    val = str(value or '').strip()
+    if not val:
+        return None
+    if re.fullmatch(r'\d+(?::\d{1,2}){1,2}',val):
+        v = 0
+        for item in val.split(':'):
+            v = v * 60 + int(item)
+    elif re.fullmatch(r'\d+(?:[.,]\d+)?',val):
+        v = float(val.replace(',','.'))
+    else:
+        raise AudienceDataError(f'Некорректное время {name}')
+    if not 0 < v <= 86400:
+        raise AudienceDataError(f'Время {name} вне диапазона')
+    return float(v)
+
+
+def read_channel_csv(path: Path) -> tuple[VideoMetric, ...]:
+    """Read owner-selected CSV export from YouTube Studio (or compatible platform)."""
+    path = Path(path)
+    if not path.is_file() or not 0 < path.stat().st_size <= MAX_CSV_BYTES:
+        raise AudienceDataError('CSV отсутствует, пуст или слишком велик')
+    try:
+        content=path.read_text(encoding='utf-8-sig')
+    except UnicodeError as exc:
+        raise AudienceDataError('Экспорт CSV должен иметь UTF-8 кодировку') from exc
+    try:
+        dialect=csv.Sniffer().sniff(content[:4096],delimiters=',;\t')
+    except csv.Error:
+        dialect=csv.excel
+    reader=csv.DictReader(content.splitlines(),dialect=dialect)
+    if not reader.fieldnames:
+        raise AudienceDataError('CSV без заголовков столбцов')
+    headers={_header(key):key for key in reader.fieldnames if key}
+    mapping={key:next((headers[a] for a in aliases if a in headers),None) for key,aliases in ALIASES.items()}
+    if not mapping['title'] or not mapping['views']:
+        raise AudienceDataError('Нужны столбцы названия ролика и просмотров (Title/Views)')
+    rows=[]
     for row in reader:
-        if len(videos)>=1500:raise AudienceDataError('Не более 1500 строк')
-        def get(key):return row.get(cols[key],'') if cols[key] else ''
-        title=str(get('title') or '').strip()[:180]
-        if not title or title.casefold() in ('total','итого','всего'):continue
-        views=number(get('views'))
-        if views is None:continue
-        videos.append(Video(title,views,number(get('likes')),number(get('comments')),
-                            number(get('shares')),number(get('retention'),'percent'),
-                            number(get('ctr'),'percent'),str(get('duration'))[:25]))
-    if len(videos)<3:raise AudienceDataError('Нужны минимум три опубликованных ролика')
-    return tuple(videos)
+        if len(rows) >= MAX_ROWS:
+            raise AudienceDataError('Не больше 1500 роликов за один импорт')
+        title=str(row.get(mapping['title'],'') or '').strip()[:180]
+        if not title or _header(title) in ('total','итого','всего'):
+            continue
+        def value(name):return row.get(mapping[name], '') if mapping[name] else ''
+        views=_integer(value('views'),'views',blank_ok=False)
+        if views is None:
+            continue
+        published=str(value('published')).strip()[:32]
+        rows.append(VideoMetric(title,views,
+            likes=_integer(value('likes'),'likes'),
+            comments=_integer(value('comments'),'comments'),
+            shares=_integer(value('shares'),'shares'),
+            avg_view_pct=_percentage(value('avg_view_pct'),'avg_view_pct'),
+            avg_duration=_seconds(value('avg_duration'),'avg_duration'),
+            duration=_seconds(value('duration'),'duration'),
+            ctr=_percentage(value('ctr'),'ctr'),
+            impressions=_integer(value('impressions'),'impressions'),
+            published=published))
+    if len(rows) < 3:
+        raise AudienceDataError('Для анализа нужны минимум 3 отдельных ролика и их просмотры')
+    return tuple(rows)
 
-def analyze(videos):
-    videos=tuple(videos)
-    if len(videos)<3:raise AudienceDataError('Нужны реальные данные хотя бы трёх роликов')
-    values=sorted(v.views for v in videos)
-    ranked=sorted(videos,key=lambda v:(math.log1p(v.views)+
-                  .3*(min(v.retention,150)/100 if v.retention is not None else 0)+
-                  3*(min(v.likes/v.views,.2) if v.likes is not None and v.views else 0)),reverse=True)
-    leaders=ranked[:max(3,min(8,math.ceil(len(ranked)*.3)))]
-    words=Counter(w for v in leaders for w in tokens(v.title))
-    repeat=tuple(w for w,c in sorted(words.items(),key=lambda p:(-p[1],p[0])) if c>=2)[:8]
-    cover=tuple(k for k in ('likes','comments','shares','retention','ctr')
-                if sum(getattr(v,k) is not None for v in videos)>len(videos)/2)
-    notes=['Выводы основаны только на экспортированной статистике своего канала.']
-    if 'retention' not in cover:notes.append('Нет показателя досмотра у большинства роликов.')
-    if 'ctr' not in cover:notes.append('CTR показов не подтверждён экспортом.')
-    if not repeat:notes.append('Повторяющиеся темы лидеров не найдены; тему выбирает пользователь.')
-    return Audience(videos,int(median(values)),values[(len(values)-1)//4],values[(len(values)*3)//4],
-                    repeat,tuple({'title':v.title,'views':v.views,'retention':v.retention} for v in leaders[:5]),
-                    'низкая' if len(videos)<10 else ('средняя' if len(videos)<30 else 'выше средней'),
-                    cover,tuple(notes))
 
-def audience_context(audience):
-    """Summary only, passed to LOCAL LLM; neither full CSV nor token."""
-    return json.dumps({'videos':len(audience.videos),'median_views':audience.typical_views,
-                       'past_views_middle':[audience.views_low,audience.views_high],
-                       'repeated_winning_topics':audience.winning_topics,
-                       'available_metrics':audience.coverage,'confidence':audience.confidence},
-                      ensure_ascii=False)
+def _quantile(values, q):
+    ordered=sorted(values)
+    if len(ordered)==1:
+        return ordered[0]
+    index=(len(ordered)-1)*q
+    lo,hi=math.floor(index),math.ceil(index)
+    return int(round(ordered[lo]+(ordered[hi]-ordered[lo])*(index-lo)))
 
-def recommend_topic(audience):
-    if not audience.winning_topics:
-        raise AudienceDataError('Не найден повторяющийся интерес; укажи тему вручную')
-    return ' / '.join(audience.winning_topics[:2])
 
-def report(audience):
-    lines=['# Аудитория канала','Видео в выборке: '+str(len(audience.videos)),
-           f'Типичные просмотры: {audience.typical_views}; диапазон середины прошлых результатов: {audience.views_low}–{audience.views_high}',
-           'Повторяющиеся темы среди лидеров: '+(', '.join(audience.winning_topics) or 'нет'),
-           'Достоверность по объёму выборки: '+audience.confidence,
-           '## Лидеры канала']
-    lines.extend(f'- {v["title"]}: {v["views"]} просмотров' for v in audience.leaders)
-    lines.extend(['','## Ограничения',*(f'- {n}' for n in audience.notes),
-                  '- Поиск трендов не заменяет анализа вашего канала.',
-                  '- Оценка канала не является прогнозом просмотров.'])
-    return '\n'.join(lines)+'\n'
+def title_tokens(title):
+    return tuple(w for w in re.findall(r'[a-zа-яё0-9]{4,}',title.lower())
+                 if w not in STOP_WORDS and not w.isnumeric())
+
+
+def analyze_audience(videos: tuple[VideoMetric, ...], *, source='экспорт владельца канала') -> AudienceProfile:
+    if len(videos)<3:
+        raise AudienceDataError('Нужны минимум 3 ролика')
+    vs=[v.views for v in videos]
+    typical=int(statistics.median(vs))
+    # Rank by relative watch time and meaningful engagement when available; views remain base.
+    def quality(item):
+        score=math.log1p(item.views)
+        if item.avg_view_pct is not None:
+            score+=min(item.avg_view_pct,150)/100 * .45
+        if item.views and item.likes is not None:
+            score+=min(item.likes/item.views,.2)*3
+        return score
+    ranked=sorted(videos,key=quality,reverse=True)
+    top=ranked[:max(3,min(8,math.ceil(len(ranked)*.3)))]
+    counts={}
+    for v in top:
+        for token in set(title_tokens(v.title)):
+            counts[token]=counts.get(token,0)+1
+    # Topic evidence: only expose repeated themes. One-off words are not enough to infer preference.
+    topics=tuple(k for k,n in sorted(counts.items(),key=lambda kv:(-kv[1],kv[0])) if n>=2)[:8]
+    coverage=tuple(name for name in ('likes','comments','shares','avg_view_pct','duration','ctr','impressions')
+                   if sum(getattr(v,name) is not None for v in videos)>=len(videos)//2+1)
+    confidence='низкая' if len(videos)<10 else ('средняя' if len(videos)<30 else 'выше средней')
+    notes=['Это интерес по историческим результатам канала, а не обещание просмотров.']
+    if 'avg_view_pct' not in coverage:
+        notes.append('Нет показателей удержания для большинства роликов; выводы о досмотрах ограничены.')
+    if 'ctr' not in coverage:
+        notes.append('Нет CTR показов для большинства роликов; качество обложки не проверено.')
+    if not topics:
+        notes.append('Повторяющихся тем в лидерах не найдено: нужен ручной выбор темы.')
+    return AudienceProfile(source,len(videos),typical,_quantile(vs,.25),_quantile(vs,.75),topics,
+        tuple({'title':v.title,'views':v.views,'avg_view_pct':v.avg_view_pct,
+               'engagement_rate':round((sum(n for n in (v.likes,v.comments,v.shares) if n is not None)/v.views)*100,2) if v.views else None}
+              for v in top[:5]),tuple(videos),coverage,tuple(notes),confidence)
+
+
+def save_profile(profile: AudienceProfile, folder: Path):
+    folder=Path(folder)
+    folder.mkdir(parents=True,exist_ok=True)
+    destination=folder/'channel_profile.json'
+    if destination.exists():
+        raise AudienceDataError('Профиль существует; удалите его вручную перед новым импортом')
+    destination.write_text(json.dumps(asdict(profile),ensure_ascii=False,indent=2),encoding='utf-8')
+    return destination
+
+
+def load_profile(path: Path):
+    try:
+        info=json.loads(Path(path).read_text('utf-8'))
+        videos=tuple(VideoMetric(**item) for item in info['videos'])
+        return analyze_audience(videos,source=str(info['source'])[:120])
+    except (OSError, KeyError, ValueError, TypeError) as exc:
+        raise AudienceDataError('Не удалось прочитать данные анализа канала') from exc
