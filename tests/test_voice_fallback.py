@@ -37,11 +37,20 @@ class WhisperFallbackTests(unittest.TestCase):
         finally:
             temp.cleanup()
 
-    def test_whisper_skips_vosk_wake(self):
+    def test_vosk_wake_is_refined_by_whisper_not_executed_raw(self):
         seen=[]
-        v=Voice(seen.append, lambda _: None, lambda: False)
-        v._try_whisper(bytes(32000), True)
-        self.assertEqual(seen, [])
+        event=threading.Event()
+        with tempfile.TemporaryDirectory() as folder:
+            models=Path(folder)
+            (models/"base.pt").write_bytes(b"test fixture")
+            recognizer=types.SimpleNamespace(transcribe=lambda *a, **kw: {'text': 'кто ты'})
+            fake_whisper=types.SimpleNamespace(load_model=lambda *a, **kw: recognizer)
+            v=Voice(lambda value: (seen.append(value),event.set()), lambda _: None, lambda: False)
+            with mock.patch("voice_engine.assets",return_value=models), mock.patch.dict(
+                    sys.modules,{'whisper':fake_whisper}):
+                v._try_whisper(bytes(32000), True, "джарвис лишь")
+                self.assertTrue(event.wait(3))
+            self.assertEqual(seen,["кто ты"])
 
 
 if __name__ == '__main__':
