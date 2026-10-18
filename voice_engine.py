@@ -109,7 +109,7 @@ class Voice:
                 text=str(result.get("text","") or "").strip()
                 # Hallucinations during silence are a real Whisper failure mode.
                 if text:
-                    if did_wake or force:
+                    if active:
                         with self.lock:
                             self.until=max(self.until,time.monotonic()+5)
                     self.accept_text(text)
