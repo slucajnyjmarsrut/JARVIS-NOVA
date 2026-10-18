@@ -1,49 +1,80 @@
 # -*- coding: utf-8 -*-
-"""Expert-like specialised review stages; each verdict links to actual channel evidence.
+"""Small, auditable specialist advisers driven by REAL channel data.
 
-No fictitious human expert or trained prediction model is claimed here.
+These are task-specific algorithms and prompts, not an invented team of humans.
+Each adviser cites its evidence and flags gaps rather than hallucinating trends.
 """
-from dataclasses import dataclass
-from channel_audience import audience_context, tokens
+from __future__ import annotations
+from dataclasses import asdict, dataclass
+import json
+from channel_audience import AudienceProfile, title_tokens
 
 @dataclass(frozen=True)
-class ExpertOpinion:
-    role:str
-    finding:str
-    evidence:str
-    instruction:str
+class ExpertNote:
+    specialist: str
+    conclusion: str
+    evidence: str
+    action: str
 
-def consult_experts(audience,topic):
-    if not audience or len(audience.videos)<3:
-        raise ValueError('Сначала получи показатели канала')
-    overlaps=set(audience.winning_topics)&tokens(topic)
+
+def recommend_topic(profile: AudienceProfile) -> str:
+    if not profile.successful_topics:
+        raise ValueError('У канала нет устойчивой общей темы в лидирующих роликах; выберите её вручную')
+    return ' / '.join(profile.successful_topics[:2])
+
+
+def channel_experts(profile: AudienceProfile, topic: str) -> tuple[ExpertNote, ...]:
+    if profile.sample_size < 3:
+        raise ValueError('Недостаточно данных канала')
+    subject=topic.strip()
+    common=set(title_tokens(subject)) & set(profile.successful_topics)
+    top=profile.top_videos[0]['title'] if profile.top_videos else ''
+    alignment=(f'Есть совпадение с устойчивыми темами: {", ".join(sorted(common))}' if common else
+               'Тема не подтверждена повторяющимися лидерами; гипотезу нужно проверить')
     return (
-        ExpertOpinion('Аналитик аудитории',
-                      'Подтверждена тема' if overlaps else 'Интерес не подтверждён — тестовая гипотеза',
-                      f'{len(audience.videos)} прошлых видео; медиана {audience.typical_views} просмотров',
-                      'Сценарий должен учитывать победившие темы канала.'),
-        ExpertOpinion('Редактор тем','Тема: '+topic,
-                      'Повторяющиеся темы лидеров: '+(', '.join(audience.winning_topics) or 'не найдены'),
-                      'Дай конкретный неожиданный результат или практическую пользу.'),
-        ExpertOpinion('Эксперт первых трёх секунд','Начни с результата или конфликта',
-                      'Вывод о структуре, а не факт из статистики',
-                      'Убери приветствие. Покажи интригу в первые 2–3 секунды.'),
-        ExpertOpinion('Эксперт удержания','Не допускай пустых сцен',
-                      'Статистика удержания: '+('есть' if 'retention' in audience.coverage else 'нет'),
-                      'Меняй смысл кадра каждые 2–6 секунд. Покажи результат до финала.'),
-        ExpertOpinion('Редактор публикации','Честный заголовок и CTA',
-                      'CTR канала: '+('есть' if 'ctr' in audience.coverage else 'нет'),
-                      'Не используй обманные обещания, нелицензированную музыку и чужой контент.')
+        ExpertNote('Аналитик аудитории',alignment,
+            f'Анализировано {profile.sample_size} роликов; медиана {profile.typical_views} просмотров; '+
+            f'достоверность: {profile.confidence}',
+            'Опирайся на собственные результаты канала, не на общую популярность темы.'),
+        ExpertNote('Редактор тем',f'Направление: {subject}',
+            f'Повторяющиеся темы лидеров: {", ".join(profile.successful_topics) or "не обнаружены"}',
+            'Выбери конкретную историю или практическую пользу, не повторяя чужие ролики.'),
+        ExpertNote('Редактор зацепки','Покажи результат или конфликт в первые 2–3 секунды.',
+            f'Пример успешного ролика канала: {top[:100]}',
+            'Начни с конкретной демонстрации, убери вступление и приветствие.'),
+        ExpertNote('Специалист по удержанию','Каждая следующая сцена должна отвечать на вопрос предыдущей.',
+            'Исторические показатели удержания доступны' if 'avg_view_pct' in profile.coverage else
+            'Показателей удержания в CSV недостаточно; рекомендация универсальна',
+            'Запланируй смену крупности/смысла каждые 2–6 секунд и покажи результат до финала.'),
+        ExpertNote('Редактор публикации','Подготовь честный заголовок, ясный текст на экране и явный CTA.',
+            'CTR канала доступен' if 'ctr' in profile.coverage else
+            'CTR отсутствует — эффект обложки оценить нельзя',
+            'Не используй недоказанные сенсации, чужую музыку и ложные обещания.'),
     )
 
-def expert_context(audience,topic):
-    opinions=consult_experts(audience,topic)
-    return audience_context(audience)+'\n'+'\n'.join(x.role+': '+x.instruction for x in opinions)
 
-def expert_report(audience,topic):
-    text=['# Специализированные редакторы JARVIS (это модули, не люди)']
-    for opinion in consult_experts(audience,topic):
-        text.extend(['',f'## {opinion.role}',opinion.finding,
-                     'Данные: '+opinion.evidence,'Что делать: '+opinion.instruction])
-    text.extend(['','Нет гарантий просмотров или попадания в рекомендации.'])
-    return '\n'.join(text)+'\n'
+def prompt_context(profile: AudienceProfile, topic: str) -> str:
+    """Small aggregated context sent ONLY to local Ollama; no raw channel CSV."""
+    notes=channel_experts(profile,topic)
+    package={
+        'sample_size':profile.sample_size,'typical_views':profile.typical_views,
+        'views_middle_half':[profile.views_q25,profile.views_q75],
+        'recurring_topics':profile.successful_topics,
+        'data_fields':profile.coverage,
+        'confidence':profile.confidence,
+        'expert_actions':[{'role':x.specialist,'action':x.action} for x in notes],
+    }
+    return json.dumps(package,ensure_ascii=False)
+
+
+def expert_report(profile: AudienceProfile, topic: str) -> str:
+    head=[f'# Анализ аудитории канала: {profile.sample_size} роликов',
+          f'Медиана просмотров: {profile.typical_views}; середина наблюдений: {profile.views_q25}–{profile.views_q75}',
+          f'Надёжность: {profile.confidence} (по объёму выборки, не вероятность успеха)',
+          'Источники: экспорт статистики владельца; анализ полностью локальный.',
+          '']
+    for note in channel_experts(profile,topic):
+        head.extend([f'## {note.specialist}',f'Вывод: {note.conclusion}',
+                     f'Основание: {note.evidence}',f'Действие: {note.action}',''])
+    head.extend(['Важно: исторические метрики не доказывают причинно-следственную связь.',*profile.notes])
+    return '\n'.join(head)+'\n'
