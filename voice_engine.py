@@ -72,7 +72,7 @@ class Voice:
         self.running=False
         if self.thread and self.thread.is_alive(): self.thread.join(timeout=3)
 
-    def _try_whisper(self,pcm:bytes, did_wake:bool):
+    def _try_whisper(self,pcm:bytes, did_wake:bool, fallback_text: str = ''):
         """Second-pass transcription when Vosk did not detect the wake word.
 
         At most one Whisper task runs at a time, with a cooldown to prevent
@@ -80,11 +80,13 @@ class Voice:
         """
         now=time.monotonic()
         with self.lock:
-            if (self.stopping or did_wake or self.whisper_busy or len(pcm)<16000 or
-                    now-self.whisper_last_at<2.0 or self.speaking()):
+            if (self.stopping or self.whisper_busy or len(pcm)<16000 or
+                    now-self.whisper_last_at<0.5 or self.speaking()):
                 return
             path=assets()/"base.pt"
-            if not path.exists():return
+            if not path.exists():
+                if fallback_text:self.accept_text(fallback_text)
+                return
             self.whisper_busy=True
             self.whisper_last_at=now
         def work():
@@ -99,8 +101,10 @@ class Voice:
                     condition_on_previous_text=False,temperature=0)
                 text=result.get("text","").strip()
                 if text:self.accept_text(text)
+                elif fallback_text:self.accept_text(fallback_text)
             except Exception as exc:
                 self.on_status("Whisper недоступен: "+str(exc)[:90])
+                if fallback_text:self.accept_text(fallback_text)
             finally:
                 with self.lock: self.whisper_busy=False
         threading.Thread(target=work,daemon=True,name="whisper-fallback").start()
@@ -172,8 +176,8 @@ class Voice:
                             # Whisper will transcribe those SAME samples; no second mic turn.
                             if candidate and self.on_vision_audio and (WAKE.match(text) or time.monotonic()<self.until):
                                 vision_pending=candidate
-                            elif not vision_pending:
-                                self.accept_text(text)
+                            # Wait for the full utterance; Whisper rechecks it before routing.
+                            # Early Vosk dispatch caused incorrect or duplicate commands.
                     if segment and (silent>=10 or len(segment)>=max_segment):
                         utterance=bytes(segment)
                         segment.clear();silent=0
@@ -190,12 +194,11 @@ class Voice:
                             self.on_vision_audio(utterance,vision_pending)
                             vision_pending=None
                             continue
-                        if text: self.accept_text(text)
-                        # Recheck *unmatched* Vosk speech, including cases where
-                        # Vosk heard other words but missed the wake word.
-                        # Whisper consumes bytes only from RAM: no WAV files.
-                        if not has_wake:
-                            self._try_whisper(utterance,False)
+                        # Whisper is the primary transcriber for full utterances;
+                        # Vosk remains lightweight wake detector and fallback.
+                        # Do not dispatch unreliable Vosk text before Whisper.
+                        if utterance:
+                            self._try_whisper(utterance,has_wake,fallback_text=text)
         except Exception as exc:
             self.on_status("Ошибка микрофона: "+str(exc)[:180])
         finally:
