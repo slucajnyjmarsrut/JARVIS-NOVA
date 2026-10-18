@@ -28,7 +28,15 @@ for library in ('vosk','whisper','torch','sounddevice','_sounddevice_data',
     except Exception:
         if library=='_sounddevice_data':continue
         raise
-    datas+=d; binaries+=b; hiddenimports+=h
+    # PyTorch wheels contain large static import libraries (.lib) and debug
+    # artifacts that are never loaded by Windows Python inference. Including
+    # them needlessly pushes Inno Setup past its ~4.2 GB one-file limit.
+    # Keep all runtime DLLs and Python modules; fail closed on E2E testing.
+    def runtime_files(entries):
+        ignored=('.lib', '.pdb', '.exp', '.ilk', '.pyi', '.pyc')
+        return [item for item in entries
+                if not str(item[0]).lower().endswith(ignored)]
+    datas+=runtime_files(d); binaries+=runtime_files(b); hiddenimports+=h
 
 analysis=Analysis(['bootstrap.py'],pathex=[str(project)],binaries=binaries,
     datas=datas,hiddenimports=hiddenimports,hookspath=[],hooksconfig={},
