@@ -33,15 +33,27 @@ class WhisperFallbackTests(unittest.TestCase):
                 self.assertEqual(heard, ['открой Chrome'])
                 self.assertFalse(v.whisper_busy)
                 v._try_whisper(bytes(16000 * 2), False)
-                self.assertEqual(heard, ['открой Chrome']) # 2 s cooldown
+                self.assertEqual(heard, ['открой Chrome']) # de-duplicated utterance
         finally:
             temp.cleanup()
 
-    def test_whisper_skips_vosk_wake(self):
-        seen=[]
-        v=Voice(seen.append, lambda _: None, lambda: False)
-        v._try_whisper(bytes(32000), True)
-        self.assertEqual(seen, [])
+    def test_whisper_corrects_vosk_when_wake_was_detected(self):
+        heard = []
+        got = threading.Event()
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "base.pt").write_bytes(b"test-only")
+            recognizer = types.SimpleNamespace(
+                transcribe=lambda *a, **kw: {"text": "джарвис открой блокнот"})
+            model = types.SimpleNamespace(load_model=lambda *a, **kw: recognizer)
+            voice = Voice(lambda value: (heard.append(value), got.set()),
+                          lambda _: None, lambda: False)
+            with mock.patch("voice_engine.assets", return_value=root), mock.patch.dict(
+                    sys.modules, {"whisper": model}):
+                voice._try_whisper(bytes(32000), True,
+                                   fallback_text="джарвис пуст пуст")
+                self.assertTrue(got.wait(3))
+        self.assertEqual(heard, ["открой блокнот"])
 
 
 if __name__ == '__main__':
