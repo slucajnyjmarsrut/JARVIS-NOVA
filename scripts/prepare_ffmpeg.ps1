@@ -23,13 +23,12 @@ $EncoderInfo=& (Join-Path $Dest 'ffmpeg.exe') -hide_banner -encoders 2>&1 | Out-
 if ($LASTEXITCODE -ne 0 -or $EncoderInfo -notmatch '(?m)^\s*V\S*\s+libx264\s') { throw 'Bundled FFmpeg missing H264 libx264 encoder' }
 # Captions are composed as transparent PNG overlays. ASS/libass is NOT required.
 # Validate only codecs and filters genuinely used by viral_studio.render_video.
-$FilterInfo=& (Join-Path $Dest 'ffmpeg.exe') -hide_banner -filters 2>&1 | Out-String
-if ($LASTEXITCODE -ne 0 -or $FilterInfo -notmatch '(?m)^\s*[A-Z\.]{3}\s+overlay\s') {
-  throw 'Bundled FFmpeg lacks PNG overlay filter'
-}
-if ($FilterInfo -notmatch '(?m)^\s*[A-Z\.]{3}\s+crop\s' -or
-    $FilterInfo -notmatch '(?m)^\s*[A-Z\.]{3}\s+scale\s') {
-  throw 'Bundled FFmpeg lacks crop or scale filter'
+# Ask FFmpeg directly instead of parsing flags, which change between builds.
+foreach ($Filter in @('overlay','crop','scale')) {
+  $Output = & (Join-Path $Dest 'ffmpeg.exe') -hide_banner -h "filter=$Filter" 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0 -or $Output -notmatch "Filter $Filter") {
+    throw "Bundled FFmpeg lacks required filter: $Filter"
+  }
 }
 $License=Get-ChildItem -Path $Tmp -Recurse -File | Where-Object { $_.Name -in @('LICENSE','LICENSE.txt','COPYING.LGPLv2.1','COPYING.LGPLv3') } | Select-Object -First 1
 if ($License) {Copy-Item -LiteralPath $License.FullName -Destination (Join-Path $Dest 'FFMPEG_LICENSE.txt') -Force}
