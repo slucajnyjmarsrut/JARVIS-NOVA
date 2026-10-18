@@ -1,10 +1,10 @@
-name: Import the audited JARVIS Python source snapshot
+name: Import checksum-verified JARVIS NOVA Python sources
 on:
   push:
     branches: [dev/trimodal-integration-2026-10]
     paths:
-      - 'source-snapshot.tar.xz'
       - '.github/workflows/import-source.yml'
+      - 'source-import/JARVIS_NOVA_SOURCE.tar.xz.base64'
   workflow_dispatch:
 permissions:
   contents: write
@@ -15,28 +15,38 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Extract source snapshot into the repository (no model binaries)
+      - name: Securely unpack source snapshot
         run: |
-          set -euo pipefail
-          tar -tJf source-snapshot.tar.xz | while IFS= read -r path; do
-            case "$path" in
-              /*|../*|*/../*|*/.. ) echo "Unsafe archive member: $path"; exit 1 ;;
-            esac
-          done
-          tar -xJf source-snapshot.tar.xz -C .
-          test -f main.py
-          test -f trimodal_service.py
-          test -f offline_e2e_test.py
-          test -f .github/workflows/build-offline-install-exe.yml
-      - name: Commit the expanded source snapshot
+          python - <<'PY'
+          import base64, hashlib, io, lzma, pathlib, tarfile
+          root = pathlib.Path.cwd()
+          source = root / 'source-import/JARVIS_NOVA_SOURCE.tar.xz.base64'
+          data = base64.b64decode(''.join(source.read_text().split()),validate=True)
+          expected = '107548f881aa464176e2cd30ca59c4c2cd94b73c76b6423894024196e43220ac'
+          assert hashlib.sha256(data).hexdigest() == expected, 'Source snapshot SHA256 mismatch'
+          with tarfile.open(fileobj=io.BytesIO(lzma.decompress(data)),mode='r:') as archive:
+              for entry in archive:
+                  path = pathlib.PurePosixPath(entry.name)
+                  assert not path.is_absolute() and path.parts and '..' not in path.parts, entry.name
+                  assert entry.isfile(), 'Symlinks and non-regular files are prohibited'
+                  out = root.joinpath(*path.parts)
+                  assert not out.is_symlink()
+                  out.parent.mkdir(parents=True,exist_ok=True)
+                  out.write_bytes(archive.extractfile(entry).read())
+          assert (root/'main.py').is_file()
+          assert (root/'trimodal_service.py').is_file()
+          PY
+      - name: Check syntax and isolated unit tests
         run: |
-          set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- . ':!.github/workflows'
-          if git diff --cached --quiet; then
-            echo "Sources already synchronized."
-          else
-            git commit -m "source: import RC4 and Stage 2 integrated Python code with test suite"
+          python -m compileall -q .
+          python -m pip install numpy pillow
+          python -m unittest discover -s tests -v
+      - name: Commit imported sources on dev only
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- '*.py' '*.spec' '*.cmd' '*.ps1' '*.txt' '*.md' '*.iss' '*.yml'
+          if ! git diff --cached --quiet; then
+            git commit -m "source: import Stage 2 and RC4 code tested on Linux"
             git push origin HEAD:dev/trimodal-integration-2026-10
           fi
