@@ -1,5 +1,5 @@
 ; ONE offline Inno Setup EXE; refuse compilation if onedir missing.
-#define AppVersion "0.4.1-dev"
+#define AppVersion "0.5.0-dev"
 #define AppName "JARVIS NOVA"
 #define AppExecutable "JarvisNova.exe"
 #if !FileExists("..\dist\JarvisNova\JarvisNova.exe")
@@ -38,7 +38,7 @@ ChangesEnvironment=no
 ChangesAssociations=no
 VersionInfoDescription=JARVIS NOVA Offline Installer (development)
 VersionInfoProductName=JARVIS NOVA
-VersionInfoVersion=0.4.1.0
+VersionInfoVersion=0.5.0.0
 
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
