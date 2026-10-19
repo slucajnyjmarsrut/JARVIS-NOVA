@@ -34,6 +34,7 @@ class Voice:
         self.input_device=None
         self.mic_ready=False
         self._manual_pending=False  # F9 pressed while Vosk opens the input stream
+        self.reconnect_attempt=0
 
     def activate(self):
         with self.lock:
@@ -53,6 +54,7 @@ class Voice:
             if self.stopping or not self.running or generation!=self._generation:
                 return False
             self.mic_ready=True
+            self.reconnect_attempt=0
             pending=self._manual_pending
             self._manual_pending=False
             if pending:
@@ -61,6 +63,28 @@ class Voice:
             f"Vosk готов · микрофон {native_rate} Гц → 16000 Гц · жду «Джарвис»")
         if pending:
             self.on_status("Микрофон подключён. Слушаю команду…")
+        return True
+
+    def _mic_disconnected(self, generation):
+        """Invalidate old activation/audio when a stream or headset goes away."""
+        with self.lock:
+            if self.stopping or not self.running or generation!=self._generation:
+                return False
+            if self.until>time.monotonic():
+                self._manual_pending=True  # restore this activated window if possible
+            self.mic_ready=False
+            self.until=0
+            self.pending=""
+            return True
+
+    def _wait_for_mic(self, generation, seconds):
+        """Cancelable retry delay: Stop must not wait out the backoff."""
+        deadline=time.monotonic()+seconds
+        while time.monotonic()<deadline:
+            with self.lock:
+                if self.stopping or not self.running or generation!=self._generation:
+                    return False
+            time.sleep(min(.06,max(.005,deadline-time.monotonic())))
         return True
 
     def accept_text(self,text:str):
@@ -101,6 +125,7 @@ class Voice:
             self.running=True
             self.mic_ready=False
             self._manual_pending=False
+            self.reconnect_attempt=0
             self.until=0
             self.pending=""
             self.last_text=""
@@ -286,86 +311,124 @@ class Voice:
             segment_vosk_wake=False
             was_speaking=False
             last_level_report=0.0
-            device_info=sd.query_devices(self.input_device,kind="input")
-            native_rate=int(round(device_info["default_samplerate"]))
-            if not 8000<=native_rate<=192000:
-                raise ValueError("Микрофон сообщает неверную частоту дискретизации")
-            def callback(indata,frames,tm,status):
-                try:audio_queue.put_nowait(bytes(indata))
-                except queue.Full:
-                    try:audio_queue.get_nowait()
-                    except queue.Empty:pass
-                    try:audio_queue.put_nowait(bytes(indata))
-                    except queue.Full:pass
-            # Model initialization may finish after the application was closed.
-            if not self.running or generation!=self._generation:return
-            # Try 16 kHz first; PortAudio can convert native Bluetooth/HFP rates.
-            with sd.RawInputStream(samplerate=native_rate,
-                                   blocksize=max(256,int(native_rate/10)),channels=1,
-                                   dtype="int16",callback=callback,
-                                   device=self.input_device):
-                if not self._mark_mic_ready(generation,native_rate):
-                    return
-                while self.running and generation==self._generation:
-                    try: packet=audio_queue.get(timeout=0.2)
-                    except queue.Empty:continue
-                    if self.speaking():
-                        if not was_speaking:
-                            segment.clear();pre_roll.clear();silent=0;segment_vosk_wake=False
-                            vosk_parts.clear()
-                            recognizer=KaldiRecognizer(model,16000)
-                        was_speaking=True
-                        continue
+            # Reopen the audio stream after transient PortAudio/device errors.
+            # Do not silently switch away from a selected microphone: that
+            # would unexpectedly listen on another physical input.
+            retryable=(OSError,ValueError,TimeoutError,
+                       getattr(sd,"PortAudioError",OSError))
+            attempt=0
+            while self.running and generation==self._generation:
+                try:
+                    # Recovering a device resets per-utterance Vosk context.
+                    # A partial phrase must never be spliced across devices.
+                    recognizer=KaldiRecognizer(model,16000)
+                    recognizer.SetWords(True)
+                    audio_queue=queue.Queue(maxsize=60)
+                    segment.clear()
+                    pre_roll.clear()
+                    vosk_parts.clear()
+                    silent=0
+                    segment_vosk_wake=False
                     was_speaking=False
-                    packet=self.normalize_mic_packet(packet,native_rate)
-                    data=np.frombuffer(packet,dtype="<i2")
-                    rms=float(np.sqrt(np.mean(data.astype(np.float64)**2))) if data.size else 0
-                    # Bounded UI telemetry: 5 readings/s, no microphone audio
-                    # leaves this thread and no levels are saved to disk.
-                    stamp=time.monotonic()
-                    if self.on_audio_level and stamp-last_level_report>=0.18:
-                        last_level_report=stamp
-                        if self.running and generation==self._generation:
-                            try:self.on_audio_level(min(1.0,rms/32768.0))
-                            except Exception:pass  # UI errors cannot stop speech
-                    speech_threshold=max(24.0,min(200.0,noise_floor*2.6+12))
-                    if rms>speech_threshold:
-                        if not segment:
-                            segment.extend(b"".join(pre_roll))
+                device_info=sd.query_devices(self.input_device,kind="input")
+                native_rate=int(round(device_info["default_samplerate"]))
+                if not 8000<=native_rate<=192000:
+                    raise ValueError("Микрофон сообщает неверную частоту дискретизации")
+                def callback(indata,frames,tm,status):
+                    try:audio_queue.put_nowait(bytes(indata))
+                    except queue.Full:
+                        try:audio_queue.get_nowait()
+                        except queue.Empty:pass
+                        try:audio_queue.put_nowait(bytes(indata))
+                        except queue.Full:pass
+                # Model initialization may finish after the application was closed.
+                if not self.running or generation!=self._generation:return
+                # Try 16 kHz first; PortAudio can convert native Bluetooth/HFP rates.
+                with sd.RawInputStream(samplerate=native_rate,
+                                       blocksize=max(256,int(native_rate/10)),channels=1,
+                                       dtype="int16",callback=callback,
+                                       device=self.input_device):
+                    if not self._mark_mic_ready(generation,native_rate):
+                        return
+                    last_packet_at=time.monotonic()
+                    while self.running and generation==self._generation:
+                        try: packet=audio_queue.get(timeout=0.2)
+                        except queue.Empty:
+                            if time.monotonic()-last_packet_at>4.0:
+                                raise TimeoutError("Нет аудиопакетов 4 секунды: устройство отключено или зависло")
+                            continue
+                        last_packet_at=time.monotonic()
+                        if self.speaking():
+                            if not was_speaking:
+                                segment.clear();pre_roll.clear();silent=0;segment_vosk_wake=False
+                                vosk_parts.clear()
+                                recognizer=KaldiRecognizer(model,16000)
+                            was_speaking=True
+                            continue
+                        was_speaking=False
+                        packet=self.normalize_mic_packet(packet,native_rate)
+                        data=np.frombuffer(packet,dtype="<i2")
+                        rms=float(np.sqrt(np.mean(data.astype(np.float64)**2))) if data.size else 0
+                        # Bounded UI telemetry: 5 readings/s, no microphone audio
+                        # leaves this thread and no levels are saved to disk.
+                        stamp=time.monotonic()
+                        if self.on_audio_level and stamp-last_level_report>=0.18:
+                            last_level_report=stamp
+                            if self.running and generation==self._generation:
+                                try:self.on_audio_level(min(1.0,rms/32768.0))
+                                except Exception:pass  # UI errors cannot stop speech
+                        speech_threshold=max(24.0,min(200.0,noise_floor*2.6+12))
+                        if rms>speech_threshold:
+                            if not segment:
+                                segment.extend(b"".join(pre_roll))
+                                pre_roll.clear()
+                            segment.extend(packet)
+                            silent=0
+                        elif segment:
+                            segment.extend(packet)
+                            silent+=1
+                        else:
+                            pre_roll.append(packet)
+                            noise_floor=0.98*noise_floor+0.02*rms
+                        if recognizer.AcceptWaveform(packet):
+                            result=json.loads(recognizer.Result())
+                            text=result.get("text","").strip()
+                            if text:
+                                vosk_parts.append(text)
+                                if WAKE.match(text):
+                                    segment_vosk_wake=True
+                                    # Wake word alone should open the command window,
+                                    # but Vosk's potentially wrong words are NEVER executed yet.
+                                    with self.lock: self.until=time.monotonic()+10
+                                    self.on_status("Слышу «Джарвис». Уточняю через Whisper…")
+                        if segment and (silent>=7 or len(segment)>=max_segment):
+                            utterance=bytes(segment)
+                            segment.clear();silent=0
+                            text=json.loads(recognizer.FinalResult()).get("text","").strip()
+                            combined=" ".join([*vosk_parts, text]).strip()
+                            vosk_parts.clear()
                             pre_roll.clear()
-                        segment.extend(packet)
-                        silent=0
-                    elif segment:
-                        segment.extend(packet)
-                        silent+=1
-                    else:
-                        pre_roll.append(packet)
-                        noise_floor=0.98*noise_floor+0.02*rms
-                    if recognizer.AcceptWaveform(packet):
-                        result=json.loads(recognizer.Result())
-                        text=result.get("text","").strip()
-                        if text:
-                            vosk_parts.append(text)
-                            if WAKE.match(text):
-                                segment_vosk_wake=True
-                                # Wake word alone should open the command window,
-                                # but Vosk's potentially wrong words are NEVER executed yet.
-                                with self.lock: self.until=time.monotonic()+10
-                                self.on_status("Слышу «Джарвис». Уточняю через Whisper…")
-                    if segment and (silent>=7 or len(segment)>=max_segment):
-                        utterance=bytes(segment)
-                        segment.clear();silent=0
-                        text=json.loads(recognizer.FinalResult()).get("text","").strip()
-                        combined=" ".join([*vosk_parts, text]).strip()
-                        vosk_parts.clear()
-                        pre_roll.clear()
-                        recognizer=KaldiRecognizer(model,16000)
-                        recognizer.SetWords(True)
-                        has_wake=segment_vosk_wake or bool(WAKE.match(combined))
-                        segment_vosk_wake=False
-                        # Never dispatch raw Vosk command text before the more
-                        # accurate Whisper pass has had a chance to recognize it.
-                        self._try_whisper(utterance,has_wake,combined)
+                            recognizer=KaldiRecognizer(model,16000)
+                            recognizer.SetWords(True)
+                            has_wake=segment_vosk_wake or bool(WAKE.match(combined))
+                            segment_vosk_wake=False
+                            # Never dispatch raw Vosk command text before the more
+                            # accurate Whisper pass has had a chance to recognize it.
+                            self._try_whisper(utterance,has_wake,combined)
+                except retryable as exc:
+                    if not self._mic_disconnected(generation):
+                        break
+                    attempt+=1
+                    with self.lock:
+                        self.reconnect_attempt=attempt
+                    if attempt>5:
+                        raise RuntimeError("Не удалось восстановить микрофон после 5 попыток: "+str(exc)[:100]) from exc
+                    delay=min(4.0,.6*2**(attempt-1))
+                    self.on_status(
+                        f"Микрофон: переподключение {attempt}/5 через {delay:.1f} с · {str(exc)[:80]}")
+                    if not self._wait_for_mic(generation,delay):
+                        break
+
         except Exception as exc:
             self.on_status("Ошибка микрофона: "+str(exc)[:180])
         finally:
