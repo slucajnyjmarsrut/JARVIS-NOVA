@@ -25,7 +25,7 @@ jobs:
           python-version: '3.11'
           architecture: x64
       - name: Minimal test dependencies
-        run: python -m pip install numpy
+        run: python -m pip install numpy scipy
       - name: Compile changed modules
         run: python -m py_compile voice_engine.py main.py local_chat.py
       - name: Unit tests for voice and offline chat
