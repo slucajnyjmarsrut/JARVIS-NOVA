@@ -1,12 +1,13 @@
 """NOVA HUD presentation tests; no voice model, audio device or API calls."""
 import tkinter as tk
 import time
+import math
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from nova_ui import (AMBER, CYAN, GREEN, MUTED, RED, VIOLET,
-                     build_interface, visual_state)
+                     build_interface, level_readout, visual_state)
 
 
 class HudLogicTests(unittest.TestCase):
@@ -34,6 +35,17 @@ class HudLogicTests(unittest.TestCase):
         self.assertEqual(visual_state(True,"Микрофон: подключается…","")[2],AMBER)
         self.assertEqual(visual_state(False,"Микрофон: выключен","")[2],MUTED)
         self.assertEqual(visual_state(True,"Микрофон: включён","В порядке")[0],"ready")
+
+
+class LevelReadoutTests(unittest.TestCase):
+    def test_real_rms_math_with_explicit_no_data(self):
+        self.assertEqual(level_readout(None),(0.0,"НЕТ ДАННЫХ"))
+        fraction, caption = level_readout(.01)
+        self.assertAlmostEqual(fraction,25/60,places=3)
+        self.assertEqual(caption,"-40 dBFS")
+        self.assertEqual(level_readout(0.0),(0.0,"ТИШИНА"))
+        self.assertEqual(level_readout(float("nan")),(0.0,"НЕТ ДАННЫХ"))
+        self.assertEqual(level_readout(1.0),(1.0,"0 dBFS"))
 
 
 class HudWidgetTests(unittest.TestCase):
@@ -95,6 +107,55 @@ class HudWidgetTests(unittest.TestCase):
             self.app.hud_reactor.paint("listening")
         self.assertGreaterEqual(len(self.app.hud_reactor.find_all()),60)
         self.assertEqual(self.app.hud_reactor._mode,"listening")
+
+    def test_mic_meter_shows_live_rms_and_stales_out(self):
+        self.app.voice_enabled=True
+        self.app.mic_state.set("Микрофон: включён")
+        self.app.hud_level_value=.02
+        self.app.hud_level_at=time.monotonic()
+        time.sleep(.17)
+        self.app.update()
+        self.assertIn("dBFS",self.app.hud_meter_label.cget("text"))
+        self.assertGreater(self.app.hud_meter.last_fraction,0)
+        self.app.hud_level_at=time.monotonic()-5
+        time.sleep(.17)
+        self.app.update()
+        self.assertIn("НЕТ ДАННЫХ",self.app.hud_meter_label.cget("text"))
+        self.app.voice_enabled=False
+        time.sleep(.17)
+        self.app.update()
+        self.assertIn("ВЫКЛ.",self.app.hud_meter_label.cget("text"))
+
+    def test_privacy_labels_reveal_granted_permissions(self):
+        self.app.control_allowed=True
+        self.app.vision_allowed=True
+        time.sleep(.17)
+        self.app.update()
+        self.assertIn("УПРАВЛЕНИЕ: ДОСТУП",self.app.hud_access.cget("text"))
+        self.assertIn("ЗРЕНИЕ*: ДОСТУП",self.app.hud_access.cget("text"))
+        self.app.control_allowed=False
+        self.app.vision_allowed=False
+        time.sleep(.17)
+        self.app.update()
+        self.assertIn("УПРАВЛЕНИЕ: ЗАПРЕТ",self.app.hud_access.cget("text"))
+
+    def test_shortcuts_reflow_to_two_columns_without_disabling_actions(self):
+        self.app.hud_reflow(SimpleNamespace(width=480))
+        self.assertEqual(self.app.hud_shortcut_columns,2)
+        self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),2)
+        self.app.hud_reflow(SimpleNamespace(width=820))
+        self.assertEqual(self.app.hud_shortcut_columns,4)
+        self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),1)
+        self.app.hud_shortcut_buttons[1].invoke()
+        self.actions["activate_mode"].assert_called_with("gaming")
+
+    def test_current_mode_and_real_focus_timer_display(self):
+        self.app.modes=SimpleNamespace(mode="study")
+        self.app._focus_deadline=time.monotonic()+95
+        time.sleep(.17)
+        self.app.update()
+        self.assertIn("УЧЁБА",self.app.hud_footer.cget("text"))
+        self.assertIn("ФОКУС",self.app.hud_footer.cget("text"))
 
     def test_conversation_is_read_only_until_log_writes(self):
         self.assertEqual(self.app.history.cget("state"),"disabled")
