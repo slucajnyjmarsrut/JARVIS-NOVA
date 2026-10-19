@@ -319,6 +319,7 @@ def build_interface(app):
             button.grid_configure(row=index//cols,column=index%cols)
         for col in range(4):
             shortcuts.grid_columnconfigure(col,weight=1 if col<cols else 0)
+    app.hud_reflow=resize_main
     main.bind("<Configure>",resize_main,add="+")
 
     footer=tk.Frame(app,bg=BG)
