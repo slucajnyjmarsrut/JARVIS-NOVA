@@ -26,3 +26,7 @@ assets/ollama/
 *.pfx
 *.key
 secrets/
+# Local pairing credentials (never commit)
+pc-link-token.txt
+pc-link-key.pem
+pc-link-cert.pem
