@@ -1,5 +1,6 @@
 package ai.jarvisnova.mobile
 
+import org.json.JSONObject
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.URI
@@ -76,7 +77,9 @@ class PcLinkClient(private val config: PcLinkConfig) {
         return try {
             if (connection.responseCode != 200) return false
             val body = connection.inputStream.bufferedReader().use { it.readText().take(4096) }
-            body.contains("\"protocol\": 1") && body.contains("\"status\": \"online\"")
+            val state = JSONObject(body)
+            state.optInt("protocol") == 1 && state.optString("status") == "online" &&
+                state.optString("name") == "JARVIS NOVA PC"
         } finally {
             connection.disconnect()
         }
