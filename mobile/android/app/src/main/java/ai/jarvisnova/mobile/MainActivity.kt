@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognizerIntent
+import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -16,6 +17,9 @@ class MainActivity : Activity() {
     private lateinit var text: EditText
     private lateinit var message: TextView
     private lateinit var phone: PhoneActions
+    private lateinit var pcAddress: EditText
+    private lateinit var pcFingerprint: EditText
+    private lateinit var pcToken: EditText
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,6 +45,52 @@ class MainActivity : Activity() {
         layout.addView(Button(this).apply {
             this.text = "Сказать голосом"
             setOnClickListener { requestSpeech() }
+        })
+        layout.addView(TextView(this).apply {
+            text = "Защищённая связь с ПК (только статус, без удалённых команд)"
+            textSize = 18f
+        })
+        pcAddress = EditText(this).apply {
+            hint = "https://192.168.1.10:8443"
+            isSaveEnabled = false
+        }
+        layout.addView(pcAddress)
+        pcFingerprint = EditText(this).apply {
+            hint = "SHA-256 сертификата ПК (64 hex)"
+            isSaveEnabled = false
+        }
+        layout.addView(pcFingerprint)
+        pcToken = EditText(this).apply {
+            hint = "Секрет сопряжения (64 hex)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            isSaveEnabled = false
+        }
+        layout.addView(pcToken)
+        layout.addView(Button(this).apply {
+            text = "Проверить HTTPS-связь с ПК"
+            setOnClickListener {
+                val cfg = try {
+                    PcLinkConfig(
+                        pcAddress.text.toString(),
+                        pcFingerprint.text.toString().trim(),
+                        pcToken.text.toString().trim()
+                    )
+                } catch (e: IllegalArgumentException) {
+                    report(e.message ?: "Неверные параметры сопряжения")
+                    return@setOnClickListener
+                }
+                isEnabled = false
+                report("Проверяю защищённое соединение без удалённых действий…")
+                val button = this
+                Thread {
+                    val ok = try { PcLinkClient(cfg).checkStatus() } catch (_: Exception) { false }
+                    runOnUiThread {
+                        button.isEnabled = true
+                        report(if (ok) "ПК отвечает по HTTPS: статус доступен."
+                               else "Сервер недоступен, не авторизован или сертификат не совпадает.")
+                    }
+                }.start()
+            }
         })
         message = TextView(this).apply { textSize = 16f }
         layout.addView(message)
