@@ -70,6 +70,11 @@ class Voice:
             generation=self._generation
             self.stopping=False
             self.running=True
+            self.until=0
+            self.pending=""
+            self.last_text=""
+            self.last_at=0
+            self.whisper_last_at=0.0
             self.thread=threading.Thread(
                 target=self._run,args=(generation,),daemon=True,name="vosk-mic")
             self.thread.start()
@@ -78,6 +83,8 @@ class Voice:
         with self.lock:
             self.stopping=True
             self.running=False
+            self.until=0
+            self.pending=""
             self._generation+=1
             worker=self.thread
         if worker and worker.is_alive() and worker is not threading.current_thread():
@@ -145,9 +152,9 @@ class Voice:
                 elif active:
                     self.on_status("Не расслышал. Попробуй повторить немного громче.")
             except Exception as exc:
-                self.on_status("Whisper: "+str(exc)[:90])
                 with self.lock:
                     valid=not self.stopping and generation==self._generation
+                if valid:self.on_status("Whisper: "+str(exc)[:90])
                 if fallback_text and valid:
                     if did_wake or force:
                         with self.lock: self.until=time.monotonic()+5
@@ -195,7 +202,7 @@ class Voice:
                     try:audio_queue.put_nowait(bytes(indata))
                     except queue.Full:pass
             # Model initialization may finish after the application was closed.
-            if not self.running:return
+            if not self.running or generation!=self._generation:return
             # Try 16 kHz first; PortAudio can convert native Bluetooth/HFP rates.
             with sd.RawInputStream(samplerate=16000,blocksize=1600,channels=1,
                                    dtype="int16",callback=callback,
