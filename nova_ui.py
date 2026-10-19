@@ -371,6 +371,10 @@ def build_interface(app):
             if deadline is not None and deadline>time.monotonic():
                 remain=math.ceil(deadline-time.monotonic())
                 current+=f"  ·  ФОКУС {remain//60:02d}:{remain%60:02d}"
+            if speaking:
+                current+=("  ·  ТИХИЙ ОТВЕТ" if
+                          getattr(app,"_current_playback_style","normal")=="whisper"
+                          else "  ·  ОБЫЧНЫЙ ОТВЕТ")
             app.hud_footer.configure(text="●  "+name+"  /  "+current,fg=color)
             app.hud_access.configure(
                 text=("УПРАВЛЕНИЕ: ДОСТУП" if getattr(app,"control_allowed",False)
