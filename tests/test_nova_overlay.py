@@ -61,6 +61,7 @@ class OverlayTests(unittest.TestCase):
         panel.start_drag(SimpleNamespace(x_root=panel.winfo_x()+12,
                                         y_root=panel.winfo_y()+10))
         panel.drag(SimpleNamespace(x_root=-500,y_root=9999))
+        panel.update_idletasks()  # Windows applies geometry asynchronously
         self.assertEqual(panel.winfo_x(),0)
         panel.dock_btn.invoke()
         panel.update()
