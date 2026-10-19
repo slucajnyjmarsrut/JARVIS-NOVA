@@ -6,15 +6,15 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from nova_overlay import NovaOverlay, dock_geometry
+from nova_overlay import NovaOverlay, clamp_drag_position, dock_geometry
 from main import Jarvis
 
 
 class GeometryTests(unittest.TestCase):
     def test_docks_to_right_and_clamps_small_displays(self):
-        self.assertEqual(dock_geometry(1920,1080),"302x200+1598+293")
+        self.assertEqual(dock_geometry(1920,1080),"336x244+1564+278")
         self.assertEqual(dock_geometry(300,140),"300x140+0+0")
-        self.assertEqual(dock_geometry(900,600),"302x200+578+133")
+        self.assertEqual(dock_geometry(900,600),"336x244+544+118")
 
 
 class OverlayTests(unittest.TestCase):
@@ -38,6 +38,9 @@ class OverlayTests(unittest.TestCase):
         self.app.hud_level_value=0
         self.app.toggle_voice=Mock()
         self.app.f9=Mock()
+        self.app.revoke=Mock()
+        self.app.control_allowed=False
+        self.app.vision_allowed=False
         self.app.show_main=lambda:Jarvis.show_main(self.app)
         self.app.overlay=NovaOverlay(self.app)
         self.app._show_overlay_if_hidden=lambda:Jarvis._show_overlay_if_hidden(self.app)
@@ -49,6 +52,36 @@ class OverlayTests(unittest.TestCase):
                 self.app.overlay.shutdown()
             self.app.destroy()
 
+    def test_drag_clamps_to_screen_and_dock_resets_position(self):
+        self.assertEqual(clamp_drag_position(-400,9999,1920,1080),(0,836))
+        self.assertEqual(clamp_drag_position(9999,-4,1920,1080),(1584,0))
+        self.app.overlay.show()
+        panel=self.app.overlay
+        panel.update()
+        panel.start_drag(SimpleNamespace(x_root=panel.winfo_x()+12,
+                                        y_root=panel.winfo_y()+10))
+        panel.drag(SimpleNamespace(x_root=-500,y_root=9999))
+        self.assertEqual(panel.winfo_x(),0)
+        panel.dock_btn.invoke()
+        panel.update()
+        self.assertFalse(panel._manual_position)
+        self.assertGreaterEqual(panel.winfo_x(),
+                                panel.winfo_screenwidth()-360)
+
+    def test_privacy_and_whisper_queue_are_displayed(self):
+        self.app.voice_enabled=True
+        self.app.voice.whisper_busy=True
+        self.app.voice.whisper_queue=[b"one",b"two"]
+        self.app.control_allowed=True
+        self.app.vision_allowed=True
+        self.app.overlay.show()
+        self.app.update()
+        self.assertIn("ОЧЕРЕДЬ 2/2",self.app.overlay.listen_detail.cget("text"))
+        self.assertIn("УПРАВЛЕНИЕ: ДОСТУП",self.app.overlay.privacy.cget("text"))
+        self.assertIn("ЗРЕНИЕ*: ДОСТУП",self.app.overlay.privacy.cget("text"))
+        self.assertIsNotNone(self.app.overlay.bind("<Control-Shift-M>"))
+        self.assertIsNotNone(self.app.overlay.bind("<Control-Shift-R>"))
+
     def test_hide_root_shows_overlay_on_right_and_restores(self):
         self.app.deiconify()
         self.app.update()
@@ -57,7 +90,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(self.app.state(),"withdrawn")
         self.assertEqual(self.app.overlay.state(),"normal")
         self.assertGreaterEqual(self.app.overlay.winfo_x(),
-                                self.app.overlay.winfo_screenwidth()-322)
+                                self.app.overlay.winfo_screenwidth()-356)
         self.app.overlay.mic_button.invoke()
         self.app.toggle_voice.assert_called_once()
         self.app.overlay.restore_btn.invoke()
