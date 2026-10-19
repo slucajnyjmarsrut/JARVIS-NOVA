@@ -706,8 +706,8 @@ class Jarvis(tk.Tk):
                 self.q.put(("tts_error",getattr(self.speaker,"last_error","Ошибка TTS")))
             # The follow-up window starts AFTER speech playback, not before.
             # The mic deliberately ignores its own TTS echo while Speaker.busy.
-            if (not self._shutdown.is_set() and self.voice_enabled
-                    and self.engine=="bundled" and not self._closing):
+            if (spoken is not False and not self._shutdown.is_set()
+                    and self.voice_enabled and self.engine=="bundled" and not self._closing):
                 self.voice.activate()
         threading.Thread(target=speak_and_rearm,daemon=True,name="jarvis-speak-rearm").start()
 
