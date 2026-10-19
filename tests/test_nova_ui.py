@@ -3,7 +3,7 @@ import tkinter as tk
 import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from nova_ui import (AMBER, CYAN, GREEN, MUTED, RED, VIOLET,
                      build_interface, visual_state)
@@ -41,6 +41,8 @@ class HudWidgetTests(unittest.TestCase):
         try:
             self.app=tk.Tk()
         except tk.TclError as exc:
+            if __import__("sys").platform=="win32":
+                self.fail("Windows GUI runner must have Tk: "+str(exc))
             self.skipTest("Tk display unavailable: "+str(exc))
         self.app.withdraw()
         self.app._closing=False
@@ -63,6 +65,8 @@ class HudWidgetTests(unittest.TestCase):
         if hasattr(self,"app"):
             self.app._closing=True
             self.app.destroy()
+            self.assertIsNone(self.app._nova_after_id,
+                              "Destroy must cancel the scheduled animation")
 
     def test_widgets_and_shortcuts_exist(self):
         self.assertEqual(self.app.history.cget("state"),"disabled")
@@ -83,6 +87,14 @@ class HudWidgetTests(unittest.TestCase):
         self.assertEqual(self.app.mic_toggle_button.cget("text"),
                          "ОТКЛЮЧИТЬ МИКРОФОН")
         self.assertIn("СЕТЬ",self.app.hud_engine.cget("text"))
+
+    def test_reactor_draws_vector_layers_and_supports_reduced_motion(self):
+        self.app.hud_animate.set(False)
+        self.assertFalse(self.app.hud_animate.get())
+        with patch.object(type(self.app.hud_reactor),"winfo_viewable",return_value=True):
+            self.app.hud_reactor.paint("listening")
+        self.assertGreater(len(self.app.hud_reactor.find_all()),60)
+        self.assertEqual(self.app.hud_reactor._mode,"listening")
 
     def test_conversation_is_read_only_until_log_writes(self):
         self.assertEqual(self.app.history.cget("state"),"disabled")
