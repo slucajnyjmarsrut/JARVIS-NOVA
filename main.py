@@ -579,19 +579,23 @@ class Jarvis(tk.Tk):
                 self.reply("Подожди, пока я закончу предыдущий запрос.")
                 return
             self.executing=True
+            request_style=normalize_style(getattr(self,"_answer_style","normal"))
+            self._answer_style="normal"
             self.status.set("Думаю локально — первый ответ может занять время…")
             def chat_worker():
                 try:
                     result=(True,self.local_chat.ask(text))
                 except Exception as exc:
                     result=(False,"Локальный разговор недоступен: "+str(exc)[:200])
-                self.q.put(("chat_result",result))
+                self.q.put(("chat_result",(*result,request_style)))
             threading.Thread(target=chat_worker,daemon=True,name="jarvis-local-chat").start()
         else:
+            request_style=normalize_style(getattr(self,"_answer_style","normal"))
+            self._answer_style="normal"
             self.status.set("Обдумываю запрос…")
             def worker():
                 plan=ask_ai_for_plan(text,self.engine)
-                self.q.put(("plan",plan))
+                self.q.put(("plan",(plan,request_style)))
             threading.Thread(target=worker,daemon=True).start()
 
     def request_trimodal(self, source: str, audio_pcm: bytes | None = None):
@@ -666,6 +670,8 @@ class Jarvis(tk.Tk):
             if not messagebox.askyesno("Подтвердить действие",
                                         "JARVIS собирается выполнить:\n"+actions+"\n\nПродолжить?"):
                 self.reply("Действие отменено.");return
+        request_style=normalize_style(getattr(self,"_answer_style","normal"))
+        self._answer_style="normal"
         self.executing=True
         self.status.set("Выполняю команду…")
         def worker():
@@ -675,12 +681,12 @@ class Jarvis(tk.Tk):
                 for step in plan.steps:
                     results.append(self.desktop.run(step))
                 self.q.put(("action_result", (True,". ".join(results),
-                                                tuple(x.kind for x in plan.steps))))
+                                                tuple(x.kind for x in plan.steps),request_style)))
             except AppSuggestion as suggestion:
                 self.q.put(("app_suggestion", (suggestion.spoken,suggestion.installed)))
             except Exception as exc:
                 self.q.put(("action_result", (False,"Не получилось: "+str(exc)[:250],
-                                                tuple(x.kind for x in plan.steps))))
+                                                tuple(x.kind for x in plan.steps),request_style)))
             finally:
                 self.desktop._active_override=None
         threading.Thread(target=worker,daemon=True,name="jarvis-action").start()
@@ -695,7 +701,9 @@ class Jarvis(tk.Tk):
         self._current_playback_style=delivery_style
         self._answer_style="normal"  # never leak a quiet voice into a later GUI action
         def speak_and_rearm():
-            self.speaker.say(s,style=delivery_style)
+            spoken=self.speaker.say(s,style=delivery_style)
+            if spoken is False and not self._shutdown.is_set():
+                self.q.put(("tts_error",getattr(self.speaker,"last_error","Ошибка TTS")))
             # The follow-up window starts AFTER speech playback, not before.
             # The mic deliberately ignores its own TTS echo while Speaker.busy.
             if (not self._shutdown.is_set() and self.voice_enabled
@@ -732,9 +740,13 @@ class Jarvis(tk.Tk):
                     self.executing=False
                 elif op=="chat_result":
                     self.executing=False
-                    success,answer=val
+                    success,answer=val[:2]
+                    if len(val)>=3:
+                        self._answer_style=normalize_style(val[2])
                     if success:self.reply(answer)
                     else:self.reply(answer+" Проверь установку моделей.")
+                elif op=="tts_error":
+                    self.status.set("Ошибка озвучивания: "+str(val)[:140])
                 elif op=="status":
                     # Do not allow a queued event from an old mic worker to
                     # incorrectly display an active microphone after Stop.
@@ -763,10 +775,18 @@ class Jarvis(tk.Tk):
                               else "Сигнал обнаружен; это не проверка точности Whisper."))
                     else:
                         self.status.set("Не могу проверить микрофон: "+rms)
-                elif op=="plan":self.execute_plan(val)
+                elif op=="plan":
+                    if isinstance(val,tuple) and len(val)==2:
+                        plan,requested_style=val
+                        self._answer_style=normalize_style(requested_style)
+                        self.execute_plan(plan)
+                    else:
+                        self.execute_plan(val)
                 elif op=="action_result":
                     self.executing=False
-                    success,text,kinds=val
+                    success,text,kinds=val[:3]
+                    if len(val)>=4:
+                        self._answer_style=normalize_style(val[3])
                     for kind in kinds:
                         self.learning.feedback(kind,success)
                     if self._pending_alias:
