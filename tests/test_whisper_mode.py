@@ -48,6 +48,27 @@ class AcousticClassificationTests(unittest.TestCase):
 
 
 class PlaybackTests(unittest.TestCase):
+    def test_reply_captures_whisper_then_resets_for_other_ui_actions(self):
+        from unittest.mock import Mock
+        replied=threading.Event()
+        calls=[]
+        def say(text,style="normal"):
+            calls.append((text,style))
+            replied.set()
+        app=types.SimpleNamespace(
+            _closing=False,_shutdown=threading.Event(),
+            voice_enabled=False,engine="none",_answer_style="whisper",
+            speaker=types.SimpleNamespace(say=say),
+            log=Mock(),status=types.SimpleNamespace(set=Mock()))
+        Jarvis.reply(app,"Первый ответ")
+        self.assertTrue(replied.wait(2))
+        self.assertEqual(calls[0],("Первый ответ","whisper"))
+        self.assertEqual(app._answer_style,"normal")
+        replied.clear()
+        Jarvis.reply(app,"Ответ по кнопке")
+        self.assertTrue(replied.wait(2))
+        self.assertEqual(calls[1],("Ответ по кнопке","normal"))
+
     def test_whisper_gain_is_reduced_but_normal_stays_full(self):
         pcm=np.ones(4800,dtype=np.float32)*.7
         normal=Speaker.soften_audio(pcm,"normal")
