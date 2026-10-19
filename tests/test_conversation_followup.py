@@ -14,7 +14,7 @@ class FollowupTests(unittest.TestCase):
         playing = threading.Event()
         release = threading.Event()
         activated = threading.Event()
-        def speak(text):
+        def speak(text,style='normal'):
             playing.set()
             release.wait(3)
         voice = SimpleNamespace(activate=lambda: activated.set())
