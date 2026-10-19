@@ -80,6 +80,20 @@ class VoiceRoutingTests(unittest.TestCase):
         self.assertEqual(heard, [])
         self.assertEqual(vision, [])
 
+    def test_native_windows_audio_rates_are_resampled_to_whisper_pcm(self):
+        for rate in (44100,48000):
+            with self.subTest(rate=rate):
+                mono=(np.ones(rate//10,dtype=np.int16)*1000).tobytes()
+                audio=Voice.normalize_mic_packet(mono,rate)
+                self.assertEqual(len(audio),3200)  # 100 ms at 16 kHz, 16-bit.
+                values=np.frombuffer(audio,dtype="<i2")
+                self.assertGreater(float(np.mean(values)),850)
+                self.assertLess(float(np.mean(values)),1150)
+        original=b"\\x01\\x00"*1600
+        self.assertEqual(Voice.normalize_mic_packet(original,16000),original)
+        with self.assertRaises(ValueError):
+            Voice.normalize_mic_packet(original,1000)
+
     def test_microphone_device_selection_validation(self):
         voice = Voice(lambda _: None, lambda _: None, lambda: False)
         with self.assertRaises(ValueError):
