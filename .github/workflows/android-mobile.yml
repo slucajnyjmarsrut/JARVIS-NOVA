@@ -4,6 +4,8 @@ on:
     branches: [dev/mobile-voice-android-2026-10]
     paths:
       - 'mobile/android/**'
+      - 'mobile/pc_link_server.py'
+      - 'mobile/tests/**'
       - '.github/workflows/android-mobile.yml'
   workflow_dispatch:
 permissions:
@@ -26,6 +28,8 @@ jobs:
           gradle-version: '8.9'
       - name: Install Android platform 35
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Verify local PC TLS server security contracts
+        run: python3 -m unittest discover -s mobile/tests -v
       - name: Compile APK and test command parser
         working-directory: mobile/android
         run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
