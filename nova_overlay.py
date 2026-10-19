@@ -226,7 +226,11 @@ class NovaOverlay(tk.Toplevel):
         until=float(getattr(voice,"until",0))
         queued=len(getattr(voice,"whisper_queue",()))
         busy=bool(getattr(voice,"whisper_busy",False))
-        if not app.voice_enabled:
+        if getattr(app.speaker,"busy",False):
+            detail=("ТИХИЙ ОТВЕТ · ШЁПОТ-ПОДОБНО" if
+                    getattr(app,"_current_playback_style","normal")=="whisper"
+                    else "ОТВЕЧАЮ · ОБЫЧНАЯ ГРОМКОСТЬ")
+        elif not app.voice_enabled:
             detail="ГОЛОСОВОЙ ВВОД ОТКЛЮЧЁН"
         elif busy:
             detail="WHISPER РАСПОЗНАЁТ"+(f"  ·  ОЧЕРЕДЬ {queued}/2" if queued else "")
