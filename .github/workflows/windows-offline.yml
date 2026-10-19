@@ -1,8 +1,8 @@
-name: JARVIS NOVA offline Windows build - REAL models, fail closed
+name: JARVIS NOVA 0.5.1 Voice/Chat/UI OFFLINE Windows installer
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [dev/modes-video-game-cleanup-2026-10]
+    branches: [fix/voice-ui-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -17,6 +17,10 @@ on:
       - 'tests/test_trimodal_integration.py'
       - 'tests/test_bootstrap.py'
       - 'bootstrap.py'
+      - 'voice_engine.py'
+      - 'local_chat.py'
+      - 'tests/test_voice_fallback.py'
+      - 'tests/test_local_chat.py'
       - 'installer/JarvisNova.iss'
       - 'scripts/verify_installer_payload.py'
       - 'scripts/test_installer.ps1'
