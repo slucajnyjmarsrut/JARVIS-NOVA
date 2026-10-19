@@ -14,6 +14,7 @@ from local_chat import LocalChat
 from nova_ui import build_interface
 from nova_overlay import NovaOverlay
 from overlay_commands import overlay_intent, preview_line
+from whisper_mode import normalize_style
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -25,6 +26,7 @@ class Jarvis(tk.Tk):
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.q=queue.Queue()
         self.voice_enabled=False
+        self._answer_style="normal"
         # Private floating HUD preview is opt-in and never persisted.
         self.overlay_show_text=False
         self.overlay_last_user=""
@@ -50,7 +52,8 @@ class Jarvis(tk.Tk):
                             lambda s:self.q.put(("status",s)),
                             lambda:self.speaker.busy or self.trimodal.speaking,
                             on_vision_audio=lambda pcm,src:self.q.put(("vision_audio",(pcm,src))),
-                            on_audio_level=lambda level:self.q.put(("audio_level",level)))
+                            on_audio_level=lambda level:self.q.put(("audio_level",level)),
+                            on_heard_styled=lambda text,style:self.q.put(("heard",(text,style))))
         build_interface(self)
         # Keep the assistant active when the main window is minimized/hidden.
         # The small overlay is another local Tk window, not a second app.
@@ -531,7 +534,9 @@ class Jarvis(tk.Tk):
     def enter(self,event=None):
         s=self.entry.get().strip()
         self.entry.delete(0,"end")
-        if s:self.handle_text(s)
+        if s:
+            self._answer_style="normal"  # typed requests do not inherit voice volume
+            self.handle_text(s)
 
     def handle_text(self,text):
         if self._closing:return
@@ -684,8 +689,11 @@ class Jarvis(tk.Tk):
         if self._closing:return
         self.log("JARVIS",s)
         self.status.set(s[:100])
+        # Capture now; another voice message must not change this reply's
+        # loudness after the TTS thread starts.
+        delivery_style=normalize_style(getattr(self,"_answer_style","normal"))
         def speak_and_rearm():
-            self.speaker.say(s)
+            self.speaker.say(s,style=delivery_style)
             # The follow-up window starts AFTER speech playback, not before.
             # The mic deliberately ignores its own TTS echo while Speaker.busy.
             if (not self._shutdown.is_set() and self.voice_enabled
@@ -698,7 +706,14 @@ class Jarvis(tk.Tk):
         try:
             while True:
                 op,val=self.q.get_nowait()
-                if op=="heard":self.handle_text(val)
+                if op=="heard":
+                    if isinstance(val,tuple) and len(val)==2:
+                        sentence,voice_style=val
+                        self._answer_style=normalize_style(voice_style)
+                        self.handle_text(sentence)
+                    else:
+                        self._answer_style="normal"
+                        self.handle_text(val)
                 elif op=="vision_audio":
                     pcm,src=val
                     self.request_trimodal(src,audio_pcm=pcm)
