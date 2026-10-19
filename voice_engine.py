@@ -11,11 +11,13 @@ from speaker import assets
 
 class Voice:
     def __init__(self,on_heard:Callable[[str],None],on_status:Callable[[str],None],speaking:Callable[[],bool],
-                 on_vision_audio: Callable[[bytes, str], None] | None = None):
+                 on_vision_audio: Callable[[bytes, str], None] | None = None,
+                 on_audio_level: Callable[[float], None] | None = None):
         self.on_heard=on_heard
         self.on_status=on_status
         self.speaking=speaking
         self.on_vision_audio=on_vision_audio
+        self.on_audio_level=on_audio_level  # RMS fraction, never raw audio
         self.running=False
         self.stopping=False
         self.thread=None
@@ -209,6 +211,7 @@ class Voice:
             noise_floor=8.0
             segment_vosk_wake=False
             was_speaking=False
+            last_level_report=0.0
             device_info=sd.query_devices(self.input_device,kind="input")
             native_rate=int(round(device_info["default_samplerate"]))
             if not 8000<=native_rate<=192000:
@@ -243,6 +246,14 @@ class Voice:
                     packet=self.normalize_mic_packet(packet,native_rate)
                     data=np.frombuffer(packet,dtype="<i2")
                     rms=float(np.sqrt(np.mean(data.astype(np.float64)**2))) if data.size else 0
+                    # Bounded UI telemetry: 5 readings/s, no microphone audio
+                    # leaves this thread and no levels are saved to disk.
+                    stamp=time.monotonic()
+                    if self.on_audio_level and stamp-last_level_report>=0.18:
+                        last_level_report=stamp
+                        if self.running and generation==self._generation:
+                            try:self.on_audio_level(min(1.0,rms/32768.0))
+                            except Exception:pass  # UI errors cannot stop speech
                     speech_threshold=max(24.0,min(200.0,noise_floor*2.6+12))
                     if rms>speech_threshold:
                         if not segment:
