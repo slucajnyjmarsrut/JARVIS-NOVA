@@ -692,6 +692,8 @@ class Jarvis(tk.Tk):
         # Capture now; another voice message must not change this reply's
         # loudness after the TTS thread starts.
         delivery_style=normalize_style(getattr(self,"_answer_style","normal"))
+        self._current_playback_style=delivery_style
+        self._answer_style="normal"  # never leak a quiet voice into a later GUI action
         def speak_and_rearm():
             self.speaker.say(s,style=delivery_style)
             # The follow-up window starts AFTER speech playback, not before.
