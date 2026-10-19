@@ -5,12 +5,13 @@ No global keyboard hook, screen capture, network call or extra microphone stream
 All actions delegate to the main Jarvis instance and keep its permission checks.
 """
 import time
+import math
 import tkinter as tk
 from nova_ui import (BG, SURFACE, EDGE, CYAN, GREEN, MUTED, TEXT, RED, AMBER,
                      level_readout, visual_state)
 
 
-def dock_geometry(screen_width, screen_height, width=336, height=244, gap=20):
+def dock_geometry(screen_width, screen_height, width=344, height=328, gap=20):
     """Right-hand edge of the desktop, clamped for small screens."""
     sw=max(1,int(screen_width))
     sh=max(1,int(screen_height))
@@ -21,7 +22,7 @@ def dock_geometry(screen_width, screen_height, width=336, height=244, gap=20):
     return f"{w}x{h}+{x}+{y}"
 
 
-def clamp_drag_position(x,y,screen_width,screen_height,width=336,height=244):
+def clamp_drag_position(x,y,screen_width,screen_height,width=344,height=328):
     """Keep the overlay entirely inside the primary desktop area."""
     sw=max(1,int(screen_width))
     sh=max(1,int(screen_height))
@@ -98,6 +99,11 @@ class NovaOverlay(tk.Toplevel):
         self.level=tk.Label(shell,text="ВХОД: НЕТ ДАННЫХ",bg=SURFACE,
                             fg=MUTED,font=("Segoe UI",8))
         self.level.pack(anchor="w",padx=14)
+        self.last_turn=tk.Label(shell,text="ПОСЛЕДНИЕ РЕПЛИКИ СКРЫТЫ",
+                                bg=SURFACE,fg=MUTED,wraplength=306,
+                                justify="left",anchor="w",height=2,
+                                font=("Segoe UI",8))
+        self.last_turn.pack(fill="x",padx=14,pady=(4,2))
 
         actions=tk.Frame(shell,bg=SURFACE)
         actions.pack(fill="x",padx=11,pady=(8,8))
@@ -107,6 +113,9 @@ class NovaOverlay(tk.Toplevel):
         self.listen_button.pack(side="left",expand=True,fill="x",padx=2)
         self.restore_button=self.button(actions,"ОКНО",self.restore_main)
         self.restore_button.pack(side="left",expand=True,fill="x",padx=2)
+        self.preview_button=self.button(shell,"ПОКАЗАТЬ НОВЫЕ РЕПЛИКИ",
+                                        self.toggle_preview)
+        self.preview_button.pack(fill="x",padx=14,pady=(0,8))
         self.protocol("WM_DELETE_WINDOW",self.restore_main)
         self.bind("<F9>",lambda e:(self.app.f9(),"break")[1])
         self.bind("<Control-Shift-O>",lambda e:(self.restore_main(),"break")[1])
@@ -161,6 +170,25 @@ class NovaOverlay(tk.Toplevel):
         if not self._closed:
             self.withdraw()
 
+    def toggle_preview(self):
+        if self._closed:return
+        self.app.set_overlay_preview(
+            not bool(getattr(self.app,"overlay_show_text",False)))
+        self.refresh_preview()
+
+    def refresh_preview(self):
+        enabled=bool(getattr(self.app,"overlay_show_text",False))
+        self.preview_button.configure(
+            text="СКРЫТЬ РЕПЛИКИ" if enabled else "ПОКАЗАТЬ НОВЫЕ РЕПЛИКИ")
+        if not enabled:
+            text="ПОСЛЕДНИЕ РЕПЛИКИ СКРЫТЫ"
+        else:
+            text="\n".join(filter(None,(
+                getattr(self.app,"overlay_last_user",""),
+                getattr(self.app,"overlay_last_answer","")))) or "ОЖИДАЮ НОВУЮ РЕПЛИКУ…"
+        self.last_turn.configure(text=text,
+                                 fg=TEXT if enabled else MUTED)
+
     def restore_main(self):
         if self._closed or getattr(self.app,"_closing",False):return
         self.app.show_main()
@@ -186,8 +214,14 @@ class NovaOverlay(tk.Toplevel):
                "office":"ОФИС","study":"УЧЁБА","videos":"РОЛИКИ",
                "video_shoot":"СЪЁМКА","video_edit":"МОНТАЖ",
                "video_review":"ОЦЕНКА"}
+        deadline=getattr(app,"_focus_deadline",None)
+        focus=""
+        if deadline is not None and deadline>time.monotonic():
+            left=math.ceil(deadline-time.monotonic())
+            focus=f"  ·  ФОКУС {left//60:02d}:{left%60:02d}"
         self.context.configure(text=("РЕЖИМ: "+modes.get(label,label.upper()[:18])
-                             +("   •   ДЕЙСТВИЕ…" if app.executing else "")))
+                             +focus+("  •  ДЕЙСТВИЕ…" if app.executing else "")))
+        self.refresh_preview()
         voice=getattr(app,"voice",None)
         until=float(getattr(voice,"until",0))
         queued=len(getattr(voice,"whisper_queue",()))
