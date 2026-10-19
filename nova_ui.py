@@ -194,6 +194,8 @@ def build_interface(app):
     app.hud_status=_label(main,fg=MUTED,size=9,textvariable=app.status,
                           wraplength=580,justify="left",anchor="w",height=2)
     app.hud_status.grid(row=1,column=0,sticky="ew",padx=14,pady=(4,6))
+    main.bind("<Configure>",lambda event:app.hud_status.configure(
+        wraplength=max(170,event.width-35)))
     chat_shell=tk.Frame(main,bg=SURFACE_ALT,highlightthickness=1,
                         highlightbackground=EDGE)
     chat_shell.grid(row=2,column=0,sticky="nsew",padx=12,pady=(0,9))
