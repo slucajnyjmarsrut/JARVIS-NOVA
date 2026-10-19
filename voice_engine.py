@@ -32,10 +32,36 @@ class Voice:
         self.lock=threading.RLock()
         self._generation=0
         self.input_device=None
+        self.mic_ready=False
+        self._manual_pending=False  # F9 pressed while Vosk opens the input stream
 
     def activate(self):
-        with self.lock: self.until=time.monotonic()+8
-        self.on_status("Слушаю команду…")
+        with self.lock:
+            if self.stopping or not self.running:
+                status="Микрофон недоступен: включи голосовой ввод"
+            elif not self.mic_ready:
+                self._manual_pending=True
+                status="Микрофон загружается — начну слушать после подключения…"
+            else:
+                self.until=time.monotonic()+8
+                status="Слушаю команду…"
+        self.on_status(status)
+
+    def _mark_mic_ready(self, generation, native_rate):
+        """Rearm pending manual F9 only after the actual audio stream opened."""
+        with self.lock:
+            if self.stopping or not self.running or generation!=self._generation:
+                return False
+            self.mic_ready=True
+            pending=self._manual_pending
+            self._manual_pending=False
+            if pending:
+                self.until=time.monotonic()+8
+        self.on_status(
+            f"Vosk готов · микрофон {native_rate} Гц → 16000 Гц · жду «Джарвис»")
+        if pending:
+            self.on_status("Микрофон подключён. Слушаю команду…")
+        return True
 
     def accept_text(self,text:str):
         if self.stopping or self.speaking(): return
@@ -73,6 +99,8 @@ class Voice:
             generation=self._generation
             self.stopping=False
             self.running=True
+            self.mic_ready=False
+            self._manual_pending=False
             self.until=0
             self.pending=""
             self.last_text=""
@@ -88,6 +116,8 @@ class Voice:
         with self.lock:
             self.stopping=True
             self.running=False
+            self.mic_ready=False
+            self._manual_pending=False
             self.until=0
             self.pending=""
             self.whisper_queue.clear()
@@ -260,8 +290,6 @@ class Voice:
             native_rate=int(round(device_info["default_samplerate"]))
             if not 8000<=native_rate<=192000:
                 raise ValueError("Микрофон сообщает неверную частоту дискретизации")
-            self.on_status(
-                f"Vosk готов · микрофон {native_rate} Гц → 16000 Гц · жду «Джарвис»")
             def callback(indata,frames,tm,status):
                 try:audio_queue.put_nowait(bytes(indata))
                 except queue.Full:
@@ -276,6 +304,8 @@ class Voice:
                                    blocksize=max(256,int(native_rate/10)),channels=1,
                                    dtype="int16",callback=callback,
                                    device=self.input_device):
+                if not self._mark_mic_ready(generation,native_rate):
+                    return
                 while self.running and generation==self._generation:
                     try: packet=audio_queue.get(timeout=0.2)
                     except queue.Empty:continue
@@ -342,3 +372,5 @@ class Voice:
             with self.lock:
                 if generation==self._generation:
                     self.running=False
+                    self.mic_ready=False
+                    self._manual_pending=False
