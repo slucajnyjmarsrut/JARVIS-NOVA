@@ -43,7 +43,8 @@ class Jarvis(tk.Tk):
         self.voice=RC4Voice(lambda s:self.q.put(("heard",s)),
                             lambda s:self.q.put(("status",s)),
                             lambda:self.speaker.busy or self.trimodal.speaking,
-                            on_vision_audio=lambda pcm,src:self.q.put(("vision_audio",(pcm,src))))
+                            on_vision_audio=lambda pcm,src:self.q.put(("vision_audio",(pcm,src))),
+                            on_audio_level=lambda level:self.q.put(("audio_level",level)))
         build_interface(self)
         # Permissions, engine configuration and stop live in native menus,
         # not as an extra control panel on the main screen.
@@ -152,6 +153,8 @@ class Jarvis(tk.Tk):
             self.voice.stop();self.voice_enabled=False
             self.status.set("Микрофон выключен")
             self.mic_state.set("Микрофон: выключен")
+            self.hud_level_value=0.0
+            self.hud_level_at=0.0
         else:
             self.voice.start();self.voice_enabled=True
             self.status.set("Включаю микрофон…")
@@ -653,6 +656,10 @@ class Jarvis(tk.Tk):
                         elif val.startswith("Vosk готов"):
                             self.mic_state.set("Микрофон: включён, жду «Джарвис»")
                     self.status.set(val)
+                elif op=="audio_level":
+                    if self.voice_enabled:
+                        self.hud_level_value=max(0.0,min(1.0,float(val)))
+                        self.hud_level_at=time.monotonic()
                 elif op=="mic_level":
                     success,rms,peak,rate=val
                     if success:
