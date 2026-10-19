@@ -122,8 +122,12 @@ class Voice:
                 # because the previous Whisper inference is still running.
                 # Bounded to two (max 11s each) and cleared on Stop/restart.
                 if active:
-                    self.whisper_queue.append((pcm,did_wake,fallback_text))
-                    self.on_status("Whisper занят: следующая фраза в очереди…")
+                    if len(self.whisper_queue)>=self.whisper_queue.maxlen:
+                        self.on_status("Whisper: очередь полна — повтори последнюю фразу.")
+                    else:
+                        self.whisper_queue.append((pcm,did_wake,fallback_text))
+                        self.on_status(
+                            f"Whisper: команда в очереди ({len(self.whisper_queue)}/2)")
                 return
             if not active and now-self.whisper_last_at < 3.0:
                 return
@@ -155,8 +159,23 @@ class Voice:
                 # Only a Whisper-confirmed Vision phrase can use the original PCM;
                 # a noisy Vosk guess must never trigger camera/screen access.
                 if text:
-                    if active:
-                        with self.lock:
+                    # Authorized queued speech must not be silently discarded
+                    # by accept_text() while Silero is speaking the previous
+                    # response. Only a bounded wait, never interrupt playback.
+                    if force and self.speaking():
+                        deadline=time.monotonic()+12
+                        while self.speaking() and time.monotonic()<deadline:
+                            with self.lock:
+                                if self.stopping or generation!=self._generation:
+                                    return
+                            time.sleep(.05)
+                        if self.speaking():
+                            self.on_status("JARVIS ещё говорит — повтори команду.")
+                            return
+                    with self.lock:
+                        if self.stopping or generation!=self._generation:
+                            return
+                        if active:
                             self.until=max(self.until,time.monotonic()+5)
                     source=self.vision_source(text)
                     if source and self.on_vision_audio and (active or WAKE.match(text)):
