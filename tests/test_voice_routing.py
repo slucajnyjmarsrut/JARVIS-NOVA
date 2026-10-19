@@ -89,7 +89,7 @@ class VoiceRoutingTests(unittest.TestCase):
                 values=np.frombuffer(audio,dtype="<i2")
                 self.assertGreater(float(np.mean(values)),850)
                 self.assertLess(float(np.mean(values)),1150)
-        original=b"\\x01\\x00"*1600
+        original=bytes([1,0])*1600
         self.assertEqual(Voice.normalize_mic_packet(original,16000),original)
         with self.assertRaises(ValueError):
             Voice.normalize_mic_packet(original,1000)
