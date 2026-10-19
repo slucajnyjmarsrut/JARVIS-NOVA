@@ -13,6 +13,7 @@ from voice_engine import Voice as RC4Voice
 from local_chat import LocalChat
 from nova_ui import build_interface
 from nova_overlay import NovaOverlay
+from overlay_commands import overlay_intent, preview_line
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -24,6 +25,10 @@ class Jarvis(tk.Tk):
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.q=queue.Queue()
         self.voice_enabled=False
+        # Private floating HUD preview is opt-in and never persisted.
+        self.overlay_show_text=False
+        self.overlay_last_user=""
+        self.overlay_last_answer=""
         self._closing=False
         self._shutdown=threading.Event()
         self.executing=False
@@ -168,6 +173,18 @@ class Jarvis(tk.Tk):
         self.history.insert("end",f"{message}\n\n")
         self.history.see("end")
         self.history.configure(state="disabled")
+        if getattr(self,"overlay_show_text",False):
+            if person=="Вы":
+                self.overlay_last_user=preview_line("Вы",message)
+            elif person=="JARVIS":
+                self.overlay_last_answer=preview_line("NOVA",message)
+
+    def set_overlay_preview(self, enabled):
+        """Only show new dialogue while preview is explicitly enabled."""
+        self.overlay_show_text=bool(enabled)
+        if not self.overlay_show_text:
+            self.overlay_last_user=""
+            self.overlay_last_answer=""
 
     def init_voice(self):
         # Microphone starts independently of slow PyTorch/Silero loading.
@@ -518,6 +535,17 @@ class Jarvis(tk.Tk):
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        # These are exact, local window controls, not desktop automation.
+        # A conversational mention of the overlay is never interpreted as one.
+        overlay_action=overlay_intent(text)
+        if overlay_action=="show":
+            self.show_main()
+            self.reply("Главное окно JARVIS открыто.")
+            return
+        if overlay_action=="hide":
+            self.hide_main()
+            self.reply("Оверлей JARVIS справа. Чтобы вернуться, нажми «ОТКРЫТЬ».")
+            return
         mode_command=self.modes.parse(text,self.desktop.is_installed)
         if mode_command is not None:
             self.handle_mode_command(mode_command)
