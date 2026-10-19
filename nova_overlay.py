@@ -119,7 +119,8 @@ class NovaOverlay(tk.Toplevel):
         self.deiconify()
         self.lift()
         self.attributes("-topmost",True)
-        self.refresh()
+        if self._timer_id is None:
+            self.refresh()
 
     def hide(self):
         if self._timer_id is not None:
@@ -136,12 +137,14 @@ class NovaOverlay(tk.Toplevel):
     def refresh(self):
         if self._closed or not self.winfo_exists():return
         if self.state() != "normal":return
+        self._timer_id=None  # the previous scheduled callback has fired
         app=self.app
         state,label,color=visual_state(
             bool(app.voice_enabled),app.mic_state.get(),app.status.get(),
             bool(app.executing),
             bool(getattr(app.speaker,"busy",False) or
-                 getattr(app.trimodal,"speaking",False)))
+                 getattr(app.trimodal,"speaking",False)),
+            listening=time.monotonic()<getattr(app.voice,"until",0))
         self.status_label.configure(text=label,fg=color)
         self.dot.delete("all")
         self.dot.create_oval(1,1,11,11,fill=color,outline="")
