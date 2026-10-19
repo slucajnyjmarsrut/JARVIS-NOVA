@@ -75,6 +75,21 @@ class OverlayTests(unittest.TestCase):
         self.app.update()
         self.assertEqual(self.app.overlay.state(),"normal")
 
+    def test_windows_minimize_triggers_the_right_side_overlay(self):
+        self.app.deiconify()
+        self.app.update()
+        self.app.bind("<Unmap>",lambda ev:Jarvis._main_unmapped(self.app,ev),add="+")
+        self.app.iconify()
+        self.app.update()
+        time.sleep(.08)
+        self.app.update()
+        self.assertEqual(self.app.state(),"iconic")
+        self.assertEqual(self.app.overlay.state(),"normal")
+        self.app.show_main()
+        self.app.update()
+        self.assertEqual(self.app.state(),"normal")
+        self.assertEqual(self.app.overlay.state(),"withdrawn")
+
     def test_overlay_has_live_state_and_one_update_timer(self):
         self.app.overlay.show()
         self.app.overlay.show()
