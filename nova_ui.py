@@ -22,7 +22,7 @@ RED = "#FF7889"
 VIOLET = "#B8A4FF"
 
 
-def visual_state(voice_enabled, mic_state, status, executing=False, speaking=False):
+def visual_state(voice_enabled, mic_state, status, executing=False, speaking=False, listening=None):
     """Pure state resolver. A status message cannot turn a stopped mic 'on'."""
     mic = str(mic_state).casefold()
     event = str(status).casefold()
@@ -34,7 +34,10 @@ def visual_state(voice_enabled, mic_state, status, executing=False, speaking=Fal
         return "speaking", "ОТВЕЧАЮ", GREEN
     if not voice_enabled:
         return "offline", "МИКРОФОН ВЫКЛ.", MUTED
-    if "жду команду" in mic or "распозна" in event or "whisper" in event:
+    if listening is True:
+        return "listening", "СЛУШАЮ", CYAN
+    if listening is None and ("жду команду" in mic or "слушаю команду" in event
+                              or "распозна" in event or "whisper" in event):
         return "listening", "СЛУШАЮ", CYAN
     if "подключ" in mic or "запуска" in event:
         return "starting", "ЗАПУСК МИКРОФОНА", AMBER
@@ -349,7 +352,8 @@ def build_interface(app):
                           getattr(app.trimodal,"speaking",False))
             mode,name,color=visual_state(
                 getattr(app,"voice_enabled",False),app.mic_state.get(),
-                app.status.get(),getattr(app,"executing",False),speaking)
+                app.status.get(),getattr(app,"executing",False),speaking,
+                listening=time.monotonic()<getattr(app.voice,"until",0))
             app.hud_clock.configure(text=time.strftime("%H:%M:%S"))
             app.hud_mode.configure(text=name,fg=color)
             mode_key=getattr(app.modes,"mode","neutral") if hasattr(app,"modes") else "neutral"
