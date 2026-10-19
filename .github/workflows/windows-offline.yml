@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.6 Whisper/Chat Windows REAL installer
+name: JARVIS NOVA 0.5.7 Whisper/Chat Windows REAL installer
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/trusted-release-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -25,6 +25,10 @@ on:
       - 'docs/VOICE_STABILITY_0_5_2_RU.md'
       - 'tests/test_local_chat.py'
       - 'installer/JarvisNova.iss'
+      - 'scripts/check_release_signature.ps1'
+      - 'scripts/check_release_hashes.py'
+      - 'tests/test_release_security.py'
+      - 'docs/SECURE_WINDOWS_RELEASE_0_5_7_RU.md'
       - 'scripts/verify_installer_payload.py'
       - 'scripts/test_installer.ps1'
       - 'work_modes.py'
@@ -60,6 +64,11 @@ on:
       - 'scripts/prepare_ffmpeg.ps1'
   workflow_dispatch:
     inputs:
+      sign_release:
+        description: 'Sign both app EXE and installer with configured verified Azure publisher identity'
+        required: true
+        default: false
+        type: boolean
       ollama_release_tag:
         description: 'Official Ollama release tag, or latest'
         required: false
@@ -67,6 +76,7 @@ on:
         type: string
 permissions:
   contents: read
+  id-token: write  # OIDC only used on explicit sign_release workflow_dispatch
 env:
   PYTHONUTF8: '1'
   PYTHONIOENCODING: 'utf-8'
@@ -146,6 +156,45 @@ jobs:
       - name: Verify packaged AMD64 app and all THREE offline model stores with blob digests
         timeout-minutes: 15
         run: python scripts/verify_installer_payload.py --dir dist/JarvisNova
+      - name: Check verified publisher signing prerequisites
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_release }}
+        shell: pwsh
+        env:
+          SIGN_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGN_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGN_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          SIGN_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
+          TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          foreach ($value in @($env:SIGN_ENDPOINT,$env:SIGN_ACCOUNT,$env:SIGN_PROFILE,$env:SIGN_PUBLISHER,$env:TENANT_ID,$env:CLIENT_ID,$env:SUBSCRIPTION_ID)) {
+            if ([string]::IsNullOrWhiteSpace($value)) { throw 'Missing verified Azure Artifact Signing configuration; refusing to claim signed publisher trust' }
+          }
+      - name: Azure login with GitHub OIDC (signed release only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_release }}
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign the packaged NOVA application with Microsoft Artifact Signing
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_release }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\JarvisNova\JarvisNova.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Verify application publisher before packing it into the installer
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_release }}
+        shell: pwsh
+        env:
+          EXPECTED_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
+        run: ./scripts/check_release_signature.ps1 -Path 'dist/JarvisNova/JarvisNova.exe' -RequireSigned -ExpectedPublisher $env:EXPECTED_PUBLISHER
       - name: Install official Inno Setup via Chocolatey
         timeout-minutes: 15
         shell: pwsh
@@ -164,6 +213,33 @@ jobs:
           if ($setups.Count -ne 1) { throw 'Expected exactly one installer EXE' }
           Write-Host "Real Windows installer bytes: $($setups[0].Length)"
           Get-FileHash $setups[0].FullName -Algorithm SHA256 | Format-List
+      - name: Sign final installer with verified publisher (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.sign_release }}
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist\installer
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Audit release signatures (never mislabel unsigned development builds)
+        shell: pwsh
+        env:
+          SIGN_RELEASE: ${{ inputs.sign_release || 'false' }}
+          EXPECTED_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
+        run: |
+          $setup = @(Get-ChildItem 'dist/installer/*.exe')
+          if ($setup.Count -ne 1) { throw 'Expected exactly one setup EXE' }
+          if ($env:SIGN_RELEASE -eq 'true') {
+            ./scripts/check_release_signature.ps1 -Path $setup[0].FullName -RequireSigned -ExpectedPublisher $env:EXPECTED_PUBLISHER
+            ./scripts/check_release_signature.ps1 -Path 'dist/JarvisNova/JarvisNova.exe' -RequireSigned -ExpectedPublisher $env:EXPECTED_PUBLISHER
+          } else {
+            ./scripts/check_release_signature.ps1 -Path $setup[0].FullName
+            ./scripts/check_release_signature.ps1 -Path 'dist/JarvisNova/JarvisNova.exe'
+          }
       - name: Test single EXE installer, real installed E2E, uninstall and user-data retention
         shell: pwsh
         timeout-minutes: 50
@@ -179,6 +255,8 @@ jobs:
           python scripts/write_release_manifest.py --root dist/JarvisNova --out dist/installer/FULL_FILE_SHA256_MANIFEST.json
           if ($LASTEXITCODE -ne 0) { throw 'Manifest failed' }
           Get-ChildItem dist/installer/*.exe | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } | Set-Content dist/installer/SHA256SUMS.txt
+      - name: Independently verify published installer SHA256
+        run: python scripts/check_release_hashes.py --folder dist/installer
       - name: Caveats / tests that still REQUIRE a human on clean Windows
         shell: pwsh
         run: |
@@ -189,7 +267,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.6-DEV-UNVERIFIED-WINDOWS-INSTALLER
+          name: JARVIS-NOVA-0.5.7-${{ inputs.sign_release && 'SIGNED' || 'DEV-UNVERIFIED' }}-WINDOWS-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
