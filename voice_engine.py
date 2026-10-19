@@ -115,7 +115,9 @@ class Voice:
         now=time.monotonic()
         with self.lock:
             active = did_wake or force or now < self.until
-            if self.stopping or self.speaking() or len(pcm)<16000:
+            # A queued, already captured phrase is safe to recognize while
+            # TTS plays; the worker waits for playback BEFORE dispatch.
+            if self.stopping or len(pcm)<16000 or (self.speaking() and not force):
                 return
             if self.whisper_busy:
                 # Never drop an explicitly awakened/manual follow-up just
