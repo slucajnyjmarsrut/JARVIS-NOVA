@@ -353,7 +353,7 @@ def build_interface(app):
             mode,name,color=visual_state(
                 getattr(app,"voice_enabled",False),app.mic_state.get(),
                 app.status.get(),getattr(app,"executing",False),speaking,
-                listening=time.monotonic()<getattr(app.voice,"until",0))
+                listening=time.monotonic()<getattr(getattr(app,"voice",None),"until",0))
             app.hud_clock.configure(text=time.strftime("%H:%M:%S"))
             app.hud_mode.configure(text=name,fg=color)
             mode_key=getattr(app.modes,"mode","neutral") if hasattr(app,"modes") else "neutral"
