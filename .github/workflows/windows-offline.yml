@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.10 Whisper/Chat Windows REAL installer
+name: JARVIS NOVA 0.5.11 Whisper/Chat Windows REAL installer
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -20,6 +20,9 @@ on:
       - 'voice_engine.py'
       - 'whisper_mode.py'
       - 'speaker.py'
+      - 'speech_output.py'
+      - 'tests/test_natural_voice.py'
+      - 'docs/NOVA_NATURAL_VOICE_0_5_11_RU.md'
       - 'tests/test_whisper_mode.py'
       - 'docs/NOVA_WHISPER_REPLIES_0_5_10_RU.md'
       - 'tests/test_microphone_recovery.py'
@@ -200,7 +203,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.10-DEV-UNVERIFIED-WINDOWS-INSTALLER
+          name: JARVIS-NOVA-0.5.11-DEV-UNVERIFIED-WINDOWS-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
