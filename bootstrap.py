@@ -104,10 +104,30 @@ def video_self_test():
     return 0
 
 
+def conversational_self_test():
+    """Run the REAL bundled Qwen text path, from the frozen application."""
+    from local_chat import LocalChat
+    from bundled_vision_runtime import BundledRuntimeConfig, BundledVisionRuntime
+    from speaker import assets
+    runtime=BundledVisionRuntime(BundledRuntimeConfig(root=assets().parent))
+    session=LocalChat(runtime)
+    try:
+        answer=session.ask("Привет, кто ты? Ответь одним кратким русским предложением.")
+        if not answer or len(answer)>1600 or not any("а"<=char.casefold()<="я" for char in answer):
+            raise RuntimeError("Local chat model did not produce a non-empty Russian reply")
+        print("REAL bundled text-chat model answered successfully (no mocks, no cloud)",flush=True)
+        return 0
+    finally:
+        session.close()
+        runtime.stop()
+
+
 def main():
     import sys
     if "--self-test" in sys.argv:
         return smoke_test()
+    if "--chat-self-test" in sys.argv:
+        return conversational_self_test()
     if "--video-self-test" in sys.argv:
         return video_self_test()
     if "--real-e2e" in sys.argv:
