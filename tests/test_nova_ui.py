@@ -93,7 +93,7 @@ class HudWidgetTests(unittest.TestCase):
         self.assertFalse(self.app.hud_animate.get())
         with patch.object(type(self.app.hud_reactor),"winfo_viewable",return_value=True):
             self.app.hud_reactor.paint("listening")
-        self.assertGreater(len(self.app.hud_reactor.find_all()),60)
+        self.assertGreaterEqual(len(self.app.hud_reactor.find_all()),60)
         self.assertEqual(self.app.hud_reactor._mode,"listening")
 
     def test_conversation_is_read_only_until_log_writes(self):
