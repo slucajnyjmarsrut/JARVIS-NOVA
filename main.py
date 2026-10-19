@@ -87,6 +87,11 @@ class Jarvis(tk.Tk):
                              ("Claude API (нужен ключ)","anthropic")]:
             ai.add_command(label=title,command=lambda v=choice:self.set_engine(v))
         menu.add_cascade(label="AI",menu=ai)
+        interface_menu=tk.Menu(menu,tearoff=False)
+        interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
+        interface_menu.add_command(label="Исходный размер окна",
+                                   command=lambda:self.geometry("1060x720"))
+        menu.add_cascade(label="Интерфейс",menu=interface_menu)
         learning_menu=tk.Menu(menu,tearoff=False)
         learning_menu.add_command(label="Научить названию программы…",command=self.teach_alias)
         learning_menu.add_command(label="Показать результаты обучения",command=self.learning_report)
