@@ -1,0 +1,287 @@
+# -*- coding: utf-8 -*-
+"""JARVIS NOVA desktop HUD: entirely local, dependency-free Tkinter graphics.
+
+The visual layer never starts devices, grants permissions or performs actions.
+Those remain in Jarvis callbacks; animation runs only on Tk's event loop.
+"""
+import math
+import time
+import tkinter as tk
+
+BG = "#070D17"
+SURFACE = "#0D1929"
+SURFACE_ALT = "#112238"
+EDGE = "#20364B"
+CYAN = "#4DE4F7"
+CYAN_DIM = "#236C80"
+TEXT = "#E9F6FF"
+MUTED = "#85A3B8"
+GREEN = "#56EBB0"
+AMBER = "#FFC86C"
+RED = "#FF7889"
+VIOLET = "#B8A4FF"
+
+
+def visual_state(voice_enabled, mic_state, status, executing=False, speaking=False):
+    """Pure state resolver. A status message cannot turn a stopped mic 'on'."""
+    mic = str(mic_state).casefold()
+    event = str(status).casefold()
+    if "ошибка микрофона" in event or "ошибка устройства" in mic:
+        return "error", "ОШИБКА ВХОДА", RED
+    if executing:
+        return "processing", "ОБРАБОТКА", VIOLET
+    if speaking:
+        return "speaking", "ОТВЕЧАЮ", GREEN
+    if not voice_enabled:
+        return "offline", "МИКРОФОН ВЫКЛ.", MUTED
+    if "жду команду" in mic or "распозна" in event or "whisper" in event:
+        return "listening", "СЛУШАЮ", CYAN
+    if "подключ" in mic or "запуска" in event:
+        return "starting", "ЗАПУСК МИКРОФОНА", AMBER
+    return "ready", "ЖДУ «ДЖАРВИС»", GREEN
+
+
+class Reactor(tk.Canvas):
+    """Animated vector reactor: no assets, network, blocking loops or GPU."""
+
+    def __init__(self, parent):
+        super().__init__(parent, width=230, height=192, bg=SURFACE,
+                         highlightthickness=0, bd=0)
+        self.phase = 0
+        self._mode = "offline"
+
+    def paint(self, mode):
+        if not self.winfo_exists() or not self.winfo_viewable():
+            return
+        self._mode = mode
+        self.phase = (self.phase + (3 if mode == "listening" else 1)) % 360
+        self.delete("hud")
+        w = max(2, self.winfo_width())
+        h = max(2, self.winfo_height())
+        cx, cy = w / 2, h / 2
+        r = min(w * .41, h * .45, 95)
+        color = {
+            "offline": MUTED, "error": RED, "processing": VIOLET,
+            "speaking": GREEN, "listening": CYAN, "starting": AMBER,
+            "ready": CYAN,
+        }.get(mode, CYAN)
+        self.create_oval(cx-r*.95, cy-r*.95, cx+r*.95, cy+r*.95,
+                         outline=EDGE, width=1, tags="hud")
+        self.create_oval(cx-r*.74, cy-r*.74, cx+r*.74, cy+r*.74,
+                         outline=CYAN_DIM, width=1, tags="hud")
+        self.create_oval(cx-r*.49, cy-r*.49, cx+r*.49, cy+r*.49,
+                         outline=color, width=2, tags="hud")
+        for index in range(48):
+            angle=math.radians(index*7.5)
+            inner=r*(.88 if index % 4 else .82)
+            outer=r*(.96 if index % 4 else 1.02)
+            self.create_line(cx+inner*math.cos(angle),
+                             cy+inner*math.sin(angle),
+                             cx+outer*math.cos(angle),
+                             cy+outer*math.sin(angle),
+                             fill=color if index%4==0 else EDGE,
+                             width=2 if index%4==0 else 1,tags="hud")
+        for radius, start, extent, shade, width in (
+            (.83, self.phase, 74, color, 3),
+            (.83, (self.phase+185)%360, 40, CYAN_DIM, 2),
+            (.61, (360-self.phase*1.5)%360, 130, color, 2),
+            (1.08, (self.phase*.6)%360, 40, CYAN_DIM, 1),
+        ):
+            rr=r*radius
+            self.create_arc(cx-rr,cy-rr,cx+rr,cy+rr,
+                            start=start,extent=extent,style=tk.ARC,
+                            outline=shade,width=width,tags="hud")
+        pulse = (math.sin(math.radians(self.phase*4))+1)/2
+        core = r*(.28 + (.04*pulse if mode in ("listening","speaking") else 0))
+        self.create_oval(cx-core,cy-core,cx+core,cy+core,
+                         fill=SURFACE_ALT,outline=color,width=2,tags="hud")
+        self.create_text(cx,cy-7,text="N",fill=TEXT,
+                         font=("Segoe UI",23,"bold"),tags="hud")
+        self.create_text(cx,cy+17,text="N O V A",fill=color,
+                         font=("Consolas",8,"bold"),tags="hud")
+        for dx,dy in ((-r*1.18,0),(r*1.18,0)):
+            self.create_line(cx+dx-5,cy+dy,cx+dx+5,cy+dy,
+                             fill=CYAN_DIM,tags="hud")
+
+
+def _label(parent, text="", *, fg=MUTED, size=9, bold=False, **kw):
+    return tk.Label(parent,text=text,fg=fg,bg=parent.cget("bg"),
+                    font=("Segoe UI",size,"bold" if bold else "normal"),
+                    **kw)
+
+
+def _action(parent,text,command,*,primary=False,compact=False):
+    background = CYAN_DIM if primary else SURFACE_ALT
+    hover = "#32849A" if primary else "#1B3650"
+    foreground = TEXT if primary else "#D7EAF5"
+    button=tk.Button(parent,text=text,command=command,
+                     bg=background,fg=foreground,
+                     activebackground=hover,activeforeground="#FFFFFF",
+                     relief="flat",bd=0,highlightthickness=1,
+                     highlightbackground=EDGE,highlightcolor=CYAN,
+                     cursor="hand2",takefocus=True,
+                     font=("Segoe UI",9 if compact else 10,"bold"),
+                     padx=7,pady=5 if compact else 7)
+    button.bind("<Enter>",lambda e:button.configure(bg=hover),add="+")
+    button.bind("<Leave>",lambda e:button.configure(bg=background),add="+")
+    return button
+
+
+def build_interface(app):
+    """Create the complete dashboard while preserving Jarvis' public widgets."""
+    app.configure(bg=BG)
+    app.status=tk.StringVar(master=app,value="Запускаю офлайн-голос…")
+    app.mic_state=tk.StringVar(master=app,value="Микрофон: подключается…")
+
+    header=tk.Frame(app,bg=BG)
+    header.pack(fill="x",padx=20,pady=(12,9))
+    tk.Frame(header,bg=CYAN,width=4).pack(side="left",fill="y",padx=(0,12))
+    brand=tk.Frame(header,bg=BG)
+    brand.pack(side="left",anchor="w")
+    _label(brand,"NEURAL OPERATING VOICE ASSISTANT  /  WINDOWS",
+           fg=CYAN_DIM,size=8,bold=True).pack(anchor="w")
+    _label(brand,"JARVIS  NOVA",fg=TEXT,size=25,bold=True).pack(anchor="w")
+    indicator=tk.Frame(header,bg=BG)
+    indicator.pack(side="right",anchor="e")
+    app.hud_clock=_label(indicator,"--:--:--",fg=TEXT,size=15,bold=True)
+    app.hud_clock.pack(anchor="e")
+    app.hud_engine=_label(indicator,"LOCAL QWEN  •  OFFLINE",
+                          fg=GREEN,size=8,bold=True)
+    app.hud_engine.pack(anchor="e",pady=(1,0))
+
+    tk.Frame(app,bg=CYAN_DIM,height=1).pack(fill="x",padx=20)
+    body=tk.Frame(app,bg=BG)
+    body.pack(fill="both",expand=True,padx=20,pady=(12,9))
+
+    rail=tk.Frame(body,bg=SURFACE,width=251,highlightthickness=1,
+                  highlightbackground=EDGE)
+    rail.pack(side="left",fill="y",padx=(0,12))
+    rail.pack_propagate(False)
+    rail_top=tk.Frame(rail,bg=SURFACE)
+    rail_top.pack(fill="x",padx=14,pady=(11,0))
+    _label(rail_top,"01  /  ГОЛОСОВОЕ ЯДРО",fg=CYAN,size=9,bold=True).pack(anchor="w")
+    app.hud_reactor=Reactor(rail)
+    app.hud_reactor.pack(fill="x",padx=6,pady=(1,0))
+    app.hud_mode=_label(rail,"ЗАГРУЗКА",fg=GREEN,size=11,bold=True)
+    app.hud_mode.pack(anchor="center",pady=(0,3))
+    app.hud_mic=_label(rail,fg=MUTED,size=9,justify="center",
+                       wraplength=226,textvariable=app.mic_state)
+    app.hud_mic.pack(fill="x",padx=10,pady=(0,9))
+
+    controls=tk.Frame(rail,bg=SURFACE)
+    controls.pack(fill="x",padx=11)
+    app.mic_toggle_button=_action(controls,"МИКРОФОН",app.toggle_voice,primary=True)
+    app.mic_toggle_button.pack(fill="x",pady=(0,6))
+    _action(controls,"ВЫБРАТЬ УСТРОЙСТВО",app.select_microphone,
+            compact=True).pack(fill="x",pady=(0,6))
+    _action(controls,"ТЕСТ СИГНАЛА",app.test_microphone,
+            compact=True).pack(fill="x",pady=(0,6))
+    _action(controls,"◉  СЛУШАЙ  /  F9",lambda:app.f9(),
+            compact=True).pack(fill="x",pady=(0,6))
+
+    main=tk.Frame(body,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
+    main.pack(side="left",fill="both",expand=True)
+    main.grid_columnconfigure(0,weight=1)
+    main.grid_rowconfigure(2,weight=1)
+    main.grid_rowconfigure(3,weight=0)
+
+    panel=tk.Frame(main,bg=SURFACE)
+    panel.grid(row=0,column=0,sticky="ew",padx=14,pady=(11,0))
+    _label(panel,"02  /  ЦЕНТР КОММУНИКАЦИЙ",
+           fg=CYAN,size=9,bold=True).pack(side="left")
+    _label(panel,"WHISPER / QWEN / SILERO",fg=MUTED,size=8).pack(side="right")
+
+    app.hud_status=_label(main,fg=MUTED,size=9,textvariable=app.status,
+                          wraplength=580,justify="left",anchor="w",height=2)
+    app.hud_status.grid(row=1,column=0,sticky="ew",padx=14,pady=(4,6))
+    chat_shell=tk.Frame(main,bg=SURFACE_ALT,highlightthickness=1,
+                        highlightbackground=EDGE)
+    chat_shell.grid(row=2,column=0,sticky="nsew",padx=12,pady=(0,9))
+    chat_shell.grid_rowconfigure(0,weight=1)
+    chat_shell.grid_columnconfigure(0,weight=1)
+    app.history=tk.Text(chat_shell,wrap="word",bg=SURFACE_ALT,fg=TEXT,
+                        insertbackground=CYAN,selectbackground=CYAN_DIM,
+                        relief="flat",font=("Segoe UI",10),padx=13,pady=11,
+                        state="disabled",undo=False,borderwidth=0)
+    app.history.grid(row=0,column=0,sticky="nsew")
+    scroll=tk.Scrollbar(chat_shell,orient="vertical",command=app.history.yview,
+                        bg=SURFACE_ALT,activebackground=CYAN_DIM,
+                        troughcolor=SURFACE,relief="flat",width=11)
+    scroll.grid(row=0,column=1,sticky="ns")
+    app.history.configure(yscrollcommand=scroll.set)
+    for name,color in (("JARVIS",CYAN),("Вы",GREEN),("Система",MUTED),
+                       ("Whisper",VIOLET),("Профиль",AMBER)):
+        app.history.tag_configure(name,foreground=color,
+                                  font=("Segoe UI",10,"bold"))
+    app.history.tag_configure("error",foreground=RED,
+                              font=("Segoe UI",10,"bold"))
+
+    sendbar=tk.Frame(main,bg=SURFACE)
+    sendbar.grid(row=3,column=0,sticky="ew",padx=12,pady=(0,11))
+    sendbar.grid_columnconfigure(0,weight=1)
+    app.entry=tk.Entry(sendbar,bg=SURFACE_ALT,fg=TEXT,insertbackground=CYAN,
+                       selectbackground=CYAN_DIM,relief="flat",bd=0,
+                       highlightthickness=1,highlightbackground=EDGE,
+                       highlightcolor=CYAN,font=("Segoe UI",11))
+    app.entry.grid(row=0,column=0,sticky="ew",ipady=9,padx=(0,7))
+    _action(sendbar,"ОТПРАВИТЬ  ›",app.enter,primary=True).grid(
+        row=0,column=1,sticky="ns")
+    app.entry.bind("<Return>",app.enter)
+    app.bind("<F9>",app.f9)
+    app.bind("<Control-l>",lambda e:(app.entry.focus_set(),"break")[1])
+
+    shortcuts=tk.Frame(main,bg=SURFACE)
+    shortcuts.grid(row=4,column=0,sticky="ew",padx=9,pady=(0,10))
+    choices=(
+        ("РОЛИКИ",lambda:app.open_viral_studio("audience")),
+        ("ИГРЫ",lambda:app.activate_mode("gaming")),
+        ("РАБОТА",lambda:app.activate_mode("work")),
+        ("ОФИС",lambda:app.activate_mode("office")),
+        ("УЧЁБА",lambda:app.activate_mode("study")),
+        ("ЭКРАН",lambda:app.request_trimodal("screen")),
+        ("КАМЕРА",lambda:app.request_trimodal("camera")),
+        ("ВОЗМОЖНОСТИ",app.show_capabilities),
+    )
+    for i,(name,callback) in enumerate(choices):
+        _action(shortcuts,name,callback,compact=True).grid(
+            row=i//4,column=i%4,sticky="ew",padx=3,pady=3)
+    for col in range(4):
+        shortcuts.grid_columnconfigure(col,weight=1)
+
+    footer=tk.Frame(app,bg=BG)
+    footer.pack(fill="x",padx=20,pady=(0,9))
+    app.hud_footer=_label(footer,"●  ЗАЩИЩЁННЫЙ ЛОКАЛЬНЫЙ КОНТУР",
+                           fg=GREEN,size=8,bold=True)
+    app.hud_footer.pack(side="left")
+    _label(footer,"NOVA HUD  /  F9 — СЛУШАТЬ  /  CTRL+L — ВВОД",
+           fg=CYAN_DIM,size=8).pack(side="right")
+
+    def tick():
+        if getattr(app,"_closing",False):
+            return
+        try:
+            speaking=bool(getattr(app.speaker,"busy",False) or
+                          getattr(app.trimodal,"speaking",False))
+            mode,name,color=visual_state(
+                getattr(app,"voice_enabled",False),app.mic_state.get(),
+                app.status.get(),getattr(app,"executing",False),speaking)
+            app.hud_clock.configure(text=time.strftime("%H:%M:%S"))
+            app.hud_mode.configure(text=name,fg=color)
+            app.hud_footer.configure(text="●  "+name,fg=color)
+            app.mic_toggle_button.configure(
+                text="ОТКЛЮЧИТЬ МИКРОФОН" if app.voice_enabled
+                     else "ВКЛЮЧИТЬ МИКРОФОН")
+            engine={"bundled":"QWEN  /  ЛОКАЛЬНО",
+                    "none":"ОФЛАЙН-КОМАНДЫ",
+                    "ollama":"OLLAMA  /  ВНЕШНЯЯ",
+                    "openai":"OPENAI API  /  СЕТЬ",
+                    "anthropic":"CLAUDE API  /  СЕТЬ"}
+            key=getattr(app,"engine","bundled")
+            app.hud_engine.configure(text=engine.get(key,"AI  /  НЕИЗВЕСТНО"),
+                                     fg=GREEN if key in ("bundled","none") else AMBER)
+            app.hud_reactor.paint(mode)
+            app.after(130,tick)
+        except tk.TclError:
+            # Window is being destroyed; never keep a background animation alive.
+            return
+    tick()
