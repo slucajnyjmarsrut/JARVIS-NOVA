@@ -1,5 +1,6 @@
 """NOVA HUD presentation tests; no voice model, audio device or API calls."""
 import tkinter as tk
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -77,6 +78,7 @@ class HudWidgetTests(unittest.TestCase):
         self.app.voice_enabled=True
         self.app.engine="openai"
         self.app.mic_state.set("Микрофон: включён")
+        time.sleep(.17)
         self.app.update()
         self.assertEqual(self.app.mic_toggle_button.cget("text"),
                          "ОТКЛЮЧИТЬ МИКРОФОН")
