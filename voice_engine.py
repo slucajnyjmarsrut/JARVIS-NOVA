@@ -27,6 +27,7 @@ class Voice:
         self.pending=""
         self.whisper_model=None
         self.whisper_busy=False
+        self.whisper_queue=deque(maxlen=2)  # keep short follow-up utterances in RAM
         self.whisper_last_at=0.0
         self.lock=threading.RLock()
         self._generation=0
@@ -77,6 +78,8 @@ class Voice:
             self.last_text=""
             self.last_at=0
             self.whisper_last_at=0.0
+            self.whisper_busy=False
+            self.whisper_queue.clear()
             self.thread=threading.Thread(
                 target=self._run,args=(generation,),daemon=True,name="vosk-mic")
             self.thread.start()
@@ -87,6 +90,7 @@ class Voice:
             self.running=False
             self.until=0
             self.pending=""
+            self.whisper_queue.clear()
             self._generation+=1
             worker=self.thread
         if worker and worker.is_alive() and worker is not threading.current_thread():
@@ -111,7 +115,15 @@ class Voice:
         now=time.monotonic()
         with self.lock:
             active = did_wake or force or now < self.until
-            if self.stopping or self.whisper_busy or self.speaking() or len(pcm) < 16000:
+            if self.stopping or self.speaking() or len(pcm)<16000:
+                return
+            if self.whisper_busy:
+                # Never drop an explicitly awakened/manual follow-up just
+                # because the previous Whisper inference is still running.
+                # Bounded to two (max 11s each) and cleared on Stop/restart.
+                if active:
+                    self.whisper_queue.append((pcm,did_wake,fallback_text))
+                    self.on_status("Whisper занят: следующая фраза в очереди…")
                 return
             if not active and now-self.whisper_last_at < 3.0:
                 return
@@ -162,7 +174,18 @@ class Voice:
                         with self.lock: self.until=time.monotonic()+5
                     self.accept_text(fallback_text)
             finally:
-                with self.lock: self.whisper_busy=False
+                with self.lock:
+                    valid=not self.stopping and generation==self._generation
+                    if valid:
+                        self.whisper_busy=False
+                        queued=self.whisper_queue.popleft() if self.whisper_queue else None
+                    else:
+                        queued=None
+                if queued is not None:
+                    # It was authorized by an active wake/listening window at
+                    # capture time; process it even if that window now expired.
+                    self._try_whisper(queued[0],queued[1],
+                                      fallback_text=queued[2],force=True)
         threading.Thread(target=work,daemon=True,name="whisper-command").start()
 
     @staticmethod
