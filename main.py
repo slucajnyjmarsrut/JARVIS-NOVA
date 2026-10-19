@@ -664,7 +664,8 @@ class Jarvis(tk.Tk):
             try: studio.cancel()
             except Exception:pass
         self.voice_enabled=False
-        self.local_chat.close()
+        chat=getattr(self,'local_chat',None)
+        if chat is not None:chat.close()
         self._focus_epoch=getattr(self,'_focus_epoch',0)+1
         self._focus_deadline=None
         self.control_allowed=False;self.vision_allowed=False
