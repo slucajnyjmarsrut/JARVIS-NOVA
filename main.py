@@ -203,7 +203,8 @@ class Jarvis(tk.Tk):
     def f9(self,event=None):
         if self.voice_enabled:
             self.voice.activate()
-            self.mic_state.set("Микрофон: жду команду (8 секунд)")
+            self.mic_state.set("Микрофон: жду команду (8 секунд)" if getattr(self.voice,"mic_ready",False)
+                               else "Микрофон: подключается — F9 ожидает устройство…")
         else:
             self.status.set("Сначала включи микрофон кнопкой выше")
         return "break"
@@ -727,6 +728,10 @@ class Jarvis(tk.Tk):
                             self.voice_enabled=False
                         elif val.startswith("Vosk готов"):
                             self.mic_state.set("Микрофон: включён, жду «Джарвис»")
+                        elif val.startswith("Микрофон: переподключение"):
+                            self.mic_state.set("Микрофон: переподключается…")
+                            self.hud_level_value=0.0
+                            self.hud_level_at=0.0
                     self.status.set(val)
                 elif op=="audio_level":
                     if self.voice_enabled:
