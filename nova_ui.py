@@ -49,6 +49,8 @@ class Reactor(tk.Canvas):
                          highlightthickness=0, bd=0)
         self.phase = 0
         self._mode = "offline"
+        self._painted = False
+        self.bind("<Configure>",lambda event:setattr(self,"_painted",False),add="+")
 
     def paint(self, mode):
         if not self.winfo_exists() or not self.winfo_viewable():
@@ -56,6 +58,7 @@ class Reactor(tk.Canvas):
         self._mode = mode
         self.phase = (self.phase + (3 if mode == "listening" else 1)) % 360
         self.delete("hud")
+        self._painted = True
         w = max(2, self.winfo_width())
         h = max(2, self.winfo_height())
         cx, cy = w / 2, h / 2
@@ -132,6 +135,7 @@ def build_interface(app):
     app.configure(bg=BG)
     app.status=tk.StringVar(master=app,value="Запускаю офлайн-голос…")
     app.mic_state=tk.StringVar(master=app,value="Микрофон: подключается…")
+    app.hud_animate=tk.BooleanVar(master=app,value=True)
 
     header=tk.Frame(app,bg=BG)
     header.pack(fill="x",padx=20,pady=(12,9))
@@ -281,9 +285,22 @@ def build_interface(app):
             key=getattr(app,"engine","bundled")
             app.hud_engine.configure(text=engine.get(key,"AI  /  НЕИЗВЕСТНО"),
                                      fg=GREEN if key in ("bundled","none") else AMBER)
-            app.hud_reactor.paint(mode)
-            app.after(130,tick)
+            if (app.hud_animate.get() or not app.hud_reactor._painted
+                    or app.hud_reactor._mode != mode):
+                app.hud_reactor.paint(mode)
+            app._nova_after_id=app.after(130,tick)
         except tk.TclError:
             # Window is being destroyed; never keep a background animation alive.
             return
+    def stop_animation(event):
+        if event.widget is not app:
+            return
+        pending=getattr(app,"_nova_after_id",None)
+        if pending is not None:
+            try:
+                app.after_cancel(pending)
+            except tk.TclError:
+                pass
+            app._nova_after_id=None
+    app.bind("<Destroy>",stop_animation,add="+")
     tick()
