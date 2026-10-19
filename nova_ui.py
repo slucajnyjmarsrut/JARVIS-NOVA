@@ -46,9 +46,10 @@ def level_readout(level):
     """Compute a true RMS display; None means no recent microphone frames."""
     if level is None:
         return 0.0, "НЕТ ДАННЫХ"
-    value = max(0.0,min(1.0,float(level)))
+    value = float(level)
     if not math.isfinite(value):
         return 0.0, "НЕТ ДАННЫХ"
+    value = max(0.0,min(1.0,value))
     db = 20*math.log10(max(1e-6,value))
     intensity = max(0.0,min(1.0,(db+65)/60))
     return intensity, "ТИШИНА" if db < -80 else f"{db:.0f} dBFS"
