@@ -66,7 +66,7 @@ class HudWidgetTests(unittest.TestCase):
         self.actions={}
         for name in ("toggle_voice","select_microphone","test_microphone",
                      "f9","enter","open_viral_studio","activate_mode",
-                     "request_trimodal","show_capabilities"):
+                     "request_trimodal","show_capabilities","revoke"):
             callback=Mock()
             self.actions[name]=callback
             setattr(self.app,name,callback)
@@ -89,6 +89,8 @@ class HudWidgetTests(unittest.TestCase):
         self.actions["toggle_voice"].assert_called_once()
         self.assertIsNotNone(self.app.bind("<F9>"))
         self.assertIsNotNone(self.app.bind("<Control-l>"))
+        self.assertIsNotNone(self.app.bind("<Control-Shift-M>"))
+        self.assertIsNotNone(self.app.bind("<Control-Shift-R>"))
 
     def test_live_state_and_cloud_indicator(self):
         self.app.voice_enabled=True
@@ -107,6 +109,9 @@ class HudWidgetTests(unittest.TestCase):
             self.app.hud_reactor.paint("listening")
         self.assertGreaterEqual(len(self.app.hud_reactor.find_all()),60)
         self.assertEqual(self.app.hud_reactor._mode,"listening")
+        with patch.object(type(self.app.hud_reactor),"winfo_viewable",return_value=True):
+            self.app.hud_reactor.paint("listening",.1)
+        self.assertGreater(self.app.hud_reactor.last_energy,0)
 
     def test_mic_meter_shows_live_rms_and_stales_out(self):
         self.app.voice_enabled=True
@@ -155,6 +160,7 @@ class HudWidgetTests(unittest.TestCase):
         time.sleep(.17)
         self.app.update()
         self.assertIn("УЧЁБА",self.app.hud_footer.cget("text"))
+        self.assertEqual(self.app.hud_mode_buttons["study"].cget("bg"),"#236C80")
         self.assertIn("ФОКУС",self.app.hud_footer.cget("text"))
 
     def test_conversation_is_read_only_until_log_writes(self):
