@@ -61,6 +61,8 @@ class Jarvis(tk.Tk):
         quick.pack(fill="x",padx=24,pady=(0,12))
         buttons=(
             ("Микрофон вкл/выкл",self.toggle_voice),
+            ("Выбрать микрофон",self.select_microphone),
+            ("Тест микрофона",self.test_microphone),
             ("Слушай (F9)",lambda:self.f9()),
             ("Задать вопрос",lambda:self.entry.focus_set()),
             ("Ролики",lambda:self.open_viral_studio("audience")),
@@ -192,6 +194,65 @@ class Jarvis(tk.Tk):
             self.voice.start();self.voice_enabled=True
             self.status.set("Включаю микрофон…")
             self.mic_state.set("Микрофон: подключается…")
+
+    def select_microphone(self):
+        """Allow Windows users to choose the actual input, not only OS default."""
+        if self._closing:return
+        if self.voice.running:
+            messagebox.showinfo("Микрофон", "Сначала выключи микрофон кнопкой в главном окне.", parent=self)
+            return
+        try:
+            import sounddevice as sd
+            choices=[(index,device) for index,device in enumerate(sd.query_devices())
+                     if device.get("max_input_channels",0)>0]
+        except Exception as exc:
+            messagebox.showerror("Микрофон", "Не могу получить устройства: "+str(exc)[:140],parent=self)
+            return
+        if not choices:
+            messagebox.showerror("Микрофон", "Windows не показывает входных устройств.",parent=self)
+            return
+        labels=["0. Системный микрофон по умолчанию"]
+        for index,(device_id,info) in enumerate(choices,1):
+            labels.append(f"{index}. {info['name']} ({round(info['default_samplerate'])} Гц)")
+        selected=simpledialog.askinteger("Выбрать микрофон",
+            "Выбери номер устройства (не системный индекс):\n"+
+            "\n".join(labels[:35])+
+            ("\nПоказаны первые 34 устройства." if len(labels)>35 else ""),
+            parent=self,minvalue=0,maxvalue=min(len(choices),34))
+        if selected is None:return
+        device=None if selected==0 else choices[selected-1][0]
+        try:
+            self.voice.set_input_device(device)
+        except (ValueError,RuntimeError) as exc:
+            messagebox.showerror("Микрофон",str(exc),parent=self)
+            return
+        self.mic_state.set("Микрофон: выбран, включи кнопкой")
+        self.status.set("Выбрано: "+labels[selected][:140])
+
+    def test_microphone(self):
+        """Two-second signal-level diagnostic. Never persists microphone recordings."""
+        if self._closing:return
+        if self.voice.running:
+            messagebox.showinfo("Проверка", "Сначала выключи основной микрофон, затем повтори тест.",parent=self)
+            return
+        self.status.set("Проверка 2 секунды: говори обычным и тихим голосом…")
+        device=self.voice.input_device
+        def worker():
+            try:
+                import numpy as np
+                import sounddevice as sd
+                info=sd.query_devices(device,kind="input")
+                rate=int(round(info["default_samplerate"]))
+                if not 8000<=rate<=192000:raise ValueError("Неверная частота устройства")
+                data=sd.rec(int(rate*2),samplerate=rate,channels=1,dtype="float32",
+                            device=device,blocking=True)
+                signal=np.asarray(data).reshape(-1)
+                rms=float(np.sqrt(np.mean(signal.astype(np.float64)**2)))
+                peak=float(np.max(np.abs(signal))) if signal.size else 0.0
+                self.q.put(("mic_level",(True,rms,peak,rate)))
+            except Exception as exc:
+                self.q.put(("mic_level",(False,str(exc)[:180],0.0,0)))
+        threading.Thread(target=worker,daemon=True,name="jarvis-mic-diagnostic").start()
 
     def grant_control(self):
         if messagebox.askyesno("Разрешение","Разрешить JARVIS управлять мышью, клавиатурой и окнами до закрытия приложения?"):
@@ -623,6 +684,15 @@ class Jarvis(tk.Tk):
                         elif val.startswith("Vosk готов"):
                             self.mic_state.set("Микрофон: включён, жду «Джарвис»")
                     self.status.set(val)
+                elif op=="mic_level":
+                    success,rms,peak,rate=val
+                    if success:
+                        self.status.set(
+                            f"Тест микрофона: RMS {rms:.4f}, пик {peak:.3f}, {rate} Гц. "
+                            +("Очень тихий сигнал: проверь усиление в Windows." if rms<0.002
+                              else "Сигнал обнаружен; это не проверка точности Whisper."))
+                    else:
+                        self.status.set("Не могу проверить микрофон: "+rms)
                 elif op=="plan":self.execute_plan(val)
                 elif op=="action_result":
                     self.executing=False
