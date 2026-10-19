@@ -10,7 +10,7 @@ from nova_ui import (BG, SURFACE, EDGE, CYAN, GREEN, MUTED, TEXT, RED, AMBER,
                      level_readout, visual_state)
 
 
-def dock_geometry(screen_width, screen_height, width=302, height=200, gap=20):
+def dock_geometry(screen_width, screen_height, width=336, height=244, gap=20):
     """Right-hand edge of the desktop, clamped for small screens."""
     sw=max(1,int(screen_width))
     sh=max(1,int(screen_height))
@@ -19,6 +19,14 @@ def dock_geometry(screen_width, screen_height, width=302, height=200, gap=20):
     x=max(0,sw-w-max(0,gap))
     y=max(0,(sh-h)//3)
     return f"{w}x{h}+{x}+{y}"
+
+
+def clamp_drag_position(x,y,screen_width,screen_height,width=336,height=244):
+    """Keep the overlay entirely inside the primary desktop area."""
+    sw=max(1,int(screen_width))
+    sh=max(1,int(screen_height))
+    return (max(0,min(int(x),max(0,sw-width))),
+            max(0,min(int(y),max(0,sh-height))))
 
 
 class NovaOverlay(tk.Toplevel):
@@ -56,11 +64,17 @@ class NovaOverlay(tk.Toplevel):
             fg=TEXT,activebackground=EDGE,activeforeground=CYAN,
             bd=0,relief="flat",cursor="hand2",font=("Segoe UI",9,"bold"))
         self.restore_btn.pack(side="right")
+        self.dock_btn=tk.Button(
+            dragbar,text="⇥",command=self.dock_right,bg=SURFACE,
+            fg=CYAN,activebackground=EDGE,activeforeground=TEXT,
+            bd=0,relief="flat",cursor="hand2",font=("Segoe UI",12,"bold"))
+        self.dock_btn.pack(side="right",padx=(2,7))
 
         for widget in (dragbar,title):
             widget.bind("<ButtonPress-1>",self.start_drag)
             widget.bind("<B1-Motion>",self.drag)
             widget.bind("<ButtonRelease-1>",self.end_drag)
+            widget.bind("<Double-Button-1>",self.dock_right)
 
         bar=tk.Frame(shell,bg=SURFACE)
         bar.pack(fill="x",padx=13,pady=(4,4))
@@ -73,6 +87,12 @@ class NovaOverlay(tk.Toplevel):
         self.context=tk.Label(shell,text="РЕЖИМ: ОБЫЧНЫЙ",bg=SURFACE,
                               fg=MUTED,font=("Segoe UI",9),anchor="w")
         self.context.pack(fill="x",padx=14,pady=(2,4))
+        self.listen_detail=tk.Label(shell,text="ГОТОВ К КОМАНДАМ",bg=SURFACE,
+                                    fg=CYAN,font=("Segoe UI",9,"bold"),anchor="w")
+        self.listen_detail.pack(fill="x",padx=14,pady=(0,4))
+        self.privacy=tk.Label(shell,text="УПРАВЛЕНИЕ: ЗАПРЕТ · ЗРЕНИЕ*: ЗАПРЕТ",
+                              bg=SURFACE,fg=MUTED,font=("Segoe UI",8),anchor="w")
+        self.privacy.pack(fill="x",padx=14,pady=(0,4))
         self.meter=tk.Canvas(shell,height=23,highlightthickness=0,bg=SURFACE)
         self.meter.pack(fill="x",padx=14,pady=(1,2))
         self.level=tk.Label(shell,text="ВХОД: НЕТ ДАННЫХ",bg=SURFACE,
@@ -90,6 +110,8 @@ class NovaOverlay(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW",self.restore_main)
         self.bind("<F9>",lambda e:(self.app.f9(),"break")[1])
         self.bind("<Control-Shift-O>",lambda e:(self.restore_main(),"break")[1])
+        self.bind("<Control-Shift-M>",lambda e:(self.app.toggle_voice(),"break")[1])
+        self.bind("<Control-Shift-R>",lambda e:(self.app.revoke(),"break")[1])
 
     @staticmethod
     def button(parent,text,command):
@@ -103,13 +125,22 @@ class NovaOverlay(tk.Toplevel):
 
     def drag(self,event):
         if self._drag is None:return
-        x=max(0,event.x_root-self._drag[0])
-        y=max(0,event.y_root-self._drag[1])
+        x,y=clamp_drag_position(
+            event.x_root-self._drag[0],event.y_root-self._drag[1],
+            self.winfo_screenwidth(),self.winfo_screenheight(),
+            self.winfo_width(),self.winfo_height())
         self.geometry(f"+{x}+{y}")
         self._manual_position=True
 
     def end_drag(self,event=None):
         self._drag=None
+
+    def dock_right(self,event=None):
+        if self._closed:return
+        self._manual_position=False
+        self._drag=None
+        self.geometry(dock_geometry(self.winfo_screenwidth(),
+                                    self.winfo_screenheight()))
 
     def show(self):
         if self._closed or getattr(self.app,"_closing",False):return
