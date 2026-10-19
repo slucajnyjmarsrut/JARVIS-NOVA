@@ -27,7 +27,9 @@ data class PcLinkConfig(val endpoint: String, val certificateSha256: String, val
             uri.port in 1024..65535) { "Требуется HTTPS и порт 1024–65535" }
         // Numeric literals only: no DNS rebinding or accidental public network requests.
         require(Regex("""\d{1,3}(?:\.\d{1,3}){3}""").matches(host)) { "Нужен числовой IPv4-адрес" }
-        val address = InetAddress.getByName(host)
+        val address = try { InetAddress.getByName(host) } catch (_: Exception) {
+            throw IllegalArgumentException("Некорректный IPv4-адрес")
+        }
         require(address is Inet4Address && (
             address.isSiteLocalAddress || address.isLoopbackAddress)) { "Разрешён только локальный IPv4" }
         require(Regex("[0-9a-fA-F]{64}").matches(certificateSha256)) {
