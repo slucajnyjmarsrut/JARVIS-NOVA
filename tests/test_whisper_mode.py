@@ -76,7 +76,7 @@ class PlaybackTests(unittest.TestCase):
     def test_gui_passes_style_of_specific_voice_message_to_reply(self):
         from unittest.mock import Mock
         app=types.SimpleNamespace(_closing=False,q=queue.Queue(),after=Mock(),
-            handle_text=Mock(),_answer_style="normal")
+            handle_text=Mock(),pump=Mock(),_answer_style="normal")
         app.q.put(("heard",("открой окно","whisper")))
         Jarvis.pump(app)
         self.assertEqual(app._answer_style,"whisper")
