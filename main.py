@@ -646,7 +646,14 @@ class Jarvis(tk.Tk):
         if self._closing:return
         self.log("JARVIS",s)
         self.status.set(s[:100])
-        threading.Thread(target=self.speaker.say,args=(s,),daemon=True).start()
+        def speak_and_rearm():
+            self.speaker.say(s)
+            # The follow-up window starts AFTER speech playback, not before.
+            # The mic deliberately ignores its own TTS echo while Speaker.busy.
+            if (not self._shutdown.is_set() and self.voice_enabled
+                    and self.engine=="bundled" and not self._closing):
+                self.voice.activate()
+        threading.Thread(target=speak_and_rearm,daemon=True,name="jarvis-speak-rearm").start()
 
     def pump(self):
         if self._closing:return
