@@ -22,7 +22,7 @@ class MicrophoneStatusTests(unittest.TestCase):
             mic_state=Var("Микрофон: включён"),
             status=Var("готов"),
             hud_level_value=.2,hud_level_at=5.,
-            after=Mock())
+            after=Mock(),pump=Mock())
         obj.q.put(("status",event))
         return obj
 
