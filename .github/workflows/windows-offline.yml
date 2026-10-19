@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.1 Voice/Chat/UI OFFLINE Windows installer
+name: JARVIS NOVA 0.5.2 Whisper/Chat Windows REAL installer
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -20,6 +20,9 @@ on:
       - 'voice_engine.py'
       - 'local_chat.py'
       - 'tests/test_voice_fallback.py'
+      - 'tests/test_voice_routing.py'
+      - 'tests/test_conversation_followup.py'
+      - 'docs/VOICE_STABILITY_0_5_2_RU.md'
       - 'tests/test_local_chat.py'
       - 'installer/JarvisNova.iss'
       - 'scripts/verify_installer_payload.py'
@@ -175,7 +178,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-DEV-UNVERIFIED-WINDOWS-INSTALLER
+          name: JARVIS-NOVA-0.5.2-DEV-UNVERIFIED-WINDOWS-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
