@@ -96,6 +96,15 @@ class MicrophoneRecoveryTests(unittest.TestCase):
         self.assertFalse(any(x.startswith("Ошибка микрофона:") for x in status))
         self.assertIsNone(voice.input_device)
 
+    def test_six_consecutive_failures_show_actionable_permanent_error(self):
+        voice,status,opened,waits,_=self.run_worker(fail_open=6,device=7)
+        self.assertEqual(len(opened),6)
+        self.assertEqual(len(waits),5)
+        self.assertTrue(status[-1].startswith("Ошибка микрофона:"))
+        self.assertIn("после 5 попыток",status[-1])
+        self.assertFalse(voice.running)
+        self.assertFalse(voice.mic_ready)
+
     def test_microphone_lost_rearms_active_listening_window(self):
         voice=Voice(lambda _:None,lambda _:None,lambda:False)
         voice.running=True
