@@ -358,6 +358,7 @@ class Voice:
                                     raise TimeoutError("Нет аудиопакетов 4 секунды: устройство отключено или зависло")
                                 continue
                             last_packet_at=time.monotonic()
+                            attempt=0  # a real frame proves the stream recovered
                             if self.speaking():
                                 if not was_speaking:
                                     segment.clear();pre_roll.clear();silent=0;segment_vosk_wake=False
