@@ -12,9 +12,9 @@ from main import Jarvis
 
 class GeometryTests(unittest.TestCase):
     def test_docks_to_right_and_clamps_small_displays(self):
-        self.assertEqual(dock_geometry(1920,1080),"336x244+1564+278")
+        self.assertEqual(dock_geometry(1920,1080),"344x328+1556+250")
         self.assertEqual(dock_geometry(300,140),"300x140+0+0")
-        self.assertEqual(dock_geometry(900,600),"336x244+544+118")
+        self.assertEqual(dock_geometry(900,600),"344x328+536+90")
 
 
 class OverlayTests(unittest.TestCase):
@@ -40,10 +40,21 @@ class OverlayTests(unittest.TestCase):
         self.app.f9=Mock()
         self.app.revoke=Mock()
         self.app.control_allowed=False
+        self.app.overlay_show_text=False
+        self.app.overlay_last_user=""
+        self.app.overlay_last_answer=""
+        self.app._focus_deadline=None
+        self.app.set_overlay_preview=lambda enabled: self._preview(enabled)
         self.app.vision_allowed=False
         self.app.show_main=lambda:Jarvis.show_main(self.app)
         self.app.overlay=NovaOverlay(self.app)
         self.app._show_overlay_if_hidden=lambda:Jarvis._show_overlay_if_hidden(self.app)
+
+    def _preview(self,enabled):
+        self.app.overlay_show_text=bool(enabled)
+        if not enabled:
+            self.app.overlay_last_user=""
+            self.app.overlay_last_answer=""
 
     def tearDown(self):
         if hasattr(self,"app"):
@@ -53,8 +64,8 @@ class OverlayTests(unittest.TestCase):
             self.app.destroy()
 
     def test_drag_clamps_to_screen_and_dock_resets_position(self):
-        self.assertEqual(clamp_drag_position(-400,9999,1920,1080),(0,836))
-        self.assertEqual(clamp_drag_position(9999,-4,1920,1080),(1584,0))
+        self.assertEqual(clamp_drag_position(-400,9999,1920,1080),(0,752))
+        self.assertEqual(clamp_drag_position(9999,-4,1920,1080),(1576,0))
         self.app.overlay.show()
         panel=self.app.overlay
         panel.update()
@@ -67,7 +78,7 @@ class OverlayTests(unittest.TestCase):
         panel.update()
         self.assertFalse(panel._manual_position)
         self.assertGreaterEqual(panel.winfo_x(),
-                                panel.winfo_screenwidth()-360)
+                                panel.winfo_screenwidth()-368)
 
     def test_privacy_and_whisper_queue_are_displayed(self):
         self.app.voice_enabled=True
@@ -91,7 +102,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(self.app.state(),"withdrawn")
         self.assertEqual(self.app.overlay.state(),"normal")
         self.assertGreaterEqual(self.app.overlay.winfo_x(),
-                                self.app.overlay.winfo_screenwidth()-356)
+                                self.app.overlay.winfo_screenwidth()-364)
         self.app.overlay.mic_button.invoke()
         self.app.toggle_voice.assert_called_once()
         self.app.overlay.restore_btn.invoke()
@@ -145,6 +156,33 @@ class OverlayTests(unittest.TestCase):
         self.app.overlay.hide()
         self.assertIsNone(self.app.overlay._timer_id)
         self.assertEqual(self.app.overlay.state(),"withdrawn")
+
+    def test_overlay_preview_is_explicitly_opt_in_and_cleared_on_disable(self):
+        self.app.overlay.show()
+        panel=self.app.overlay
+        self.app.overlay_last_user="Вы: скрытая команда"
+        self.app.overlay_last_answer="NOVA: скрытый ответ"
+        panel.refresh()
+        self.assertNotIn("скрытая команда",panel.last_turn.cget("text"))
+        self.assertFalse(self.app.overlay_show_text)
+        panel.preview_button.invoke()
+        self.assertTrue(self.app.overlay_show_text)
+        self.assertIn("скрытая команда",panel.last_turn.cget("text"))
+        self.assertIn("скрытый ответ",panel.last_turn.cget("text"))
+        panel.preview_button.invoke()
+        self.assertFalse(self.app.overlay_show_text)
+        self.assertFalse(self.app.overlay_last_user)
+        self.assertFalse(self.app.overlay_last_answer)
+        self.assertNotIn("скрытая команда",panel.last_turn.cget("text"))
+
+    def test_focus_timer_appears_without_granting_permissions(self):
+        self.app.modes.mode="study"
+        self.app._focus_deadline=time.monotonic()+121
+        self.app.overlay.show()
+        panel=self.app.overlay
+        self.assertIn("УЧЁБА",panel.context.cget("text"))
+        self.assertIn("ФОКУС",panel.context.cget("text"))
+        self.assertIn("ЗАПРЕТ",panel.privacy.cget("text"))
 
     def test_overlay_close_restores_main_instead_of_terminating(self):
         Jarvis.hide_main(self.app)
