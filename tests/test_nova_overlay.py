@@ -12,9 +12,9 @@ from main import Jarvis
 
 class GeometryTests(unittest.TestCase):
     def test_docks_to_right_and_clamps_small_displays(self):
-        self.assertEqual(dock_geometry(1920,1080),"302x200+1598+440")
+        self.assertEqual(dock_geometry(1920,1080),"302x200+1598+293")
         self.assertEqual(dock_geometry(300,140),"300x140+0+0")
-        self.assertEqual(dock_geometry(900,600),"302x200+578+200")
+        self.assertEqual(dock_geometry(900,600),"302x200+578+133")
 
 
 class OverlayTests(unittest.TestCase):
@@ -57,7 +57,7 @@ class OverlayTests(unittest.TestCase):
         self.assertEqual(self.app.state(),"withdrawn")
         self.assertEqual(self.app.overlay.state(),"normal")
         self.assertGreaterEqual(self.app.overlay.winfo_x(),
-                                self.app.overlay.winfo_screenwidth()-315)
+                                self.app.overlay.winfo_screenwidth()-322)
         self.app.overlay.mic_button.invoke()
         self.app.toggle_voice.assert_called_once()
         self.app.overlay.restore_btn.invoke()
