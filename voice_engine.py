@@ -7,17 +7,21 @@ from typing import Callable
 
 from agent_core import WAKE, strip_wake
 from speaker import assets
+from whisper_mode import WhisperClassifier, normalize_style
 
 
 class Voice:
     def __init__(self,on_heard:Callable[[str],None],on_status:Callable[[str],None],speaking:Callable[[],bool],
                  on_vision_audio: Callable[[bytes, str], None] | None = None,
-                 on_audio_level: Callable[[float], None] | None = None):
+                 on_audio_level: Callable[[float], None] | None = None,
+                 on_heard_styled: Callable[[str, str], None] | None = None):
         self.on_heard=on_heard
         self.on_status=on_status
         self.speaking=speaking
         self.on_vision_audio=on_vision_audio
         self.on_audio_level=on_audio_level  # RMS fraction, never raw audio
+        self.on_heard_styled=on_heard_styled
+        self.whisper_classifier=WhisperClassifier()
         self.running=False
         self.stopping=False
         self.thread=None
@@ -87,7 +91,7 @@ class Voice:
             time.sleep(min(.06,max(.005,deadline-time.monotonic())))
         return True
 
-    def accept_text(self,text:str):
+    def accept_text(self,text:str,style:str="normal"):
         if self.stopping or self.speaking(): return
         text=text.strip()
         if not text:return
@@ -113,7 +117,11 @@ class Voice:
                 return
             if command.strip():
                 self.until=now+12  # brief conversational follow-up window
-        if command.strip(): self.on_heard(command.strip())
+        if command.strip():
+            if self.on_heard_styled:
+                self.on_heard_styled(command.strip(),normalize_style(style))
+            else:
+                self.on_heard(command.strip())
         else: self.on_status("Слушаю команду…")
 
     def start(self):
@@ -191,7 +199,7 @@ class Voice:
             path=assets()/"base.pt"
             if not path.is_file():
                 if fallback_text:
-                    self.accept_text(fallback_text)
+                    self.accept_text(fallback_text,style=self.whisper_classifier.classify(pcm))
                 else:
                     self.on_status("Whisper отсутствует: проверь встроенные модели")
                 return
@@ -238,7 +246,7 @@ class Voice:
                     if source and self.on_vision_audio and (active or WAKE.match(text)):
                         self.on_vision_audio(pcm,source)
                     else:
-                        self.accept_text(text)
+                        self.accept_text(text,style=self.whisper_classifier.classify(pcm))
                 elif active:
                     self.on_status("Не расслышал. Попробуй повторить немного громче.")
             except Exception as exc:
@@ -248,7 +256,7 @@ class Voice:
                 if fallback_text and valid:
                     if did_wake or force:
                         with self.lock: self.until=time.monotonic()+5
-                    self.accept_text(fallback_text)
+                    self.accept_text(fallback_text,style=self.whisper_classifier.classify(pcm))
             finally:
                 with self.lock:
                     valid=not self.stopping and generation==self._generation
