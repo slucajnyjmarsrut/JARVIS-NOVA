@@ -1,7 +1,7 @@
 name: JARVIS NOVA voice and offline chat smoke (no models)
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10]
     paths:
       - '.github/workflows/voice-ui-smoke.yml'
       - 'voice_engine.py'
@@ -10,6 +10,7 @@ on:
       - 'nova_overlay.py'
       - 'tests/test_nova_overlay.py'
       - 'tests/test_whisper_queue.py'
+      - 'tests/test_voice_queue_polish.py'
       - 'tests/test_nova_ui.py'
       - 'tests/test_voice_telemetry.py'
       - 'local_chat.py'
@@ -35,4 +36,4 @@ jobs:
       - name: Compile changed modules
         run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py local_chat.py
       - name: Unit tests for voice and offline chat
-        run: python -m unittest discover -s tests -p 'test_voice_fallback.py' -v && python -m unittest discover -s tests -p 'test_voice_routing.py' -v && python -m unittest discover -s tests -p 'test_conversation_followup.py' -v && python -m unittest discover -s tests -p 'test_local_chat.py' -v && python -m unittest discover -s tests -p 'test_nova_ui.py' -v && python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v && python -m unittest discover -s tests -p 'test_nova_overlay.py' -v && python -m unittest discover -s tests -p 'test_whisper_queue.py' -v
+        run: python -m unittest discover -s tests -p 'test_voice_fallback.py' -v && python -m unittest discover -s tests -p 'test_voice_routing.py' -v && python -m unittest discover -s tests -p 'test_conversation_followup.py' -v && python -m unittest discover -s tests -p 'test_local_chat.py' -v && python -m unittest discover -s tests -p 'test_nova_ui.py' -v && python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v && python -m unittest discover -s tests -p 'test_nova_overlay.py' -v && python -m unittest discover -s tests -p 'test_whisper_queue.py' -v && python -m unittest discover -s tests -p 'test_voice_queue_polish.py' -v
