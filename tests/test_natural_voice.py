@@ -140,6 +140,23 @@ class AsyncStyleTests(unittest.TestCase):
         self.assertEqual(calls,[("Готово","normal")])
         app.learning.feedback.assert_called_once()
 
+    def test_failed_speech_does_not_rearm_microphone(self):
+        done=threading.Event()
+        def broken(text,style="normal"):
+            done.set()
+            return False
+        voice=types.SimpleNamespace(activate=Mock())
+        app=types.SimpleNamespace(
+            _closing=False,_shutdown=threading.Event(),voice_enabled=True,
+            engine="bundled",speaker=types.SimpleNamespace(
+                say=broken,last_error="No playback device"),voice=voice,
+            q=queue.Queue(),log=Mock(),status=types.SimpleNamespace(set=Mock()))
+        Jarvis.reply(app,"Привет!")
+        self.assertTrue(done.wait(2))
+        result=app.q.get(timeout=2)
+        self.assertEqual(result,("tts_error","No playback device"))
+        voice.activate.assert_not_called()
+
     def test_tts_device_error_is_visible_in_gui_status(self):
         app,_,_=self.make_app()
         app.q.put(("tts_error","PortAudioError: нет устройства"))
