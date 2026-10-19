@@ -30,6 +30,8 @@ class WhisperFallbackTests(unittest.TestCase):
                 # One second of fake 16kHz PCM; no audio saved to disk.
                 v._try_whisper(bytes(16000 * 2), False)
                 self.assertTrue(event.wait(timeout=3), 'Whisper fallback was not delivered')
+                deadline=time.monotonic()+3
+                while v.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
                 self.assertEqual(heard, ['открой Chrome'])
                 self.assertFalse(v.whisper_busy)
                 v._try_whisper(bytes(16000 * 2), False)
@@ -53,7 +55,27 @@ class WhisperFallbackTests(unittest.TestCase):
                 voice._try_whisper(bytes(32000), True,
                                    fallback_text="джарвис пуст пуст")
                 self.assertTrue(got.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
         self.assertEqual(heard, ["открой блокнот"])
+
+
+    def test_whisper_uses_vosk_wake_even_if_wake_missing_from_transcript(self):
+        heard=[]
+        got=threading.Event()
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"fixture")
+            fake=types.SimpleNamespace(load_model=lambda *a,**kw: types.SimpleNamespace(
+                transcribe=lambda *a,**kw: {"text":"кто ты"}))
+            voice=Voice(lambda text:(heard.append(text),got.set()),lambda _:None,lambda:False)
+            with mock.patch("voice_engine.assets",return_value=root),mock.patch.dict(
+                    sys.modules,{"whisper":fake}):
+                voice._try_whisper(bytes(32000),True,fallback_text="джарвис пуст пуст")
+                self.assertTrue(got.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
+        self.assertEqual(heard,["кто ты"])
 
 
 if __name__ == '__main__':
