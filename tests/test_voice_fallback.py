@@ -5,6 +5,7 @@ import threading
 import time
 import types
 import unittest
+import numpy as np  # Import native numpy extension before patch.dict(sys.modules) snapshots it.
 from pathlib import Path
 from unittest import mock
 
