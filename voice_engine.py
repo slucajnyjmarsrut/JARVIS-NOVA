@@ -164,6 +164,22 @@ class Voice:
         threading.Thread(target=work,daemon=True,name="whisper-command").start()
 
     @staticmethod
+    def normalize_mic_packet(packet: bytes, source_rate: int) -> bytes:
+        """Return 16 kHz PCM16. Resample native 44.1/48 kHz microphones in RAM.
+
+        Many Bluetooth/headset drivers cannot open a 16 kHz PortAudio stream.
+        Keep microphone callback cheap; conversion runs in the voice worker.
+        """
+        if not (8000 <= source_rate <= 192000):
+            raise ValueError("Unsupported microphone sample rate")
+        if source_rate==16000:return packet
+        import numpy as np
+        from audio_io import prepare_audio
+        samples=np.frombuffer(packet,dtype="<i2")
+        normalized=prepare_audio(samples,source_rate,target_rate=16000)
+        return np.clip(normalized*32768,-32768,32767).astype("<i2").tobytes()
+
+    @staticmethod
     def vision_source(text: str) -> str | None:
         """Local-only intent classification; never infer permissions from audio."""
         norm=text.casefold().replace('ё','е')
@@ -193,7 +209,12 @@ class Voice:
             noise_floor=8.0
             segment_vosk_wake=False
             was_speaking=False
-            self.on_status("Vosk готов · жду «Джарвис»")
+            device_info=sd.query_devices(self.input_device,kind="input")
+            native_rate=int(round(device_info["default_samplerate"]))
+            if not 8000<=native_rate<=192000:
+                raise ValueError("Микрофон сообщает неверную частоту дискретизации")
+            self.on_status(
+                f"Vosk готов · микрофон {native_rate} Гц → 16000 Гц · жду «Джарвис»")
             def callback(indata,frames,tm,status):
                 try:audio_queue.put_nowait(bytes(indata))
                 except queue.Full:
@@ -204,7 +225,8 @@ class Voice:
             # Model initialization may finish after the application was closed.
             if not self.running or generation!=self._generation:return
             # Try 16 kHz first; PortAudio can convert native Bluetooth/HFP rates.
-            with sd.RawInputStream(samplerate=16000,blocksize=1600,channels=1,
+            with sd.RawInputStream(samplerate=native_rate,
+                                   blocksize=max(256,int(native_rate/10)),channels=1,
                                    dtype="int16",callback=callback,
                                    device=self.input_device):
                 while self.running and generation==self._generation:
@@ -218,6 +240,7 @@ class Voice:
                         was_speaking=True
                         continue
                     was_speaking=False
+                    packet=self.normalize_mic_packet(packet,native_rate)
                     data=np.frombuffer(packet,dtype="<i2")
                     rms=float(np.sqrt(np.mean(data.astype(np.float64)**2))) if data.size else 0
                     speech_threshold=max(24.0,min(200.0,noise_floor*2.6+12))
