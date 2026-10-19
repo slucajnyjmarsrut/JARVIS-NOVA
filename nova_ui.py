@@ -41,6 +41,44 @@ def visual_state(voice_enabled, mic_state, status, executing=False, speaking=Fal
     return "ready", "ЖДУ «ДЖАРВИС»", GREEN
 
 
+
+def level_readout(level):
+    """Compute a true RMS display; None means no recent microphone frames."""
+    if level is None:
+        return 0.0, "НЕТ ДАННЫХ"
+    value = max(0.0,min(1.0,float(level)))
+    if not math.isfinite(value):
+        return 0.0, "НЕТ ДАННЫХ"
+    db = 20*math.log10(max(1e-6,value))
+    intensity = max(0.0,min(1.0,(db+65)/60))
+    return intensity, "ТИШИНА" if db < -80 else f"{db:.0f} dBFS"
+
+
+class LevelMeter(tk.Canvas):
+    """Actual level meter; bars represent RMS dBFS, not a simulated waveform."""
+    def __init__(self,parent):
+        super().__init__(parent,width=215,height=30,bg=SURFACE,
+                         highlightthickness=0,bd=0)
+        self.last_fraction=0.0
+
+    def paint(self,level):
+        fraction,_=level_readout(level)
+        self.last_fraction=fraction
+        self.delete("meter")
+        width=max(2,self.winfo_width())
+        height=max(2,self.winfo_height())
+        bars=22
+        usable=max(2,width-4)
+        for index in range(bars):
+            x1=2+(index*(usable/bars))
+            x2=2+((index+1)*(usable/bars))-3
+            fill=(GREEN if index<bars*.67 else
+                  AMBER if index<bars*.85 else RED)
+            if (index+.5)/bars > fraction:
+                fill=EDGE
+            self.create_rectangle(x1,5,x2,height-5,fill=fill,
+                                  outline="",tags="meter")
+
 class Reactor(tk.Canvas):
     """Animated vector reactor: no assets, network, blocking loops or GPU."""
 
@@ -136,6 +174,8 @@ def build_interface(app):
     app.status=tk.StringVar(master=app,value="Запускаю офлайн-голос…")
     app.mic_state=tk.StringVar(master=app,value="Микрофон: подключается…")
     app.hud_animate=tk.BooleanVar(master=app,value=True)
+    app.hud_level_value=0.0
+    app.hud_level_at=0.0
 
     header=tk.Frame(app,bg=BG)
     header.pack(fill="x",padx=20,pady=(12,9))
@@ -152,6 +192,9 @@ def build_interface(app):
     app.hud_engine=_label(indicator,"LOCAL QWEN  •  OFFLINE",
                           fg=GREEN,size=8,bold=True)
     app.hud_engine.pack(anchor="e",pady=(1,0))
+    app.hud_access=_label(indicator,"УПРАВЛЕНИЕ: ЗАПРЕТ  /  ЗРЕНИЕ*: ЗАПРЕТ",
+                          fg=MUTED,size=8,bold=True)
+    app.hud_access.pack(anchor="e",pady=(3,0))
 
     tk.Frame(app,bg=CYAN_DIM,height=1).pack(fill="x",padx=20)
     body=tk.Frame(app,bg=BG)
@@ -170,10 +213,21 @@ def build_interface(app):
     app.hud_mode.pack(anchor="center",pady=(0,3))
     app.hud_mic=_label(rail,fg=MUTED,size=9,justify="center",
                        wraplength=226,textvariable=app.mic_state)
-    app.hud_mic.pack(fill="x",padx=10,pady=(0,9))
+    app.hud_mic.pack(fill="x",padx=10,pady=(0,5))
+    app.hud_meter=LevelMeter(rail)
+    app.hud_meter.pack(fill="x",padx=13,pady=(0,0))
+    app.hud_meter_label=_label(rail,"ВХОД: НЕТ ДАННЫХ",fg=MUTED,size=8)
+    app.hud_meter_label.pack(anchor="center",pady=(0,8))
+    _label(rail,"ЗВУК НЕ СОХРАНЯЕТСЯ",fg=CYAN_DIM,size=8).pack(
+        anchor="center",pady=(0,7))
 
     controls=tk.Frame(rail,bg=SURFACE)
     controls.pack(fill="x",padx=11)
+    def resize_rail(event):
+        target=136 if event.height<480 else 180
+        if int(app.hud_reactor.cget("height"))!=target:
+            app.hud_reactor.configure(height=target)
+    rail.bind("<Configure>",resize_rail,add="+")
     app.mic_toggle_button=_action(controls,"МИКРОФОН",app.toggle_voice,primary=True)
     app.mic_toggle_button.pack(fill="x",pady=(0,6))
     _action(controls,"ВЫБРАТЬ УСТРОЙСТВО",app.select_microphone,
@@ -198,8 +252,6 @@ def build_interface(app):
     app.hud_status=_label(main,fg=MUTED,size=9,textvariable=app.status,
                           wraplength=580,justify="left",anchor="w",height=2)
     app.hud_status.grid(row=1,column=0,sticky="ew",padx=14,pady=(4,6))
-    main.bind("<Configure>",lambda event:app.hud_status.configure(
-        wraplength=max(170,event.width-35)))
     chat_shell=tk.Frame(main,bg=SURFACE_ALT,highlightthickness=1,
                         highlightbackground=EDGE)
     chat_shell.grid(row=2,column=0,sticky="nsew",padx=12,pady=(0,9))
@@ -251,8 +303,23 @@ def build_interface(app):
     for i,(name,callback) in enumerate(choices):
         _action(shortcuts,name,callback,compact=True).grid(
             row=i//4,column=i%4,sticky="ew",padx=3,pady=3)
+    app.hud_shortcuts=shortcuts
+    app.hud_shortcut_buttons=list(shortcuts.winfo_children())
+    app.hud_shortcut_columns=4
     for col in range(4):
         shortcuts.grid_columnconfigure(col,weight=1)
+
+    def resize_main(event):
+        app.hud_status.configure(wraplength=max(140,event.width-35))
+        cols=2 if event.width<610 else 4
+        if cols==app.hud_shortcut_columns:
+            return
+        app.hud_shortcut_columns=cols
+        for index,button in enumerate(app.hud_shortcut_buttons):
+            button.grid_configure(row=index//cols,column=index%cols)
+        for col in range(4):
+            shortcuts.grid_columnconfigure(col,weight=1 if col<cols else 0)
+    main.bind("<Configure>",resize_main,add="+")
 
     footer=tk.Frame(app,bg=BG)
     footer.pack(fill="x",padx=20,pady=(0,9))
@@ -273,7 +340,33 @@ def build_interface(app):
                 app.status.get(),getattr(app,"executing",False),speaking)
             app.hud_clock.configure(text=time.strftime("%H:%M:%S"))
             app.hud_mode.configure(text=name,fg=color)
-            app.hud_footer.configure(text="●  "+name,fg=color)
+            mode_key=getattr(app.modes,"mode","neutral") if hasattr(app,"modes") else "neutral"
+            captions={"neutral":"ОБЫЧНЫЙ","gaming":"ИГРЫ","work":"РАБОТА",
+                      "office":"ОФИС","study":"УЧЁБА","videos":"РОЛИКИ",
+                      "video_shoot":"СЪЁМКА","video_edit":"МОНТАЖ",
+                      "video_review":"ОЦЕНКА"}
+            current=captions.get(mode_key,mode_key.upper()[:16])
+            deadline=getattr(app,"_focus_deadline",None)
+            if deadline is not None and deadline>time.monotonic():
+                remain=math.ceil(deadline-time.monotonic())
+                current+=f"  ·  ФОКУС {remain//60:02d}:{remain%60:02d}"
+            app.hud_footer.configure(text="●  "+name+"  /  "+current,fg=color)
+            app.hud_access.configure(
+                text=("УПРАВЛЕНИЕ: ДОСТУП" if getattr(app,"control_allowed",False)
+                      else "УПРАВЛЕНИЕ: ЗАПРЕТ")+
+                ("   /   ЗРЕНИЕ*: ДОСТУП" if getattr(app,"vision_allowed",False)
+                      else "   /   ЗРЕНИЕ*: ЗАПРЕТ"),
+                fg=AMBER if (getattr(app,"control_allowed",False) or
+                             getattr(app,"vision_allowed",False)) else MUTED)
+            level=None
+            if (app.voice_enabled and app.hud_level_at
+                    and time.monotonic()-app.hud_level_at<1.4):
+                level=app.hud_level_value
+            app.hud_meter.paint(level)
+            _,readout=level_readout(level)
+            app.hud_meter_label.configure(
+                text="ВХОД: "+(readout if app.voice_enabled else "МИКРОФОН ВЫКЛ."),
+                fg=GREEN if level is not None else MUTED)
             app.mic_toggle_button.configure(
                 text="ОТКЛЮЧИТЬ МИКРОФОН" if app.voice_enabled
                      else "ВКЛЮЧИТЬ МИКРОФОН")
