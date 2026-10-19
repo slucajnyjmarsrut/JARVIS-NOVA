@@ -188,6 +188,25 @@ class NovaOverlay(tk.Toplevel):
                "video_review":"ОЦЕНКА"}
         self.context.configure(text=("РЕЖИМ: "+modes.get(label,label.upper()[:18])
                              +("   •   ДЕЙСТВИЕ…" if app.executing else "")))
+        voice=getattr(app,"voice",None)
+        until=float(getattr(voice,"until",0))
+        queued=len(getattr(voice,"whisper_queue",()))
+        busy=bool(getattr(voice,"whisper_busy",False))
+        if not app.voice_enabled:
+            detail="ГОЛОСОВОЙ ВВОД ОТКЛЮЧЁН"
+        elif busy:
+            detail="WHISPER РАСПОЗНАЁТ"+(f"  ·  ОЧЕРЕДЬ {queued}/2" if queued else "")
+        elif until>time.monotonic():
+            detail=f"СЛУШАЮ  ·  {max(1,int(until-time.monotonic()+.99))} СЕК."
+        else:
+            detail="ЖДУ КОМАНДУ «ДЖАРВИС»"
+        self.listen_detail.configure(text=detail)
+        has_control=bool(getattr(app,"control_allowed",False))
+        has_vision=bool(getattr(app,"vision_allowed",False))
+        self.privacy.configure(
+            text=("УПРАВЛЕНИЕ: ДОСТУП" if has_control else "УПРАВЛЕНИЕ: ЗАПРЕТ")+
+                 ("  ·  ЗРЕНИЕ*: ДОСТУП" if has_vision else "  ·  ЗРЕНИЕ*: ЗАПРЕТ"),
+            fg=AMBER if (has_control or has_vision) else MUTED)
         current=None
         if app.voice_enabled and app.hud_level_at and time.monotonic()-app.hud_level_at<1.4:
             current=app.hud_level_value
