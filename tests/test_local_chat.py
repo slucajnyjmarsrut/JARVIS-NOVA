@@ -33,6 +33,25 @@ class LocalChatTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["stream"], False)
         self.assertNotIn("tools", captured["payload"])
 
+    def test_followup_context_is_short_and_ram_only(self):
+        captured=[]
+        chat=LocalChat(FakeRuntime(),requester=lambda _,payload: (
+            captured.append(payload["messages"]), {"message":{"content":"Ответ"}})[1])
+        self.assertEqual(chat.ask("Кто ты?"),"Ответ")
+        self.assertEqual(chat.ask("А подробнее?"),"Ответ")
+        self.assertEqual(captured[1][-3]["content"],"Кто ты?")
+        self.assertEqual(captured[1][-2]["content"],"Ответ")
+        self.assertEqual(captured[1][-1]["content"],"А подробнее?")
+        chat.close()
+        with self.assertRaises(LocalChatError):
+            chat.ask("Новый вопрос")
+
+    def test_chat_refuses_external_hosts(self):
+        for host in ("https://127.0.0.1:1234", "http://localhost:1234",
+                     "http://example.com:1234", "http://127.0.0.1:1234/path"):
+            with self.subTest(host=host),self.assertRaises(LocalChatError):
+                LocalChat._request(host, {"messages":[]})
+
     def test_rejects_empty_and_unreasonably_long_prompts(self):
         chat = LocalChat(FakeRuntime(), requester=lambda *_: None)
         for prompt in ("", " " * 3, "x" * 1201):
