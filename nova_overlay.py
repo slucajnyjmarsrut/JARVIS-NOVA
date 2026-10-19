@@ -66,9 +66,9 @@ class NovaOverlay(tk.Toplevel):
         bar.pack(fill="x",padx=13,pady=(4,4))
         self.dot=tk.Canvas(bar,width=12,height=12,highlightthickness=0,bg=SURFACE)
         self.dot.pack(side="left",padx=(0,7))
-        self.state=tk.Label(bar,text="МИКРОФОН ВЫКЛ.",bg=SURFACE,fg=MUTED,
+        self.status_label=tk.Label(bar,text="МИКРОФОН ВЫКЛ.",bg=SURFACE,fg=MUTED,
                             font=("Segoe UI",11,"bold"))
-        self.state.pack(side="left")
+        self.status_label.pack(side="left")
 
         self.context=tk.Label(shell,text="РЕЖИМ: ОБЫЧНЫЙ",bg=SURFACE,
                               fg=MUTED,font=("Segoe UI",9),anchor="w")
@@ -88,6 +88,8 @@ class NovaOverlay(tk.Toplevel):
         self.restore_button=self.button(actions,"ОКНО",self.restore_main)
         self.restore_button.pack(side="left",expand=True,fill="x",padx=2)
         self.protocol("WM_DELETE_WINDOW",self.restore_main)
+        self.bind("<F9>",lambda e:(self.app.f9(),"break")[1])
+        self.bind("<Control-Shift-O>",lambda e:(self.restore_main(),"break")[1])
 
     @staticmethod
     def button(parent,text,command):
@@ -133,14 +135,14 @@ class NovaOverlay(tk.Toplevel):
 
     def refresh(self):
         if self._closed or not self.winfo_exists():return
-        if self.state_of_window() != "normal":return
+        if self.state() != "normal":return
         app=self.app
         state,label,color=visual_state(
             bool(app.voice_enabled),app.mic_state.get(),app.status.get(),
             bool(app.executing),
             bool(getattr(app.speaker,"busy",False) or
                  getattr(app.trimodal,"speaking",False)))
-        self.state.configure(text=label,fg=color)
+        self.status_label.configure(text=label,fg=color)
         self.dot.delete("all")
         self.dot.create_oval(1,1,11,11,fill=color,outline="")
         self.mic_button.configure(
@@ -168,14 +170,6 @@ class NovaOverlay(tk.Toplevel):
             if (index+.5)/total>fraction:fill=EDGE
             self.meter.create_rectangle(x1,4,x2,20,fill=fill,outline="")
         self._timer_id=self.after(180,self.refresh)
-
-    def state_of_window(self):
-        return self.state_window()
-
-    def state_window(self):
-        # Explicitly invoke Tk's inherited window-state method: self.state is
-        # the text status label, not the Toplevel method.
-        return tk.Toplevel.state(self)
 
     def shutdown(self):
         if self._closed:return
