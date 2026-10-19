@@ -12,6 +12,7 @@ from game_catalog import GameCatalog
 from voice_engine import Voice as RC4Voice
 from local_chat import LocalChat
 from nova_ui import build_interface
+from nova_overlay import NovaOverlay
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -46,6 +47,12 @@ class Jarvis(tk.Tk):
                             on_vision_audio=lambda pcm,src:self.q.put(("vision_audio",(pcm,src))),
                             on_audio_level=lambda level:self.q.put(("audio_level",level)))
         build_interface(self)
+        # Keep the assistant active when the main window is minimized/hidden.
+        # The small overlay is another local Tk window, not a second app.
+        self.overlay=NovaOverlay(self)
+        self.bind("<Unmap>",self._main_unmapped,add="+")
+        self.bind("<Map>",self._main_mapped,add="+")
+        self.bind("<Control-Shift-O>",lambda event:(self.toggle_overlay(),"break")[1])
         # Permissions, engine configuration and stop live in native menus,
         # not as an extra control panel on the main screen.
         menu=tk.Menu(self)
@@ -90,6 +97,9 @@ class Jarvis(tk.Tk):
         menu.add_cascade(label="AI",menu=ai)
         interface_menu=tk.Menu(menu,tearoff=False)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
+        interface_menu.add_command(label="Скрыть окно → оверлей справа (Ctrl+Shift+O)",
+                                   command=self.hide_main)
+        interface_menu.add_command(label="Вернуть главное окно",command=self.show_main)
         interface_menu.add_command(label="Исходный размер окна",
                                    command=lambda:self.geometry("1060x720"))
         menu.add_cascade(label="Интерфейс",menu=interface_menu)
@@ -105,6 +115,40 @@ class Jarvis(tk.Tk):
         self.log("Система","Управление голосом: «Джарвис, открой Chrome». F9 — ручная активация.")
         self.after(100,self.pump)
         threading.Thread(target=self.init_voice,daemon=True).start()
+
+    def _main_unmapped(self,event):
+        """Tk also sends Unmap for child widgets: ignore those events."""
+        if event.widget is self and not self._closing:
+            # Wait until Windows/Tk has applied iconify/withdraw.
+            self.after(50,self._show_overlay_if_hidden)
+
+    def _show_overlay_if_hidden(self):
+        if self._closing:return
+        if self.state() in {"iconic","withdrawn"}:
+            self.overlay.show()
+
+    def _main_mapped(self,event):
+        if event.widget is self and not self._closing and self.state()=="normal":
+            self.overlay.hide()
+
+    def hide_main(self):
+        if self._closing:return
+        self.withdraw()
+        self.overlay.show()
+
+    def show_main(self):
+        if self._closing:return
+        self.overlay.hide()
+        self.deiconify()
+        self.lift()
+        self.focus_force()
+
+    def toggle_overlay(self):
+        if self._closing:return
+        if self.state()=="normal":
+            self.hide_main()
+        else:
+            self.show_main()
 
     def show_capabilities(self):
         messagebox.showinfo("Что умеет JARVIS NOVA",
@@ -705,6 +749,10 @@ class Jarvis(tk.Tk):
         if self._closing:return
         self._closing=True
         self._shutdown.set()  # prevent slow model initialization reopening the mic
+        overlay=getattr(self,"overlay",None)
+        if overlay is not None:
+            try:overlay.shutdown()
+            except tk.TclError:pass
         studio=getattr(self,'_viral_window',None)
         if studio is not None:
             try: studio.cancel()
