@@ -89,13 +89,16 @@ class Reactor(tk.Canvas):
         self.phase = 0
         self._mode = "offline"
         self._painted = False
+        self.last_energy = 0.0
         self.bind("<Configure>",lambda event:setattr(self,"_painted",False),add="+")
 
-    def paint(self, mode):
+    def paint(self, mode, level=None):
         if not self.winfo_exists() or not self.winfo_viewable():
             return
         self._mode = mode
-        self.phase = (self.phase + (3 if mode == "listening" else 1)) % 360
+        self.last_energy,_ = level_readout(level)
+        self.phase = (self.phase + (3 if mode == "listening" else 1) +
+                      4*self.last_energy) % 360
         self.delete("hud")
         self._painted = True
         w = max(2, self.winfo_width())
@@ -134,7 +137,8 @@ class Reactor(tk.Canvas):
                             start=start,extent=extent,style=tk.ARC,
                             outline=shade,width=width,tags="hud")
         pulse = (math.sin(math.radians(self.phase*4))+1)/2
-        core = r*(.28 + (.04*pulse if mode in ("listening","speaking") else 0))
+        core = r*(.28 + .12*self.last_energy +
+                  (.04*pulse if mode in ("listening","speaking") else 0))
         self.create_oval(cx-core,cy-core,cx+core,cy+core,
                          fill=SURFACE_ALT,outline=color,width=2,tags="hud")
         self.create_text(cx,cy-7,text="N",fill=TEXT,
@@ -288,6 +292,8 @@ def build_interface(app):
     app.entry.bind("<Return>",app.enter)
     app.bind("<F9>",app.f9)
     app.bind("<Control-l>",lambda e:(app.entry.focus_set(),"break")[1])
+    app.bind("<Control-Shift-M>",lambda e:(app.toggle_voice(),"break")[1])
+    app.bind("<Control-Shift-R>",lambda e:(app.revoke(),"break")[1])
 
     shortcuts=tk.Frame(main,bg=SURFACE)
     shortcuts.grid(row=4,column=0,sticky="ew",padx=9,pady=(0,10))
@@ -301,9 +307,13 @@ def build_interface(app):
         ("КАМЕРА",lambda:app.request_trimodal("camera")),
         ("ВОЗМОЖНОСТИ",app.show_capabilities),
     )
+    app.hud_mode_buttons={}
     for i,(name,callback) in enumerate(choices):
-        _action(shortcuts,name,callback,compact=True).grid(
-            row=i//4,column=i%4,sticky="ew",padx=3,pady=3)
+        widget=_action(shortcuts,name,callback,compact=True)
+        widget.grid(row=i//4,column=i%4,sticky="ew",padx=3,pady=3)
+        if name in {"ИГРЫ","РАБОТА","ОФИС","УЧЁБА"}:
+            app.hud_mode_buttons[{"ИГРЫ":"gaming","РАБОТА":"work",
+                                  "ОФИС":"office","УЧЁБА":"study"}[name]]=widget
     app.hud_shortcuts=shortcuts
     app.hud_shortcut_buttons=list(shortcuts.winfo_children())
     app.hud_shortcut_columns=4
@@ -348,6 +358,11 @@ def build_interface(app):
                       "video_shoot":"СЪЁМКА","video_edit":"МОНТАЖ",
                       "video_review":"ОЦЕНКА"}
             current=captions.get(mode_key,mode_key.upper()[:16])
+            if getattr(app,"_hud_last_selected_mode",None)!=mode_key:
+                app._hud_last_selected_mode=mode_key
+                for selected,widget in app.hud_mode_buttons.items():
+                    widget.configure(bg=CYAN_DIM if selected==mode_key else SURFACE_ALT,
+                                     fg=TEXT)
             deadline=getattr(app,"_focus_deadline",None)
             if deadline is not None and deadline>time.monotonic():
                 remain=math.ceil(deadline-time.monotonic())
@@ -382,7 +397,7 @@ def build_interface(app):
                                      fg=GREEN if key in ("bundled","none") else AMBER)
             if (app.hud_animate.get() or not app.hud_reactor._painted
                     or app.hud_reactor._mode != mode):
-                app.hud_reactor.paint(mode)
+                app.hud_reactor.paint(mode,level)
             app._nova_after_id=app.after(130,tick)
         except tk.TclError:
             # Window is being destroyed; never keep a background animation alive.
