@@ -11,14 +11,15 @@ from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
 from voice_engine import Voice as RC4Voice
 from local_chat import LocalChat
+from nova_ui import build_interface
 
 class Jarvis(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("JARVIS NOVA — Голос, зрение, видео и режимы")
-        self.geometry("920x680")
-        self.minsize(720,540)
-        self.configure(bg="#101726")
+        self.geometry("1060x720")
+        self.minsize(760,590)
+        self.configure(bg="#070D17")
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.q=queue.Queue()
         self.voice_enabled=False
@@ -43,53 +44,7 @@ class Jarvis(tk.Tk):
                             lambda s:self.q.put(("status",s)),
                             lambda:self.speaker.busy or self.trimodal.speaking,
                             on_vision_audio=lambda pcm,src:self.q.put(("vision_audio",(pcm,src))))
-        style=ttk.Style(self)
-        style.theme_use("clam")
-        style.configure("Jarvis.TButton",padding=6)
-        header=tk.Label(self,text="JARVIS NOVA",font=("Segoe UI",22,"bold"),
-                         fg="#b5d9ff",bg="#101726")
-        header.pack(anchor="w",padx=24,pady=(18,4))
-        self.status=tk.StringVar(value="Запускаю офлайн-голос…")
-        label=tk.Label(self,textvariable=self.status,font=("Segoe UI",10),
-                       fg="#93aecb",bg="#101726")
-        label.pack(anchor="w",padx=26,pady=(0,5))
-        self.mic_state=tk.StringVar(value="Микрофон: подключается…")
-        tk.Label(self,textvariable=self.mic_state,font=("Segoe UI",10,"bold"),
-                 fg="#7ccab3",bg="#101726").pack(anchor="w",padx=26,pady=(0,8))
-        # Explicit controls: advanced functions must not be hidden in menus.
-        quick=tk.Frame(self,bg="#101726")
-        quick.pack(fill="x",padx=24,pady=(0,12))
-        buttons=(
-            ("Микрофон вкл/выкл",self.toggle_voice),
-            ("Выбрать микрофон",self.select_microphone),
-            ("Тест микрофона",self.test_microphone),
-            ("Слушай (F9)",lambda:self.f9()),
-            ("Задать вопрос",lambda:self.entry.focus_set()),
-            ("Ролики",lambda:self.open_viral_studio("audience")),
-            ("Игры",lambda:self.activate_mode("gaming")),
-            ("Работа",lambda:self.activate_mode("work")),
-            ("Офис",lambda:self.activate_mode("office")),
-            ("Учёба",lambda:self.activate_mode("study")),
-            ("Вижу экран",lambda:self.request_trimodal("screen")),
-            ("Камера",lambda:self.request_trimodal("camera")),
-            ("Возможности",self.show_capabilities),
-        )
-        for index,(title,callback) in enumerate(buttons):
-            button=ttk.Button(quick,text=title,command=callback,style="Jarvis.TButton")
-            button.grid(row=index//4,column=index%4,sticky="ew",padx=3,pady=3)
-        for column in range(4):quick.columnconfigure(column,weight=1)
-        self.history=tk.Text(self,wrap="word",height=12,bg="#18243a",fg="#eef4ff",
-                             insertbackground="white",relief="flat",font=("Segoe UI",11),
-                             padx=15,pady=12,state="disabled")
-        self.history.pack(fill="both",expand=True,padx=24)
-        bottom=tk.Frame(self,bg="#101726")
-        bottom.pack(fill="x",padx=24,pady=(12,20))
-        self.entry=tk.Entry(bottom,bg="#18243a",fg="white",insertbackground="white",
-                            relief="flat",font=("Segoe UI",11))
-        self.entry.pack(side="left",fill="x",expand=True,ipady=9)
-        ttk.Button(bottom,text="Отправить",command=self.enter).pack(side="right",padx=(8,0))
-        self.entry.bind("<Return>",self.enter)
-        self.bind("<F9>",self.f9)
+        build_interface(self)
         # Permissions, engine configuration and stop live in native menus,
         # not as an extra control panel on the main screen.
         menu=tk.Menu(self)
@@ -149,8 +104,8 @@ class Jarvis(tk.Tk):
         messagebox.showinfo("Что умеет JARVIS NOVA",
             "Голосовые команды: «Джарвис, открой блокнот» (микрофон должен быть включён).\n\n"
             "Свободный разговор: локальная Qwen включена по умолчанию, без интернета.\n"
-            "Зрение: меню Зрение или кнопка «Посмотреть экран» — спрашивает разрешение.\n"
-            "Видео: кнопка «Видео-студия» — сначала CSV статистики канала, потом сценарий и монтаж.\n"
+            "Зрение: кнопки «ЭКРАН» или «КАМЕРА» — каждый раз спрашивают разрешение.\n"
+            "Видео: кнопка «РОЛИКИ» — сначала CSV статистики канала, потом сценарий и монтаж.\n"
             "Режимы: Игры, Работа, Офис, Учёба и этапы роликов в верхнем меню.\n\n"
             "Whisper: распознавание речи; Vision: ответы о кадре; Silero: синтез речи. "
             "Все модели проверены автоматически, но качество микрофона зависит от устройства.",
@@ -158,7 +113,9 @@ class Jarvis(tk.Tk):
 
     def log(self,person,message):
         self.history.configure(state="normal")
-        self.history.insert("end",f"{person}: {message}\n\n")
+        tag=person if person in {"JARVIS","Вы","Система","Whisper","Профиль"} else "error" if "ошиб" in person.casefold() else "Система"
+        self.history.insert("end",f"{person}: ",tag)
+        self.history.insert("end",f"{message}\n\n")
         self.history.see("end")
         self.history.configure(state="disabled")
 
