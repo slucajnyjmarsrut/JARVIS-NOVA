@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.2 Whisper/Chat Windows REAL installer
+name: JARVIS NOVA 0.5.3 Whisper/Chat Windows REAL installer
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -30,6 +30,9 @@ on:
       - 'work_modes.py'
       - 'game_catalog.py'
       - 'main.py'
+      - 'nova_ui.py'
+      - 'tests/test_nova_ui.py'
+      - 'docs/NOVA_FUTURISTIC_UI_0_5_3_RU.md'
       - 'viral_studio.py'
       - 'viral_studio_ui.py'
       - 'video_forecast.py'
@@ -87,7 +90,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Torch installation failed' }
           python -m pip install -r requirements-windows.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows app dependency installation failed' }
-      - name: Run unit suite (NOT inference)
+      - name: Run unit suite, including real Tkinter HUD tests (NOT inference)
         run: python -m unittest discover -s tests -v
       - name: Obtain and check Vosk, Whisper and Silero before packaging
         timeout-minutes: 40
@@ -173,12 +176,12 @@ jobs:
         run: |
           @'
           This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE. Video Studio import and real H264 FFmpeg encoding are also checked inside the installed application.
-          CI does NOT prove real microphone, camera, Bluetooth, audio output, foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
+          CI exercises Tk widgets and HUD callbacks but does NOT prove real microphone, camera, Bluetooth, audio output, a user-visible foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.2-DEV-UNVERIFIED-WINDOWS-INSTALLER
+          name: JARVIS-NOVA-0.5.3-DEV-UNVERIFIED-WINDOWS-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
