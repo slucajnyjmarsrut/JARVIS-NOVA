@@ -9,19 +9,22 @@ from agent_core import WAKE, strip_wake
 from speaker import assets
 from whisper_mode import WhisperClassifier, normalize_style
 from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
+from asr_quality import should_refine, prefer_refined
 
 
 class Voice:
     def __init__(self,on_heard:Callable[[str],None],on_status:Callable[[str],None],speaking:Callable[[],bool],
                  on_vision_audio: Callable[[bytes, str], None] | None = None,
                  on_audio_level: Callable[[float], None] | None = None,
-                 on_heard_styled: Callable[[str, str], None] | None = None):
+                 on_heard_styled: Callable[[str, str], None] | None = None,
+                 on_transcript: Callable[[str], None] | None = None):
         self.on_heard=on_heard
         self.on_status=on_status
         self.speaking=speaking
         self.on_vision_audio=on_vision_audio
         self.on_audio_level=on_audio_level  # RMS fraction, never raw audio
         self.on_heard_styled=on_heard_styled
+        self.on_transcript=on_transcript  # only authorized, already confirmed speech
         self.whisper_classifier=WhisperClassifier()
         self.running=False
         self.stopping=False
@@ -253,9 +256,29 @@ class Voice:
                 self.on_status("Whisper распознаёт фразу…")
                 model=self._get_whisper_model(path)
                 samples=prepare_whisper_audio(pcm)
-                result=model.transcribe(
+                first=model.transcribe(
                     samples,language="ru",fp16=False,condition_on_previous_text=False,
                     temperature=0,beam_size=2,best_of=1,no_speech_threshold=0.65)
+                fast_text=str(first.get("text","") or "").strip()
+                # The faster beam=2 pass sometimes drops or mangles Russian
+                # syllables. Refine only authorized, low-confidence phrases.
+                # A background noise burst must not trigger a second decode.
+                authorized=bool(active or WAKE.match(fast_text))
+                result=first
+                if should_refine(first,authorized):
+                    with self.lock:
+                        if self.stopping or generation!=self._generation:
+                            return
+                    self.on_status("Whisper: уточняю слова более точным проходом…")
+                    try:
+                        second=model.transcribe(
+                            samples,language="ru",fp16=False,
+                            condition_on_previous_text=False,temperature=0,
+                            beam_size=5,best_of=1,no_speech_threshold=0.65)
+                        result=prefer_refined(first,second)
+                    except Exception as refine_exc:
+                        self.on_status("Whisper: уточнение не удалось · "+
+                                       str(refine_exc)[:55])
                 text=str(result.get("text","") or "").strip()
                 with self.lock:
                     if self.stopping or generation!=self._generation:
@@ -265,6 +288,9 @@ class Voice:
                 if text:
                     if active or WAKE.match(text):
                         self.on_status("Whisper распознал: "+text[:90])
+                        if self.on_transcript:
+                            try:self.on_transcript(text[:220])
+                            except Exception:pass  # status UI can't break recognition
                     # Authorized queued speech must not be silently discarded
                     # by accept_text() while Silero is speaking the previous
                     # response. Only a bounded wait, never interrupt playback.
@@ -429,7 +455,7 @@ class Voice:
                                 if self.running and generation==self._generation:
                                     try:self.on_audio_level(min(1.0,rms/32768.0))
                                     except Exception:pass  # UI errors cannot stop speech
-                            state=gate.observe(rms*getattr(self,"sensitivity",1.0))
+                            state=gate.observe(rms,sensitivity=getattr(self,"sensitivity",1.0))
                             if state=="start":
                                 segment.extend(b"".join(pre_roll))
                                 pre_roll.clear()
