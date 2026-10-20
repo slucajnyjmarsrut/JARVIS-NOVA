@@ -1,7 +1,7 @@
 name: JARVIS NOVA voice and offline chat smoke (no models)
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10]
     paths:
       - '.github/workflows/voice-ui-smoke.yml'
       - 'voice_engine.py'
