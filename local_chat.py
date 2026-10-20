@@ -72,6 +72,8 @@ class LocalChat:
         payload = {
             "model": self.model,
             "stream": False,
+            "think": False,  # no long hidden reasoning before short spoken reply
+            "keep_alive": "20m",  # keep local model hot for follow-up questions
             "messages": [
                 {"role": "system", "content":
                     "Ты JARVIS NOVA, локальный голосовой помощник Windows. "
@@ -82,7 +84,8 @@ class LocalChat:
                 *self._conversation,
                 {"role": "user", "content": question},
             ],
-            "options": {"num_predict": 220, "temperature": 0.35},
+            "options": {"num_predict": 112, "num_ctx": 2048,
+                        "temperature": 0.3},
         }
         result = self._requester(endpoint, payload)
         answer = result.get("message", {}).get("content", "") if isinstance(result, dict) else ""
