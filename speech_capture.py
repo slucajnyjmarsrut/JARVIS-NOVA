@@ -33,11 +33,12 @@ class AdaptiveSpeechGate:
     def onset_threshold(self) -> float:
         return max(7.0,min(1200.0,self.noise_floor*1.8+3.0))
 
-    def observe(self,rms: float) -> str:
-        """Return 'idle', 'start', 'speech', or 'end' per ~100ms packet."""
+    def observe(self,rms: float,sensitivity: float = 1.0) -> str:
+        """Per 100ms packet. Calibrate noise on *raw* RMS, not boosted RMS."""
         rms=max(0.0,float(rms))
+        sensitivity=max(0.75,min(2.0,float(sensitivity)))
         if self.active:
-            if rms>=max(6.0,self.noise_floor*1.35+2.0):
+            if rms*sensitivity>=max(6.0,self.noise_floor*1.35+2.0):
                 self.silence=0
                 self.speech_frames+=1
             else:
@@ -46,7 +47,7 @@ class AdaptiveSpeechGate:
                 self.reset()
                 return "end"
             return "speech"
-        if rms>=self.onset_threshold:
+        if rms*sensitivity>=self.onset_threshold:
             self.attack+=1
             if self.attack>=2:
                 self.active=True
