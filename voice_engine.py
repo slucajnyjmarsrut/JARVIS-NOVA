@@ -9,7 +9,8 @@ from agent_core import WAKE, strip_wake
 from speaker import assets
 from whisper_mode import WhisperClassifier, normalize_style
 from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
-from asr_quality import should_refine, prefer_refined
+from asr_quality import (should_refine, prefer_refined, transcript_confidence,
+                         suspicious_wake_prefix)
 
 
 class Voice:
@@ -311,15 +312,24 @@ class Voice:
                 # syllables. Refine only authorized, low-confidence phrases.
                 # A background noise burst must not trigger a second decode.
                 authorized=bool(active or WAKE.match(fast_text))
+                # If Vosk missed the wake and base returned a garbled near-wake,
+                # verify locally with small rather than discarding a genuine
+                # Russian command. Fuzzy similarity NEVER grants permission.
+                recover_wake=(not authorized and not quality and
+                              self.recognition_mode=="accurate" and
+                              (root/"small.pt").is_file() and
+                              suspicious_wake_prefix(first))
                 result=first
-                if (should_refine(first,authorized) or
+                if (should_refine(first,authorized) or recover_wake or
                         (not quality and self.recognition_mode=="accurate" and
                          (root/"small.pt").is_file() and
                          bool(WAKE.match(fast_text)))):
                     with self.lock:
                         if self.stopping or generation!=self._generation:
                             return
-                    self.on_status("Whisper: уточняю слова более точным проходом…")
+                    self.on_status(
+                        "Whisper: проверяю обращение «Джарвис»…" if recover_wake
+                        else "Whisper: уточняю слова более точным проходом…")
                     try:
                         # When base heard a wake word, ask the stronger small
                         # model once; otherwise refine the same model with beam5.
@@ -332,7 +342,16 @@ class Voice:
                             condition_on_previous_text=False,temperature=0,
                             beam_size=2 if quality_retry else 5,
                             best_of=1,no_speech_threshold=0.65)
-                        result=prefer_refined(first,second)
+                        if recover_wake:
+                            # A weak/hallucinated second pass is not sufficient
+                            # to authorize even a supposedly harmless command.
+                            second_text=str(second.get("text","") or "").strip()
+                            confidence=transcript_confidence(second)
+                            if (WAKE.match(second_text) and confidence is not None
+                                    and confidence>=-.76):
+                                result=second
+                        else:
+                            result=prefer_refined(first,second)
                     except Exception as refine_exc:
                         self.on_status("Whisper: уточнение не удалось · "+
                                        str(refine_exc)[:55])
