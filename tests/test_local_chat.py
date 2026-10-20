@@ -25,11 +25,11 @@ class LocalChatTests(unittest.TestCase):
             captured["payload"] = payload
             return {"message": {"content": "Привет! Я JARVIS."}}
         chat = LocalChat(runtime, requester=requester)
-        self.assertEqual(chat.ask("Привет"), "Привет! Я JARVIS.")
+        self.assertEqual(chat.ask("Расскажи о себе"), "Привет! Я JARVIS.")
         self.assertEqual(runtime.calls, 1)
         self.assertEqual(captured["endpoint"], "http://127.0.0.1:23123")
         self.assertEqual(captured["payload"]["model"], "qwen3-vl:2b-instruct")
-        self.assertEqual(captured["payload"]["messages"][-1]["content"], "Привет")
+        self.assertEqual(captured["payload"]["messages"][-1]["content"], "Расскажи о себе")
         self.assertEqual(captured["payload"]["stream"], False)
         self.assertNotIn("tools", captured["payload"])
 
