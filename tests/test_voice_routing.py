@@ -48,10 +48,10 @@ class VoiceRoutingTests(unittest.TestCase):
         self.assertEqual(heard, [])
         self.assertEqual(vision, [(bytes(32000), "screen")])
 
-    def test_whisper_confirmed_camera_uses_original_audio(self):
+    def test_whisper_camera_request_no_longer_opens_capture(self):
         heard, vision = self.check_whisper("посмотри в камеру", "джарвис пуст")
-        self.assertEqual(heard, [])
-        self.assertEqual(vision, [(bytes(32000), "camera")])
+        self.assertEqual(heard, ["посмотри в камеру"])
+        self.assertEqual(vision, [])
 
     def test_no_late_dispatch_after_microphone_stop(self):
         started = threading.Event()
