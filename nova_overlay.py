@@ -7,7 +7,7 @@ All actions delegate to the main Jarvis instance and keep its permission checks.
 import time
 import math
 import tkinter as tk
-from nova_ui import (BG, SURFACE, EDGE, CYAN, GREEN, MUTED, TEXT, RED, AMBER,
+from nova_ui import (BG, SURFACE, EDGE, CYAN, CYAN_DIM, GREEN, MUTED, TEXT, RED, AMBER,
                      level_readout, visual_state)
 
 
