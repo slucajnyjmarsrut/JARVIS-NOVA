@@ -7,6 +7,7 @@ Those remain in Jarvis callbacks; animation runs only on Tk's event loop.
 import math
 import time
 import tkinter as tk
+from tkinter import ttk
 
 BG = "#070D17"
 SURFACE = "#0D1929"
@@ -186,14 +187,45 @@ def build_interface(app):
     app.hud_level_value=0.0
     app.hud_level_at=0.0
 
-    body=tk.Frame(app,bg=BG)
-    body.pack(fill="both",expand=True,padx=20,pady=(12,9))
+    # Windows' default scrollbars are bright despite bg=. Use clam with an
+    # explicit dark style for BOTH the conversation and the left rail.
+    app.hud_scroll_style=ttk.Style(app)
+    app.hud_scroll_style.theme_use("clam")
+    app.hud_scroll_style.configure(
+        "Nova.Vertical.TScrollbar",background=CYAN_DIM,
+        troughcolor=SURFACE,bordercolor=SURFACE,
+        darkcolor=CYAN_DIM,lightcolor=CYAN_DIM,
+        arrowcolor=TEXT,relief="flat",width=11)
+    app.hud_scroll_style.map(
+        "Nova.Vertical.TScrollbar",
+        background=[("active","#32849A"),("!active",CYAN_DIM)])
 
-    rail=tk.Frame(body,bg=SURFACE,width=286,highlightthickness=1,
-                  highlightbackground=EDGE)
-    rail.pack(side="left",fill="y",padx=(0,12))
-    rail.pack_propagate(False)
+    body=tk.Frame(app,bg=BG)
+    body.pack(fill="both",expand=True,padx=10,pady=(8,6))
+
+    # Short windows still reach every action via a dark scrolling left rail.
+    rail_shell=tk.Frame(body,bg=SURFACE,width=286,highlightthickness=1,
+                        highlightbackground=EDGE)
+    rail_shell.pack(side="left",fill="y",padx=(0,10))
+    rail_shell.pack_propagate(False)
+    sidebar=tk.Canvas(rail_shell,bg=SURFACE,highlightthickness=0,
+                      bd=0,yscrollincrement=18)
+    sidebar.pack(side="left",fill="both",expand=True)
+    rail_scroll=ttk.Scrollbar(
+        rail_shell,orient="vertical",command=sidebar.yview,
+        style="Nova.Vertical.TScrollbar")
+    rail_scroll.pack(side="right",fill="y")
+    sidebar.configure(yscrollcommand=rail_scroll.set)
+    rail=tk.Frame(sidebar,bg=SURFACE)
+    sidebar_item=sidebar.create_window((0,0),window=rail,anchor="nw")
+    rail.bind("<Configure>",lambda event:sidebar.configure(
+        scrollregion=sidebar.bbox("all")),add="+")
+    sidebar.bind("<Configure>",lambda event:sidebar.itemconfigure(
+        sidebar_item,width=event.width),add="+")
     app.hud_rail=rail
+    app.hud_rail_shell=rail_shell
+    app.hud_rail_canvas=sidebar
+    app.hud_rail_scrollbar=rail_scroll
     # NOVA identity and access status now live in the LEFT rail.
     header=tk.Frame(rail,bg=SURFACE)
     header.pack(fill="x",padx=12,pady=(9,2))
@@ -201,7 +233,10 @@ def build_interface(app):
     brand=tk.Frame(header,bg=SURFACE)
     brand.pack(side="left",anchor="w")
     _label(brand,"NEURAL VOICE  /  OFFLINE",fg=CYAN_DIM,size=8,bold=True).pack(anchor="w")
-    _label(brand,"JARVIS  NOVA",fg=TEXT,size=17,bold=True).pack(anchor="w")
+    _label(brand,"JARVIS  NOVA",fg=TEXT,size=16,bold=True).pack(anchor="w")
+    app.hud_settings_button=_action(
+        header,"⚙",lambda:app.show_settings_menu(),compact=True)
+    app.hud_settings_button.pack(side="right",anchor="n",padx=(4,0))
     meta=tk.Frame(rail,bg=SURFACE)
     meta.pack(fill="x",padx=14,pady=(0,2))
     app.hud_clock=_label(meta,"--:--:--",fg=TEXT,size=10,bold=True)
@@ -293,10 +328,11 @@ def build_interface(app):
                         relief="flat",font=("Segoe UI",10),padx=13,pady=11,
                         state="disabled",undo=False,borderwidth=0)
     app.history.grid(row=0,column=0,sticky="nsew")
-    scroll=tk.Scrollbar(chat_shell,orient="vertical",command=app.history.yview,
-                        bg=SURFACE_ALT,activebackground=CYAN_DIM,
-                        troughcolor=SURFACE,relief="flat",width=11)
+    scroll=ttk.Scrollbar(chat_shell,orient="vertical",
+                         command=app.history.yview,
+                         style="Nova.Vertical.TScrollbar")
     scroll.grid(row=0,column=1,sticky="ns")
+    app.hud_history_scrollbar=scroll
     app.history.configure(yscrollcommand=scroll.set)
     for name,color in (("JARVIS",CYAN),("Вы",GREEN),("Система",MUTED),
                        ("Whisper",VIOLET),("Профиль",AMBER)):
@@ -349,13 +385,27 @@ def build_interface(app):
     for column in range(2):
         shortcuts.grid_columnconfigure(column,weight=1)
 
+    def on_rail_wheel(event):
+        step=int(event.delta/120) if getattr(event,"delta",0) else 0
+        sidebar.yview_scroll(-step if step else 1,"units")
+        return "break"
+
+    def attach_rail_wheel(widget):
+        widget.bind("<MouseWheel>",on_rail_wheel,add="+")
+        for child in widget.winfo_children():
+            # Keep the scale's own wheel control intact.
+            if child is not app.hud_sensitivity:
+                attach_rail_wheel(child)
+    attach_rail_wheel(rail)
+    sidebar.bind("<MouseWheel>",on_rail_wheel,add="+")
+
     def resize_main(event):
         app.hud_status.configure(wraplength=max(140,event.width-35))
     app.hud_reflow=resize_main
     main.bind("<Configure>",resize_main,add="+")
 
     footer=tk.Frame(app,bg=BG)
-    footer.pack(fill="x",padx=20,pady=(0,9))
+    footer.pack(fill="x",padx=10,pady=(0,7))
     app.hud_footer=_label(footer,"●  ЗАЩИЩЁННЫЙ ЛОКАЛЬНЫЙ КОНТУР",
                            fg=GREEN,size=8,bold=True)
     app.hud_footer.pack(side="left")
