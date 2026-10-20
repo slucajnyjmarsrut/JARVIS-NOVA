@@ -266,6 +266,11 @@ def build_interface(app):
     app.hud_sensitivity.pack(fill="x",pady=(0,0))
     app.hud_sensitivity_readout.pack(anchor="w",pady=(0,3))
     app.hud_sensitivity.set(1.0)
+    # All advanced commands live here, not in Windows' pale native top menu.
+    app.hud_settings_button=_action(
+        controls,"⚙  НАСТРОЙКИ  /  F10",lambda:app.show_settings_menu(),
+        compact=True)
+    app.hud_settings_button.pack(fill="x",pady=(2,4))
 
     main=tk.Frame(body,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
     main.pack(side="left",fill="both",expand=True)
@@ -293,10 +298,22 @@ def build_interface(app):
                         relief="flat",font=("Segoe UI",10),padx=13,pady=11,
                         state="disabled",undo=False,borderwidth=0)
     app.history.grid(row=0,column=0,sticky="nsew")
-    scroll=tk.Scrollbar(chat_shell,orient="vertical",command=app.history.yview,
-                        bg=SURFACE_ALT,activebackground=CYAN_DIM,
-                        troughcolor=SURFACE,relief="flat",width=11)
+    # Use themed ttk+clam rather than native Windows Tk Scrollbar,
+    # which is bright white even when bg/troughcolor are dark.
+    from tkinter import ttk
+    theme=ttk.Style(app)
+    theme_name="NOVA.Dark.Vertical.TScrollbar"
+    theme.theme_use("clam") if theme.theme_use()!="clam" else None
+    theme.configure(theme_name,
+                    background=CYAN_DIM,foreground=TEXT,
+                    troughcolor=SURFACE_ALT,arrowcolor=TEXT,
+                    bordercolor=EDGE,lightcolor=SURFACE_ALT,
+                    darkcolor=SURFACE_ALT,relief="flat",width=9)
+    theme.map(theme_name,background=[("active",CYAN)])
+    scroll=ttk.Scrollbar(chat_shell,orient="vertical",
+                         style=theme_name,command=app.history.yview)
     scroll.grid(row=0,column=1,sticky="ns")
+    app.hud_scrollbar=scroll
     app.history.configure(yscrollcommand=scroll.set)
     for name,color in (("JARVIS",CYAN),("Вы",GREEN),("Система",MUTED),
                        ("Whisper",VIOLET),("Профиль",AMBER)):
