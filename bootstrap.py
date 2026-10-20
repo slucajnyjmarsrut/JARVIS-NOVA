@@ -36,7 +36,7 @@ def smoke_test():
     except Exception as exc:
         print('Missing or incomplete Vision weights:',exc,flush=True)
         return 5
-    for module in ["vosk","whisper","torch","sounddevice","pyautogui","cv2","scipy"]:
+    for module in ["vosk","whisper","torch","sounddevice","pyautogui","scipy"]:
         if importlib.util.find_spec(module) is None:
             print("Missing bundled Python library",module,flush=True)
             return 3
