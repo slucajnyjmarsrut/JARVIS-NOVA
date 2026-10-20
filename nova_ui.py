@@ -307,7 +307,6 @@ def build_interface(app):
         ("ОФИС",lambda:app.activate_mode("office")),
         ("УЧЁБА",lambda:app.activate_mode("study")),
         ("ЭКРАН",lambda:app.request_trimodal("screen")),
-        ("КАМЕРА",lambda:app.request_trimodal("camera")),
         ("ВОЗМОЖНОСТИ",app.show_capabilities),
     )
     app.hud_mode_buttons={}
