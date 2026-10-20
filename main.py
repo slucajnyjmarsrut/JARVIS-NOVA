@@ -19,7 +19,7 @@ from whisper_mode import normalize_style
 class Jarvis(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS NOVA — Голос, зрение, видео и режимы")
+        self.title("JARVIS NOVA — Голос, экран, видео и режимы")
         self.geometry("1060x720")
         self.minsize(760,590)
         self.configure(bg="#070D17")
@@ -72,8 +72,6 @@ class Jarvis(tk.Tk):
         vision_menu=tk.Menu(menu,tearoff=False)
         vision_menu.add_command(label="Спросить голосом об экране (Whisper → Vision → Silero)",
                                 command=lambda:self.request_trimodal("screen"))
-        vision_menu.add_command(label="Спросить голосом о камере (Whisper → Vision → Silero)",
-                                command=lambda:self.request_trimodal("camera"))
         menu.add_cascade(label="Зрение",menu=vision_menu)
         modes_menu=tk.Menu(menu,tearoff=False)
         self._selected_mode=tk.StringVar(value='neutral')
@@ -162,7 +160,7 @@ class Jarvis(tk.Tk):
         messagebox.showinfo("Что умеет JARVIS NOVA",
             "Голосовые команды: «Джарвис, открой блокнот» (микрофон должен быть включён).\n\n"
             "Свободный разговор: локальная Qwen включена по умолчанию, без интернета.\n"
-            "Зрение: кнопки «ЭКРАН» или «КАМЕРА» — каждый раз спрашивают разрешение.\n"
+            "Анализ экрана: кнопка «ЭКРАН» — каждый раз спрашивает разрешение.\n"
             "Видео: кнопка «РОЛИКИ» — сначала CSV статистики канала, потом сценарий и монтаж.\n"
             "Режимы: Игры, Работа, Офис, Учёба и этапы роликов в верхнем меню.\n\n"
             "Whisper: распознавание речи; Vision: ответы о кадре; Silero: синтез речи. "
@@ -600,8 +598,10 @@ class Jarvis(tk.Tk):
 
     def request_trimodal(self, source: str, audio_pcm: bytes | None = None):
         if self._closing or self.executing:return
-        if source not in {"camera","screen"}:return
-        noun="камеры" if source=="camera" else "экрана"
+        if source!="screen":
+            self.status.set("Веб-камера удалена. Доступен только анализ экрана.")
+            return
+        noun="экрана"
         if not messagebox.askyesno("Разрешение на изображение",
             f"Разрешить JARVIS захватить ОДИН кадр {noun} и обработать его локально? "
             "Изображение не будет отправлено в облако.",parent=self):
@@ -624,8 +624,7 @@ class Jarvis(tk.Tk):
                     import numpy as np
                     samples=np.frombuffer(audio_pcm,dtype="<i2").astype(np.float32)/32768.0
                 result=self.trimodal.run_once(
-                    source=source, camera_consent=source=="camera",
-                    screen_consent=source=="screen", seconds=5.0,
+                    source="screen", screen_consent=True, seconds=5.0,
                     audio_samples=samples, sample_rate=16000)
                 if not self._shutdown.is_set():
                     self.q.put(("trimodal_result",(True,result)))
