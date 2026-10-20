@@ -211,6 +211,11 @@ def build_interface(app):
     app.hud_access=_label(rail,"УПРАВЛЕНИЕ: ЗАПРЕТ  /  ЗРЕНИЕ*: ЗАПРЕТ",
                            fg=MUTED,size=7,bold=True)
     app.hud_access.pack(anchor="w",padx=14,pady=(0,3))
+    # All advanced commands live here, not in Windows' pale native top menu.
+    app.hud_settings_button=_action(
+        rail,"⚙  НАСТРОЙКИ  /  F10",lambda:app.show_settings_menu(),
+        compact=True)
+    app.hud_settings_button.pack(fill="x",padx=13,pady=(2,5))
     tk.Frame(rail,bg=CYAN_DIM,height=1).pack(fill="x",padx=13,pady=(0,3))
     rail_top=tk.Frame(rail,bg=SURFACE)
     rail_top.pack(fill="x",padx=14,pady=(3,0))
@@ -266,11 +271,7 @@ def build_interface(app):
     app.hud_sensitivity.pack(fill="x",pady=(0,0))
     app.hud_sensitivity_readout.pack(anchor="w",pady=(0,3))
     app.hud_sensitivity.set(1.0)
-    # All advanced commands live here, not in Windows' pale native top menu.
-    app.hud_settings_button=_action(
-        controls,"⚙  НАСТРОЙКИ  /  F10",lambda:app.show_settings_menu(),
-        compact=True)
-    app.hud_settings_button.pack(fill="x",pady=(2,4))
+
 
     main=tk.Frame(body,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
     main.pack(side="left",fill="both",expand=True)
