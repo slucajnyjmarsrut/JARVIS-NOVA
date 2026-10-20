@@ -34,6 +34,9 @@ class Voice:
         self.last_at=0
         self.pending=""
         self.whisper_model=None
+        self.small_model=None
+        self.recognition_mode="accurate"  # default best Russian; switch to fast on slow CPUs
+        self._small_init_lock=threading.Lock()
         self.whisper_busy=False
         self.whisper_queue=deque(maxlen=2)  # keep short follow-up utterances in RAM
         self.whisper_last_at=0.0
@@ -46,6 +49,29 @@ class Voice:
         self._whisper_init_lock=threading.Lock()
         self._whisper_warm_thread=None
         self.sensitivity=1.0  # 1.0 balanced, up to 2.0 for quiet microphones
+
+    def set_recognition_mode(self, mode: str):
+        """Real CPU/memory tradeoff; switch without opening another microphone."""
+        if mode not in ("accurate","fast"):
+            raise ValueError("Режим должен быть accurate или fast")
+        with self.lock:
+            self.recognition_mode=mode
+            generation=self._generation
+        if mode=="accurate" and self.running and not self.stopping:
+            self._prewarm_whisper(generation)
+        self.on_status("Распознавание: "+(
+            "точное русское (Whisper small)" if mode=="accurate"
+            else "ускоренное (Whisper base)"))
+
+    def _get_small_model(self, path):
+        """Load verified bundled multilingual small once for better Russian ASR."""
+        if self.small_model is not None:
+            return self.small_model
+        with self._small_init_lock:
+            if self.small_model is None:
+                import whisper
+                self.small_model=whisper.load_model(str(path),device="cpu")
+        return self.small_model
 
     def set_sensitivity(self, value):
         """Change voice onset gain without touching the Windows microphone."""
@@ -66,20 +92,30 @@ class Voice:
         return self.whisper_model
 
     def _prewarm_whisper(self, generation):
-        """Load the bundled model in background while user is not talking."""
-        path=assets()/"base.pt"
-        if not path.is_file() or self.whisper_model is not None:
+        """Preload preferred offline model during microphone startup."""
+        root=assets()
+        accurate=(self.recognition_mode=="accurate" and
+                  (root/"small.pt").is_file())
+        path=root/("small.pt" if accurate else "base.pt")
+        if not path.is_file():
+            return
+        if ((accurate and self.small_model is not None) or
+                (not accurate and self.whisper_model is not None)):
             return
         if self._whisper_warm_thread and self._whisper_warm_thread.is_alive():
             return
         def work():
             try:
-                self._get_whisper_model(path)
+                if accurate:
+                    self._get_small_model(path)
+                else:
+                    self._get_whisper_model(path)
                 if generation==self._generation and self.running and not self.stopping:
-                    self.on_status("Whisper прогрет · быстрое распознавание готово")
+                    self.on_status("Whisper "+("small" if accurate else "base")+
+                                   " готов · русский голосовой ввод")
             except Exception as exc:
                 if generation==self._generation and self.running and not self.stopping:
-                    self.on_status("Whisper: предварительная загрузка не удалась: "+str(exc)[:70])
+                    self.on_status("Whisper: загрузка не удалась: "+str(exc)[:75])
         self._whisper_warm_thread=threading.Thread(
             target=work,daemon=True,name="whisper-prewarm")
         self._whisper_warm_thread.start()
@@ -241,7 +277,10 @@ class Voice:
                 return
             if not active and now-self.whisper_last_at < 1.0:
                 return
-            path=assets()/"base.pt"
+            root=assets()
+            quality=(self.recognition_mode=="accurate" and active and
+                     (root/"small.pt").is_file())
+            path=root/("small.pt" if quality else "base.pt")
             if not path.is_file():
                 if fallback_text:
                     self.accept_text(fallback_text,style=self.whisper_classifier.classify(pcm))
@@ -254,7 +293,15 @@ class Voice:
         def work():
             try:
                 self.on_status("Whisper распознаёт фразу…")
-                model=self._get_whisper_model(path)
+                try:
+                    model=(self._get_small_model(path) if quality
+                           else self._get_whisper_model(path))
+                except Exception:
+                    if not quality or not (root/"base.pt").is_file():
+                        raise
+                    # Bad quality model must not prevent ordinary commands.
+                    self.on_status("Whisper small недоступен · использую base")
+                    model=self._get_whisper_model(root/"base.pt")
                 samples=prepare_whisper_audio(pcm)
                 first=model.transcribe(
                     samples,language="ru",fp16=False,condition_on_previous_text=False,
@@ -265,16 +312,26 @@ class Voice:
                 # A background noise burst must not trigger a second decode.
                 authorized=bool(active or WAKE.match(fast_text))
                 result=first
-                if should_refine(first,authorized):
+                if (should_refine(first,authorized) or
+                        (not quality and self.recognition_mode=="accurate" and
+                         (root/"small.pt").is_file() and
+                         bool(WAKE.match(fast_text)))):
                     with self.lock:
                         if self.stopping or generation!=self._generation:
                             return
                     self.on_status("Whisper: уточняю слова более точным проходом…")
                     try:
-                        second=model.transcribe(
+                        # When base heard a wake word, ask the stronger small
+                        # model once; otherwise refine the same model with beam5.
+                        quality_retry=(not quality and self.recognition_mode=="accurate"
+                                       and (root/"small.pt").is_file())
+                        selected=(self._get_small_model(root/"small.pt")
+                                  if quality_retry else model)
+                        second=selected.transcribe(
                             samples,language="ru",fp16=False,
                             condition_on_previous_text=False,temperature=0,
-                            beam_size=5,best_of=1,no_speech_threshold=0.65)
+                            beam_size=2 if quality_retry else 5,
+                            best_of=1,no_speech_threshold=0.65)
                         result=prefer_refined(first,second)
                     except Exception as refine_exc:
                         self.on_status("Whisper: уточнение не удалось · "+
