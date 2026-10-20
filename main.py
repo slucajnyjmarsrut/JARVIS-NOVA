@@ -19,10 +19,13 @@ from whisper_mode import normalize_style
 class Jarvis(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS NOVA — Голос, экран, видео и режимы")
+        self.title("JARVIS NOVA")
         self.geometry("1060x720")
         self.minsize(760,590)
         self.configure(bg="#070D17")
+        # Keep Windows' real minimize/maximize/close buttons, but request
+        # a dark native titlebar so it doesn't clash with NOVA's dark HUD.
+        self.after(60,self._set_native_dark_titlebar)
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.q=queue.Queue()
         self.voice_enabled=False
@@ -104,7 +107,7 @@ class Jarvis(tk.Tk):
         menu.add_cascade(label="AI",menu=ai)
         interface_menu=tk.Menu(menu,tearoff=False)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
-        interface_menu.add_command(label="Скрыть окно → оверлей справа (Ctrl+Shift+O)",
+        interface_menu.add_command(label="Скрыть окно → оверлей слева (Ctrl+Shift+O)",
                                    command=self.hide_main)
         interface_menu.add_command(label="Вернуть главное окно",command=self.show_main)
         interface_menu.add_command(label="Исходный размер окна",
@@ -118,10 +121,46 @@ class Jarvis(tk.Tk):
         learning_menu.add_command(label="Проверить офлайн-модели",command=self.check_models)
         menu.add_cascade(label="Самоулучшение",menu=learning_menu)
         menu.add_command(label="Стоп/Выключить микрофон",command=self.toggle_voice)
-        self.config(menu=menu)
+        # The native Tk menu bar is bright on Windows and duplicates the
+        # LEFT control rail. Keep every command in a pop-up from the sidebar.
+        self.nova_settings_menu=menu
+        if hasattr(self,"hud_settings_button"):
+            self.hud_settings_button.configure(command=self.show_settings_menu)
+        self.bind("<F10>",lambda event:self.show_settings_menu())
         self.log("Система","Управление голосом: «Джарвис, открой Chrome». F9 — ручная активация.")
         self.after(100,self.pump)
         threading.Thread(target=self.init_voice,daemon=True).start()
+
+    def _set_native_dark_titlebar(self):
+        """Windows 10/11: dark caption and native controls; safe fallback."""
+        try:
+            import ctypes
+            if __import__("sys").platform!="win32" or not self.winfo_exists():
+                return
+            handle=ctypes.windll.user32.GetParent(self.winfo_id())
+            flag=ctypes.c_int(1)
+            dwm=ctypes.windll.dwmapi.DwmSetWindowAttribute
+            if dwm(handle,20,ctypes.byref(flag),ctypes.sizeof(flag))!=0:
+                dwm(handle,19,ctypes.byref(flag),ctypes.sizeof(flag))
+        except (OSError,AttributeError,ValueError):
+            pass  # older Windows builds keep normal titlebar
+
+    def show_settings_menu(self,event=None):
+        """All formerly top-bar menus stay available from the LEFT rail."""
+        menu=getattr(self,"nova_settings_menu",None)
+        if menu is None:
+            return
+        try:
+            if hasattr(self,"hud_settings_button"):
+                widget=self.hud_settings_button
+                x=widget.winfo_rootx()+8
+                y=widget.winfo_rooty()+widget.winfo_height()
+            else:
+                x=self.winfo_rootx()+28
+                y=self.winfo_rooty()+60
+            menu.tk_popup(x,y)
+        finally:
+            menu.grab_release()
 
     def _main_unmapped(self,event):
         """Tk also sends Unmap for child widgets: ignore those events."""
