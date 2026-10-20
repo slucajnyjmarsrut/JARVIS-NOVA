@@ -10,7 +10,6 @@ import threading
 import numpy as np
 
 from bundled_vision_runtime import BundledRuntimeConfig, BundledVisionRuntime
-from camera_capture import CameraConfig, CameraFrameSource
 from microphone import record_utterance
 from screen_capture import ScreenFrameSource
 from silero_engine import SileroConfig, SileroSynthesizer
@@ -23,7 +22,7 @@ from whisper_engine import WhisperConfig, WhisperRecognizer
 class TrimodalService:
     def __init__(self, *, asset_root: Path | None = None,
                  runtime=None, recognizer=None, synthesizer=None, vision=None,
-                 microphone=record_utterance, camera=None, screen=None):
+                 microphone=record_utterance, screen=None):
         root = asset_root or assets().parent
         models = root / 'models'
         self.runtime = runtime or BundledVisionRuntime(BundledRuntimeConfig(root=root))
@@ -34,7 +33,6 @@ class TrimodalService:
         self.vision = vision
         self._make_vision = vision is None
         self._microphone = microphone
-        self._camera = camera or CameraFrameSource(CameraConfig())
         self._screen = screen or ScreenFrameSource()
         self._stop = threading.Event()
         self._busy = threading.Event()
@@ -73,9 +71,11 @@ class TrimodalService:
                 self.runtime.stop()
                 raise
 
-    def run_once(self, *, source: str, camera_consent: bool = False,
+    def run_once(self, *, source: str = 'screen',
                  screen_consent: bool = False, seconds: float = 5.0,
                  audio_samples=None, sample_rate: int = 16_000):
+        if source != 'screen':
+            raise ValueError('Webcam capture has been removed from JARVIS NOVA')
         if not self.ready:
             raise RuntimeError('Trimodal engines not initialized')
         if self._busy.is_set():
@@ -85,12 +85,11 @@ class TrimodalService:
             pipeline = TriModalPipeline(
                 recognizer=self.recognizer, vision=self.vision,
                 synthesizer=self.synthesizer, microphone=self._microphone,
-                camera=self._camera, screen=self._screen)
+                screen=self._screen)
             if self._stop.is_set():
                 raise RuntimeError('JARVIS is closing')
             return pipeline.run_once(
-                source=source, camera_consent=camera_consent,
-                screen_consent=screen_consent, seconds=seconds,
+                source=source, screen_consent=screen_consent, seconds=seconds,
                 audio_samples=audio_samples, sample_rate=sample_rate)
         finally:
             self._busy.clear()
