@@ -129,9 +129,9 @@ class SensitivityTests(unittest.TestCase):
             boosted.observe(2.5,sensitivity=2.0)
         self.assertAlmostEqual(basic.noise_floor,boosted.noise_floor,places=5)
         quiet=AdaptiveSpeechGate(noise_floor=5.0)
-        self.assertEqual(quiet.observe(5.0),"idle")
-        self.assertEqual(quiet.observe(5.0,sensitivity=1.8),"idle")
-        self.assertEqual(quiet.observe(5.0,sensitivity=1.8),"start")
+        self.assertEqual(quiet.observe(7.0),"idle")
+        self.assertEqual(quiet.observe(7.0,sensitivity=1.8),"idle")
+        self.assertEqual(quiet.observe(7.0,sensitivity=1.8),"start")
 
 
 class TranscriptUiTests(unittest.TestCase):
