@@ -15,8 +15,15 @@ def make_titlebar_dark(window) -> bool:
         import ctypes
         window.update_idletasks()
         native=ctypes.windll.user32
+        native.GetParent.argtypes=[ctypes.c_void_p]
+        native.GetParent.restype=ctypes.c_void_p
         hwnd=native.GetParent(window.winfo_id()) or window.winfo_id()
         dwm=ctypes.windll.dwmapi.DwmSetWindowAttribute
+        # ctypes defaults to 32-bit integers if signatures are omitted,
+        # which truncates many Windows x64 HWNDs and leaves a white title bar.
+        dwm.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_void_p,
+                      ctypes.c_uint]
+        dwm.restype=ctypes.c_long
 
         def set_color(attribute,red,green,blue):
             # DWM COLORREF: 0x00BBGGRR
