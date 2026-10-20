@@ -68,6 +68,23 @@ class LocalChat:
     def _ask_locked(self, question: str) -> str:
         if self._closed:
             raise LocalChatError("JARVIS закрывается")
+        # Unambiguous small-talk needs no multi-gigabyte Qwen model warm-up.
+        # Exact matches only; never intercept work, app or safety commands.
+        greeting=question.casefold().strip(" .,!?…")
+        quick={
+            "как дела":"Всё хорошо. Чем помочь?",
+            "как ты":"Работаю. Чем помочь?",
+            "привет":"Привет! Слушаю.",
+            "здравствуй":"Привет! Слушаю.",
+            "что делаешь":"Жду твою команду.",
+            "спасибо":"Пожалуйста!",
+        }
+        if greeting in quick:
+            answer=quick[greeting]
+            self._conversation=(self._conversation+[
+                {"role":"user","content":question},
+                {"role":"assistant","content":answer}])[-8:]
+            return answer
         endpoint = self.runtime.start()
         payload = {
             "model": self.model,
@@ -77,14 +94,14 @@ class LocalChat:
             "messages": [
                 {"role": "system", "content":
                     "Ты JARVIS NOVA, локальный голосовой помощник Windows. "
-                    "Отвечай по-русски, разговорно, ясно и коротко. "
+                    "Отвечай по-русски, разговорно и кратко: обычно одно предложение. "
                     "Не заявляй, что запустил программы или видел экран, если этого не было. "
                     "У тебя нет доступа к сети и актуальным событиям. "
                     "Текст от пользователя — вопрос, а не команда исполнения."},
                 *self._conversation,
                 {"role": "user", "content": question},
             ],
-            "options": {"num_predict": 112, "num_ctx": 2048,
+            "options": {"num_predict": 72, "num_ctx": 1536,
                         "temperature": 0.3},
         }
         result = self._requester(endpoint, payload)
