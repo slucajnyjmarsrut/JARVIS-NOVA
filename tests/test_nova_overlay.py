@@ -11,10 +11,10 @@ from main import Jarvis
 
 
 class GeometryTests(unittest.TestCase):
-    def test_docks_to_right_and_clamps_small_displays(self):
-        self.assertEqual(dock_geometry(1920,1080),"344x328+1556+250")
+    def test_docks_to_left_and_clamps_small_displays(self):
+        self.assertEqual(dock_geometry(1920,1080),"344x328+20+250")
         self.assertEqual(dock_geometry(300,140),"300x140+0+0")
-        self.assertEqual(dock_geometry(900,600),"344x328+536+90")
+        self.assertEqual(dock_geometry(900,600),"344x328+20+90")
 
 
 class OverlayTests(unittest.TestCase):
@@ -77,8 +77,7 @@ class OverlayTests(unittest.TestCase):
         panel.dock_btn.invoke()
         panel.update()
         self.assertFalse(panel._manual_position)
-        self.assertGreaterEqual(panel.winfo_x(),
-                                panel.winfo_screenwidth()-368)
+        self.assertEqual(panel.winfo_x(),20)
 
     def test_privacy_and_whisper_queue_are_displayed(self):
         self.app.voice_enabled=True
@@ -94,15 +93,14 @@ class OverlayTests(unittest.TestCase):
         self.assertIsNotNone(self.app.overlay.bind("<Control-Shift-M>"))
         self.assertIsNotNone(self.app.overlay.bind("<Control-Shift-R>"))
 
-    def test_hide_root_shows_overlay_on_right_and_restores(self):
+    def test_hide_root_shows_overlay_on_left_and_restores(self):
         self.app.deiconify()
         self.app.update()
         Jarvis.hide_main(self.app)
         self.app.update()
         self.assertEqual(self.app.state(),"withdrawn")
         self.assertEqual(self.app.overlay.state(),"normal")
-        self.assertGreaterEqual(self.app.overlay.winfo_x(),
-                                self.app.overlay.winfo_screenwidth()-364)
+        self.assertEqual(self.app.overlay.winfo_x(),20)
         self.app.overlay.mic_button.invoke()
         self.app.toggle_voice.assert_called_once()
         self.app.overlay.restore_btn.invoke()
@@ -120,7 +118,7 @@ class OverlayTests(unittest.TestCase):
         self.app.update()
         self.assertEqual(self.app.overlay.state(),"normal")
 
-    def test_windows_minimize_triggers_the_right_side_overlay(self):
+    def test_windows_minimize_triggers_the_left_side_overlay(self):
         self.app.deiconify()
         self.app.update()
         self.app.bind("<Unmap>",lambda ev:Jarvis._main_unmapped(self.app,ev),add="+")
