@@ -40,6 +40,46 @@ class Voice:
         self.mic_ready=False
         self._manual_pending=False  # F9 pressed while Vosk opens the input stream
         self.reconnect_attempt=0
+        self._whisper_init_lock=threading.Lock()
+        self._whisper_warm_thread=None
+        self.sensitivity=1.0  # 1.0 balanced, up to 2.0 for quiet microphones
+
+    def set_sensitivity(self, value):
+        """Change voice onset gain without touching the Windows microphone."""
+        level=float(value)
+        if not 0.75<=level<=2.0:
+            raise ValueError("Чувствительность должна быть 0.75–2.0")
+        with self.lock:
+            self.sensitivity=level
+
+    def _get_whisper_model(self, path):
+        """One shared lazy model load; avoids two 100+MB loads on first command."""
+        if self.whisper_model is not None:
+            return self.whisper_model
+        with self._whisper_init_lock:
+            if self.whisper_model is None:
+                import whisper
+                self.whisper_model=whisper.load_model(str(path),device="cpu")
+        return self.whisper_model
+
+    def _prewarm_whisper(self, generation):
+        """Load the bundled model in background while user is not talking."""
+        path=assets()/"base.pt"
+        if not path.is_file() or self.whisper_model is not None:
+            return
+        if self._whisper_warm_thread and self._whisper_warm_thread.is_alive():
+            return
+        def work():
+            try:
+                self._get_whisper_model(path)
+                if generation==self._generation and self.running and not self.stopping:
+                    self.on_status("Whisper прогрет · быстрое распознавание готово")
+            except Exception as exc:
+                if generation==self._generation and self.running and not self.stopping:
+                    self.on_status("Whisper: предварительная загрузка не удалась: "+str(exc)[:70])
+        self._whisper_warm_thread=threading.Thread(
+            target=work,daemon=True,name="whisper-prewarm")
+        self._whisper_warm_thread.start()
 
     def activate(self):
         with self.lock:
@@ -68,6 +108,7 @@ class Voice:
             f"Vosk готов · микрофон {native_rate} Гц → 16000 Гц · жду «Джарвис»")
         if pending:
             self.on_status("Микрофон подключён. Слушаю команду…")
+        self._prewarm_whisper(generation)
         return True
 
     def _mic_disconnected(self, generation):
@@ -210,13 +251,11 @@ class Voice:
         def work():
             try:
                 self.on_status("Whisper распознаёт фразу…")
-                if self.whisper_model is None:
-                    import whisper
-                    self.whisper_model=whisper.load_model(str(path),device="cpu")
+                model=self._get_whisper_model(path)
                 samples=prepare_whisper_audio(pcm)
-                result=self.whisper_model.transcribe(
+                result=model.transcribe(
                     samples,language="ru",fp16=False,condition_on_previous_text=False,
-                    temperature=0,beam_size=5,no_speech_threshold=0.65)
+                    temperature=0,beam_size=2,best_of=1,no_speech_threshold=0.65)
                 text=str(result.get("text","") or "").strip()
                 with self.lock:
                     if self.stopping or generation!=self._generation:
@@ -390,7 +429,7 @@ class Voice:
                                 if self.running and generation==self._generation:
                                     try:self.on_audio_level(min(1.0,rms/32768.0))
                                     except Exception:pass  # UI errors cannot stop speech
-                            state=gate.observe(rms)
+                            state=gate.observe(rms*getattr(self,"sensitivity",1.0))
                             if state=="start":
                                 segment.extend(b"".join(pre_roll))
                                 pre_roll.clear()
