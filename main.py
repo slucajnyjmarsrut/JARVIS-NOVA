@@ -98,6 +98,16 @@ class Jarvis(tk.Tk):
             ModeCommand('timer_start','Фокус-таймер на 25 минут.',minutes=25)))
         modes_menu.add_command(label='Остановить таймер',command=self.stop_focus_timer)
         menu.add_cascade(label='Режимы',menu=modes_menu)
+        recognition_menu=tk.Menu(menu,tearoff=False)
+        self._recognition_mode=tk.StringVar(value="accurate")
+        for label,mode in (
+            ("Точнее русский · Whisper small", "accurate"),
+            ("Быстрее · Whisper base", "fast"),
+        ):
+            recognition_menu.add_radiobutton(
+                label=label,variable=self._recognition_mode,value=mode,
+                command=lambda selected=mode:self.voice.set_recognition_mode(selected))
+        menu.add_cascade(label="Распознавание речи",menu=recognition_menu)
         ai=tk.Menu(menu,tearoff=False)
         for title,choice in [("Свободный разговор (встроенная Qwen, офлайн)","bundled"),
                              ("Только офлайн-команды","none"),("Внешняя Ollama","ollama"),
