@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """JARVIS NOVA Python Agent — one-window desktop assistant."""
-import os, queue, sys, threading, time, math, tkinter as tk
+import os, queue, sys, threading, time, math, re, tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 from agent_core import Plan, parse_local, validate_plan, ask_ai_for_plan
 from desktop import Desktop, AppSuggestion
@@ -559,6 +559,13 @@ class Jarvis(tk.Tk):
             'сценарий для рилс', 'сценарий для шортс', 'снять тикток')):
             self.open_viral_studio('audience')
             self.status.set('Видео-студия: сначала анализ аудитории; интернет только с разрешения.')
+            return
+        # A webcam cannot be opened by JARVIS, including via legacy voice
+        # phrases which would otherwise fall through to desktop app launching.
+        normalized=text.casefold().replace("ё","е")
+        if (re.search(r"(?:камер|вебкамер|webcam|camera)",normalized) and
+                re.search(r"(?:включи|открой|покажи|посмотри|сними|сфотографируй|что перед|опиши)",normalized)):
+            self.reply("Веб-камера полностью удалена из JARVIS. Можно анализировать только экран.")
             return
         source=self.voice.vision_source(text)
         if source:
