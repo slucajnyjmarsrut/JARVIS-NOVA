@@ -192,6 +192,7 @@ def build_interface(app):
                   highlightbackground=EDGE)
     rail.pack(side="left",fill="y",padx=(0,12))
     rail.pack_propagate(False)
+    app.hud_rail=rail
     # NOVA identity and access status now live in the LEFT rail.
     header=tk.Frame(rail,bg=SURFACE)
     header.pack(fill="x",padx=12,pady=(9,2))
@@ -250,8 +251,11 @@ def build_interface(app):
         if hasattr(app,"voice") and hasattr(app.voice,"set_sensitivity"):
             app.voice.set_sensitivity(level)
         app.hud_sensitivity_readout.configure(text=f"{level:.2f}×  /  ТИХАЯ РЕЧЬ")
+    app.hud_sensitivity_var=tk.DoubleVar(master=app,value=1.0)
+    app.hud_sensitivity_var.trace_add(
+        "write",lambda *_:update_sensitivity(app.hud_sensitivity_var.get()))
     app.hud_sensitivity=tk.Scale(controls,from_=0.75,to=2.0,resolution=.05,
-        orient="horizontal",command=update_sensitivity,
+        orient="horizontal",variable=app.hud_sensitivity_var,
         bg=SURFACE,fg=TEXT,activebackground=CYAN_DIM,
         highlightthickness=0,bd=0,troughcolor=EDGE,showvalue=False,length=220)
     app.hud_sensitivity.pack(fill="x",pady=(0,0))
@@ -260,6 +264,7 @@ def build_interface(app):
 
     main=tk.Frame(body,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
     main.pack(side="left",fill="both",expand=True)
+    app.hud_chat=main
     main.grid_columnconfigure(0,weight=1)
     main.grid_rowconfigure(2,weight=1)
     main.grid_rowconfigure(3,weight=0)
