@@ -81,7 +81,7 @@ class QuickVoiceTests(unittest.TestCase):
                           start=lambda:"http://127.0.0.1:11434"),
                        requester=lambda endpoint,data:
                            (payload.append(data),{"message":{"content":"Готово."}})[-1])
-        self.assertEqual(chat.ask("Как дела?"),"Готово.")
+        self.assertEqual(chat.ask("Расскажи про модель"),"Готово.")
         self.assertFalse(payload[0]["think"])
         self.assertEqual(payload[0]["keep_alive"],"20m")
         self.assertLessEqual(payload[0]["options"]["num_predict"],120)
