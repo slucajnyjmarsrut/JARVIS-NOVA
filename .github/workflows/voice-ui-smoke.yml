@@ -48,7 +48,7 @@ jobs:
           python-version: '3.11'
           architecture: x64
       - name: Minimal test dependencies
-        run: python -m pip install numpy scipy
+        run: python -m pip install numpy scipy pillow
       - name: Compile changed modules
         run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py local_chat.py
       - name: Unit tests for voice and offline chat
