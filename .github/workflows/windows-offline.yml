@@ -22,6 +22,7 @@ on:
       - 'speaker.py'
       - 'speech_output.py'
       - 'tests/test_natural_voice.py'
+      - 'tests/test_shutdown.py'
       - 'docs/NOVA_NATURAL_VOICE_0_5_11_RU.md'
       - 'tests/test_whisper_mode.py'
       - 'docs/NOVA_WHISPER_REPLIES_0_5_10_RU.md'
