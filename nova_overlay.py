@@ -12,12 +12,12 @@ from nova_ui import (BG, SURFACE, EDGE, CYAN, GREEN, MUTED, TEXT, RED, AMBER,
 
 
 def dock_geometry(screen_width, screen_height, width=344, height=328, gap=20):
-    """Right-hand edge of the desktop, clamped for small screens."""
+    """Left desktop edge, keeping the panel on-screen at any resolution."""
     sw=max(1,int(screen_width))
     sh=max(1,int(screen_height))
     w=min(width,sw)
     h=min(height,sh)
-    x=max(0,sw-w-max(0,gap))
+    x=min(max(0,gap),max(0,sw-w))
     y=max(0,(sh-h)//3)
     return f"{w}x{h}+{x}+{y}"
 
@@ -38,7 +38,7 @@ class NovaOverlay(tk.Toplevel):
         self.app=app
         self.withdraw()
         self.overrideredirect(True)
-        self.configure(bg=CYAN)
+        self.configure(bg=CYAN_DIM)
         self.attributes("-topmost",True)
         try:
             self.attributes("-alpha",.96)
@@ -52,12 +52,12 @@ class NovaOverlay(tk.Toplevel):
         self._closed=False
 
         shell=tk.Frame(self,bg=SURFACE,highlightthickness=1,
-                       highlightbackground=CYAN)
+                       highlightbackground=CYAN_DIM)
         shell.pack(fill="both",expand=True,padx=1,pady=1)
 
         dragbar=tk.Frame(shell,bg=SURFACE)
         dragbar.pack(fill="x",padx=13,pady=(10,2))
-        title=tk.Label(dragbar,text="◉  NOVA  /  OVERLAY",bg=SURFACE,
+        title=tk.Label(dragbar,text="◉  JARVIS  /  NOVA",bg=SURFACE,
                        fg=CYAN,font=("Segoe UI",11,"bold"),cursor="fleur")
         title.pack(side="left")
         self.restore_btn=tk.Button(
@@ -66,7 +66,7 @@ class NovaOverlay(tk.Toplevel):
             bd=0,relief="flat",cursor="hand2",font=("Segoe UI",9,"bold"))
         self.restore_btn.pack(side="right")
         self.dock_btn=tk.Button(
-            dragbar,text="⇥",command=self.dock_right,bg=SURFACE,
+            dragbar,text="⇤",command=self.dock_left,bg=SURFACE,
             fg=CYAN,activebackground=EDGE,activeforeground=TEXT,
             bd=0,relief="flat",cursor="hand2",font=("Segoe UI",12,"bold"))
         self.dock_btn.pack(side="right",padx=(2,7))
@@ -75,7 +75,7 @@ class NovaOverlay(tk.Toplevel):
             widget.bind("<ButtonPress-1>",self.start_drag)
             widget.bind("<B1-Motion>",self.drag)
             widget.bind("<ButtonRelease-1>",self.end_drag)
-            widget.bind("<Double-Button-1>",self.dock_right)
+            widget.bind("<Double-Button-1>",self.dock_left)
 
         bar=tk.Frame(shell,bg=SURFACE)
         bar.pack(fill="x",padx=13,pady=(4,4))
@@ -144,7 +144,7 @@ class NovaOverlay(tk.Toplevel):
     def end_drag(self,event=None):
         self._drag=None
 
-    def dock_right(self,event=None):
+    def dock_left(self,event=None):
         if self._closed:return
         self._manual_position=False
         self._drag=None
