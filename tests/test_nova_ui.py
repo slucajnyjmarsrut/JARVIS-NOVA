@@ -144,15 +144,23 @@ class HudWidgetTests(unittest.TestCase):
         self.app.update()
         self.assertIn("УПРАВЛЕНИЕ: ЗАПРЕТ",self.app.hud_access.cget("text"))
 
-    def test_shortcuts_reflow_to_two_columns_without_disabling_actions(self):
+    def test_quick_actions_remain_in_left_rail_even_when_chat_resizes(self):
         self.app.hud_reflow(SimpleNamespace(width=480))
         self.assertEqual(self.app.hud_shortcut_columns,2)
-        self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),2)
+        self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),3)
         self.app.hud_reflow(SimpleNamespace(width=820))
-        self.assertEqual(self.app.hud_shortcut_columns,4)
-        self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),1)
+        self.assertEqual(self.app.hud_shortcut_columns,2)
+        self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),3)
+        self.app.update_idletasks()
+        self.assertLess(self.app.hud_shortcuts.winfo_x(),
+                        self.app.history.winfo_rootx())
         self.app.hud_shortcut_buttons[1].invoke()
         self.actions["activate_mode"].assert_called_with("gaming")
+
+    def test_mic_sensitivity_scale_is_real_control(self):
+        self.assertAlmostEqual(float(self.app.hud_sensitivity.get()),1.0)
+        self.app.hud_sensitivity.set(1.8)
+        self.assertIn("1.80",self.app.hud_sensitivity_readout.cget("text"))
 
     def test_current_mode_and_real_focus_timer_display(self):
         self.app.modes=SimpleNamespace(mode="study")
