@@ -10,7 +10,8 @@ from unittest import mock
 
 import numpy as np  # Windows native extension preloaded before module mocks.
 
-from asr_quality import should_refine,prefer_refined,transcript_confidence
+from asr_quality import (should_refine,prefer_refined,transcript_confidence,
+                         suspicious_wake_prefix)
 from speech_capture import AdaptiveSpeechGate
 from voice_engine import Voice
 from main import Jarvis
@@ -23,6 +24,68 @@ def recognition(text,logprob=-0.15,compression=1.0,silence=0.05):
 
 
 class RecognitionQualityTests(unittest.TestCase):
+    def test_near_wake_requires_low_confidence_and_segment_metadata(self):
+        self.assertTrue(suspicious_wake_prefix(
+            recognition("джавис открой блокнот",logprob=-1.2)))
+        self.assertTrue(suspicious_wake_prefix(
+            recognition("эй джайвис что делаешь",logprob=-1.0)))
+        self.assertFalse(suspicious_wake_prefix(
+            recognition("джавис открой блокнот",logprob=-.1)))
+        self.assertFalse(suspicious_wake_prefix({"text":"джавис открой блокнот"}))
+        self.assertFalse(suspicious_wake_prefix(
+            recognition("джастин открой блокнот",logprob=-2.0)))
+        self.assertFalse(suspicious_wake_prefix(
+            recognition("сделай громче",logprob=-2.0)))
+
+    def test_accurate_small_recovers_corrupted_wake_but_fast_does_not(self):
+        for mode,expected in (("accurate",["открой блокнот"]),("fast",[])):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as folder:
+                root=Path(folder)
+                (root/"base.pt").write_bytes(b"stub")
+                (root/"small.pt").write_bytes(b"stub")
+                captured=[]
+                done=threading.Event()
+                models=[]
+                v=Voice(lambda s:captured.append(s),lambda _:None,lambda:False)
+                v.recognition_mode=mode
+                def first(*a,**kw):
+                    models.append("base")
+                    return recognition("джавис открой блокнот",logprob=-1.15)
+                def refined(*a,**kw):
+                    models.append("small")
+                    return recognition("джарвис открой блокнот",logprob=-.2)
+                v._get_whisper_model=lambda _:types.SimpleNamespace(transcribe=first)
+                v._get_small_model=lambda _:types.SimpleNamespace(transcribe=refined)
+                v.on_transcript=lambda _:done.set()
+                with mock.patch("voice_engine.assets",return_value=root):
+                    v._try_whisper((np.ones(16000,dtype="<i2")*120).tobytes(),False)
+                    deadline=time.monotonic()+3
+                    while v.whisper_busy and time.monotonic()<deadline:
+                        time.sleep(.01)
+                self.assertEqual(captured,expected)
+                self.assertEqual(models,["base","small"] if mode=="accurate" else ["base"])
+
+    def test_wake_recovery_never_dispatches_weak_or_missing_wake(self):
+        for second in (
+            recognition("открой блокнот",logprob=-.1),
+            recognition("джарвис открой блокнот",logprob=-1.5),
+            {"text":"джарвис открой блокнот"}):
+            with self.subTest(second=second),tempfile.TemporaryDirectory() as folder:
+                root=Path(folder)
+                (root/"base.pt").write_bytes(b"stub")
+                (root/"small.pt").write_bytes(b"stub")
+                called=[]
+                v=Voice(called.append,lambda _:None,lambda:False)
+                v._get_whisper_model=lambda _:types.SimpleNamespace(transcribe=lambda *a,**kw:
+                    recognition("джавис открой блокнот",logprob=-1.0))
+                v._get_small_model=lambda _:types.SimpleNamespace(transcribe=lambda *a,**kw:second)
+                with mock.patch("voice_engine.assets",return_value=root):
+                    v._try_whisper((np.ones(16000,dtype="<i2")*120).tobytes(),False)
+                    deadline=time.monotonic()+3
+                    while v.whisper_busy and time.monotonic()<deadline:
+                        time.sleep(.01)
+                self.assertEqual(called,[])
+
     def test_good_russian_transcript_skips_expensive_second_pass(self):
         self.assertFalse(should_refine(recognition("джарвис открой блокнот"),True))
 
