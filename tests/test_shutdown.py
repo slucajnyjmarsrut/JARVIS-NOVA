@@ -58,6 +58,7 @@ class ShutdownTests(unittest.TestCase):
         sp=Speaker()
         sp.shutdown()
         self.assertTrue(sp._closing.is_set())
-        self.assertIsNone(sp.say('Это не должно озвучиваться'))
+        self.assertIs(sp.say('Это не должно озвучиваться'),False)
+        self.assertFalse(sp.busy)
 
 if __name__=='__main__':unittest.main()
