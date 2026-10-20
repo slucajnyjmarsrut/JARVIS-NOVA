@@ -181,6 +181,7 @@ def build_interface(app):
     app.configure(bg=BG)
     app.status=tk.StringVar(master=app,value="Запускаю офлайн-голос…")
     app.mic_state=tk.StringVar(master=app,value="Микрофон: подключается…")
+    app.hud_transcript=tk.StringVar(master=app,value="РАСПОЗНАНО: ожидаю команду…")
     app.hud_animate=tk.BooleanVar(master=app,value=True)
     app.hud_level_value=0.0
     app.hud_level_at=0.0
@@ -226,7 +227,11 @@ def build_interface(app):
     app.hud_meter_label=_label(rail,"ВХОД: НЕТ ДАННЫХ",fg=MUTED,size=8)
     app.hud_meter_label.pack(anchor="center",pady=(0,8))
     _label(rail,"ЗВУК НЕ СОХРАНЯЕТСЯ",fg=CYAN_DIM,size=8).pack(
-        anchor="center",pady=(0,7))
+        anchor="center",pady=(0,2))
+    app.hud_last_transcript=_label(
+        rail,fg=CYAN,size=8,justify="left",anchor="w",
+        wraplength=256,height=2,textvariable=app.hud_transcript)
+    app.hud_last_transcript.pack(fill="x",padx=11,pady=(1,4))
 
     controls=tk.Frame(rail,bg=SURFACE)
     controls.pack(fill="x",padx=11)
