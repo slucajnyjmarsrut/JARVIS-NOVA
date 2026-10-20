@@ -189,9 +189,9 @@ jobs:
         run: |
           $compiler='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (!(Test-Path $compiler)) { throw 'No Inno Setup compiler' }
-          $version=(Get-Item $compiler).VersionInfo.ProductVersion
-          Write-Host "Inno Setup version: $version"
-          if ([version]($version.Split(' ')[0]) -lt [version]'6.6.0') { throw 'Inno Setup 6.6+ required for dark wizard' }
+          # ISCC.exe FileVersion can report 0.0.0.0 on Chocolatey, although
+          # Chocolatey installed Inno Setup 6.7.1. Let the actual compiler
+          # parse WizardStyle=modern dark and fail if unsupported.
           & $compiler 'installer\JarvisNova.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
           $setups=@(Get-ChildItem 'dist/installer/*.exe')
