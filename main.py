@@ -53,7 +53,8 @@ class Jarvis(tk.Tk):
                             lambda:self.speaker.busy or self.trimodal.speaking,
                             on_vision_audio=lambda pcm,src:self.q.put(("vision_audio",(pcm,src))),
                             on_audio_level=lambda level:self.q.put(("audio_level",level)),
-                            on_heard_styled=lambda text,style:self.q.put(("heard",(text,style))))
+                            on_heard_styled=lambda text,style:self.q.put(("heard",(text,style))),
+                            on_transcript=lambda text:self.q.put(("transcript",text)))
         build_interface(self)
         # Keep the assistant active when the main window is minimized/hidden.
         # The small overlay is another local Tk window, not a second app.
@@ -753,6 +754,9 @@ class Jarvis(tk.Tk):
                     else:self.reply(answer+" Проверь установку моделей.")
                 elif op=="tts_error":
                     self.status.set("Ошибка озвучивания: "+str(val)[:140])
+                elif op=="transcript":
+                    if self.voice_enabled and not self._closing:
+                        self.hud_transcript.set("РАСПОЗНАНО: "+str(val)[:155])
                 elif op=="status":
                     # Do not allow a queued event from an old mic worker to
                     # incorrectly display an active microphone after Stop.
