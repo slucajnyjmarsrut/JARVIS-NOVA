@@ -152,8 +152,8 @@ class HudWidgetTests(unittest.TestCase):
         self.assertEqual(self.app.hud_shortcut_columns,2)
         self.assertEqual(int(self.app.hud_shortcut_buttons[4].grid_info()["row"]),3)
         self.app.update_idletasks()
-        self.assertLess(self.app.hud_shortcuts.winfo_x(),
-                        self.app.history.winfo_rootx())
+        self.assertIs(self.app.hud_shortcuts.master,self.app.hud_rail)
+        self.assertIsNot(self.app.hud_chat,self.app.hud_rail)
         self.app.hud_shortcut_buttons[1].invoke()
         self.actions["activate_mode"].assert_called_with("gaming")
 
