@@ -15,11 +15,13 @@ from nova_ui import build_interface
 from nova_overlay import NovaOverlay
 from overlay_commands import overlay_intent, preview_line
 from whisper_mode import normalize_style
+from windows_theme import make_titlebar_dark
+from quick_replies import quick_reply
 
 class Jarvis(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("JARVIS NOVA — Голос, экран, видео и режимы")
+        self.title("JARVIS NOVA")
         self.geometry("1060x720")
         self.minsize(760,590)
         self.configure(bg="#070D17")
@@ -62,25 +64,28 @@ class Jarvis(tk.Tk):
         self.bind("<Unmap>",self._main_unmapped,add="+")
         self.bind("<Map>",self._main_mapped,add="+")
         self.bind("<Control-Shift-O>",lambda event:(self.toggle_overlay(),"break")[1])
-        # Permissions, engine configuration and stop live in native menus,
-        # not as an extra control panel on the main screen.
-        menu=tk.Menu(self)
-        permissions=tk.Menu(menu,tearoff=False)
+        # Menus are available only by the left-side Settings control.
+        # They do not take an entire bright Windows menu row above the HUD.
+        theme={"tearoff":False,"bg":"#0D1929","fg":"#E9F6FF",
+               "activebackground":"#236C80","activeforeground":"#FFFFFF",
+               "borderwidth":0,"relief":"flat"}
+        menu=tk.Menu(self,**theme)
+        permissions=tk.Menu(menu,**theme)
         permissions.add_command(label="Разрешить управление компьютером",command=self.grant_control)
         permissions.add_command(label="Разрешить зрение для старых команд (только локально)",command=self.grant_vision)
         permissions.add_command(label="Отозвать все разрешения",command=self.revoke)
         menu.add_cascade(label="Разрешения",menu=permissions)
-        vision_menu=tk.Menu(menu,tearoff=False)
+        vision_menu=tk.Menu(menu,**theme)
         vision_menu.add_command(label="Спросить голосом об экране (Whisper → Vision → Silero)",
                                 command=lambda:self.request_trimodal("screen"))
         menu.add_cascade(label="Зрение",menu=vision_menu)
-        modes_menu=tk.Menu(menu,tearoff=False)
+        modes_menu=tk.Menu(menu,**theme)
         self._selected_mode=tk.StringVar(value='neutral')
         for key,label in [('neutral','Обычный'),('gaming','Игры'),('work','Работа'),
                           ('office','Офис'),('study','Учёба')]:
             modes_menu.add_radiobutton(label=label,variable=self._selected_mode,value=key,
                 command=lambda value=key:self.activate_mode(value))
-        video_menu=tk.Menu(modes_menu,tearoff=False)
+        video_menu=tk.Menu(modes_menu,**theme)
         for key,label in [('videos','Ролики — идея и аудитория'),('video_shoot','Ролики — съёмка'),
                           ('video_edit','Ролики — монтаж'),('video_review','Ролики — оценка')]:
             video_menu.add_radiobutton(label=label,variable=self._selected_mode,value=key,
@@ -95,22 +100,22 @@ class Jarvis(tk.Tk):
             ModeCommand('timer_start','Фокус-таймер на 25 минут.',minutes=25)))
         modes_menu.add_command(label='Остановить таймер',command=self.stop_focus_timer)
         menu.add_cascade(label='Режимы',menu=modes_menu)
-        ai=tk.Menu(menu,tearoff=False)
+        ai=tk.Menu(menu,**theme)
         for title,choice in [("Свободный разговор (встроенная Qwen, офлайн)","bundled"),
                              ("Только офлайн-команды","none"),("Внешняя Ollama","ollama"),
                              ("OpenAI API (нужен ключ)","openai"),
                              ("Claude API (нужен ключ)","anthropic")]:
             ai.add_command(label=title,command=lambda v=choice:self.set_engine(v))
         menu.add_cascade(label="AI",menu=ai)
-        interface_menu=tk.Menu(menu,tearoff=False)
+        interface_menu=tk.Menu(menu,**theme)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
-        interface_menu.add_command(label="Скрыть окно → оверлей справа (Ctrl+Shift+O)",
+        interface_menu.add_command(label="Скрыть окно → оверлей слева (Ctrl+Shift+O)",
                                    command=self.hide_main)
         interface_menu.add_command(label="Вернуть главное окно",command=self.show_main)
         interface_menu.add_command(label="Исходный размер окна",
                                    command=lambda:self.geometry("1060x720"))
         menu.add_cascade(label="Интерфейс",menu=interface_menu)
-        learning_menu=tk.Menu(menu,tearoff=False)
+        learning_menu=tk.Menu(menu,**theme)
         learning_menu.add_command(label="Научить названию программы…",command=self.teach_alias)
         learning_menu.add_command(label="Показать результаты обучения",command=self.learning_report)
         learning_menu.add_command(label="Удалить выученное название…",command=self.remove_alias)
@@ -118,10 +123,21 @@ class Jarvis(tk.Tk):
         learning_menu.add_command(label="Проверить офлайн-модели",command=self.check_models)
         menu.add_cascade(label="Самоулучшение",menu=learning_menu)
         menu.add_command(label="Стоп/Выключить микрофон",command=self.toggle_voice)
-        self.config(menu=menu)
+        self._settings_menu=menu
+        self.after(80,lambda:make_titlebar_dark(self))
         self.log("Система","Управление голосом: «Джарвис, открой Chrome». F9 — ручная активация.")
         self.after(100,self.pump)
         threading.Thread(target=self.init_voice,daemon=True).start()
+
+    def show_settings_menu(self):
+        """Open the complete settings/permissions menu from the LEFT rail."""
+        button=getattr(self,"hud_settings_button",self)
+        x=button.winfo_rootx()
+        y=button.winfo_rooty()+button.winfo_height()
+        try:
+            self._settings_menu.tk_popup(x,y)
+        finally:
+            self._settings_menu.grab_release()
 
     def _main_unmapped(self,event):
         """Tk also sends Unmap for child widgets: ignore those events."""
@@ -578,6 +594,12 @@ class Jarvis(tk.Tk):
             self.status.set("Остановлено")
             return
         local=parse_local(text)
+        # Common conversational phrases should not boot the CPU-heavy 2B
+        # vision model. No substring matching: never swallow actual commands.
+        short=quick_reply(text) if not local.steps and not local.answer else None
+        if short and self.engine=="bundled":
+            self.reply(short)
+            return
         if self.engine=="none" or local.steps or local.answer or text.casefold().strip() in {"открой","запусти","включи"}:
             self.execute_plan(local)
         elif self.engine=="bundled":
