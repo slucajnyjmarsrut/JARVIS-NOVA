@@ -9,7 +9,7 @@ from PyInstaller.utils.hooks import collect_all
 project=Path(SPECPATH)
 assets=project/'assets'
 critical=[assets/'models'/'vosk'/'am'/'final.mdl',
-          assets/'models'/'base.pt',assets/'models'/'v5_ru.pt',
+          assets/'models'/'base.pt',assets/'models'/'small.pt',assets/'models'/'v5_ru.pt',
           assets/'ollama'/'ollama.exe',
           assets/'models'/'ollama'/'manifests'/'registry.ollama.ai'/'library'/'qwen3-vl'/'2b-instruct']
 for item in critical:
