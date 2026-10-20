@@ -32,7 +32,7 @@ class InstallerAppearanceTests(unittest.TestCase):
         self.assertIn("WizardStyle=modern dark",setup)
         self.assertIn("WizardImageFile=..\\assets\\installer_banner.bmp",setup)
         self.assertIn("WizardSmallImageFile=..\\assets\\installer_badge.bmp",setup)
-        self.assertIn("AppVersion \"0.5.16-dev\"",setup)
+        self.assertIn("AppVersion \"0.5.17-dev\"",setup)
 
 
 if __name__=="__main__":
