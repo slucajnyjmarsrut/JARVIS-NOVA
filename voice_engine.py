@@ -224,6 +224,8 @@ class Voice:
                 # Only Whisper-confirmed SCREEN intent can use original PCM;
                 # no camera backend exists, and Vosk guesses never grant access.
                 if text:
+                    if active or WAKE.match(text):
+                        self.on_status("Whisper распознал: "+text[:90])
                     # Authorized queued speech must not be silently discarded
                     # by accept_text() while Silero is speaking the previous
                     # response. Only a bounded wait, never interrupt playback.
@@ -248,7 +250,7 @@ class Voice:
                     else:
                         self.accept_text(text,style=self.whisper_classifier.classify(pcm))
                 elif active:
-                    self.on_status("Не расслышал. Попробуй повторить немного громче.")
+                    self.on_status("Whisper не разобрал слова. Проверь выбранный микрофон и повтори через F9.")
             except Exception as exc:
                 with self.lock:
                     valid=not self.stopping and generation==self._generation
