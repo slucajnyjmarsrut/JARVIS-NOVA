@@ -221,8 +221,8 @@ class Voice:
                 with self.lock:
                     if self.stopping or generation!=self._generation:
                         return  # Stale Whisper result after Stop/restart.
-                # Only a Whisper-confirmed Vision phrase can use the original PCM;
-                # a noisy Vosk guess must never trigger camera/screen access.
+                # Only Whisper-confirmed SCREEN intent can use original PCM;
+                # no camera backend exists, and Vosk guesses never grant access.
                 if text:
                     # Authorized queued speech must not be silently discarded
                     # by accept_text() while Silero is speaking the previous
@@ -290,11 +290,13 @@ class Voice:
 
     @staticmethod
     def vision_source(text: str) -> str | None:
-        """Local-only intent classification; never infer permissions from audio."""
+        """Offline screen-only request. Camera voice capture was removed."""
         norm=text.casefold().replace('ё','е')
-        if not re.search(r'что (?:ты )?видишь|посмотри (?:на экран|в камеру)|опиши (?:экран|камеру)|что на экране|что перед камерой', norm):
+        if re.search(r'камер|вебкам|webcam',norm):
             return None
-        return 'camera' if re.search(r'камер|перед тобой', norm) else 'screen'
+        if re.search(r'что (?:ты )?видишь|посмотри на экран|опиши экран|что на экране',norm):
+            return 'screen'
+        return None
 
     def _run(self, generation: int):
         try:
