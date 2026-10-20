@@ -9,6 +9,7 @@ on:
       - 'speaker.py'
       - 'speech_output.py'
       - 'tests/test_natural_voice.py'
+      - 'tests/test_shutdown.py'
       - 'tests/test_whisper_mode.py'
       - 'main.py'
       - 'nova_ui.py'
@@ -46,4 +47,4 @@ jobs:
       - name: Compile changed modules
         run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py local_chat.py
       - name: Unit tests for voice and offline chat
-        run: python -m unittest discover -s tests -p 'test_voice_fallback.py' -v && python -m unittest discover -s tests -p 'test_voice_routing.py' -v && python -m unittest discover -s tests -p 'test_conversation_followup.py' -v && python -m unittest discover -s tests -p 'test_local_chat.py' -v && python -m unittest discover -s tests -p 'test_nova_ui.py' -v && python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v && python -m unittest discover -s tests -p 'test_nova_overlay.py' -v && python -m unittest discover -s tests -p 'test_whisper_queue.py' -v && python -m unittest discover -s tests -p 'test_voice_queue_polish.py' -v && python -m unittest discover -s tests -p 'test_overlay_commands.py' -v && python -m unittest discover -s tests -p 'test_voice_ready.py' -v && python -m unittest discover -s tests -p 'test_microphone_recovery.py' -v && python -m unittest discover -s tests -p 'test_microphone_ui_reconnect.py' -v && python -m unittest discover -s tests -p 'test_whisper_mode.py' -v && python -m unittest discover -s tests -p 'test_natural_voice.py' -v
+        run: python -m unittest discover -s tests -p 'test_voice_fallback.py' -v && python -m unittest discover -s tests -p 'test_voice_routing.py' -v && python -m unittest discover -s tests -p 'test_conversation_followup.py' -v && python -m unittest discover -s tests -p 'test_local_chat.py' -v && python -m unittest discover -s tests -p 'test_nova_ui.py' -v && python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v && python -m unittest discover -s tests -p 'test_nova_overlay.py' -v && python -m unittest discover -s tests -p 'test_whisper_queue.py' -v && python -m unittest discover -s tests -p 'test_voice_queue_polish.py' -v && python -m unittest discover -s tests -p 'test_overlay_commands.py' -v && python -m unittest discover -s tests -p 'test_voice_ready.py' -v && python -m unittest discover -s tests -p 'test_microphone_recovery.py' -v && python -m unittest discover -s tests -p 'test_microphone_ui_reconnect.py' -v && python -m unittest discover -s tests -p 'test_whisper_mode.py' -v && python -m unittest discover -s tests -p 'test_natural_voice.py' -v && python -m unittest discover -s tests -p 'test_shutdown.py' -v
