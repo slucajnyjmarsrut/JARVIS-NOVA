@@ -185,35 +185,33 @@ def build_interface(app):
     app.hud_level_value=0.0
     app.hud_level_at=0.0
 
-    header=tk.Frame(app,bg=BG)
-    header.pack(fill="x",padx=20,pady=(12,9))
-    tk.Frame(header,bg=CYAN,width=4).pack(side="left",fill="y",padx=(0,12))
-    brand=tk.Frame(header,bg=BG)
-    brand.pack(side="left",anchor="w")
-    _label(brand,"NEURAL OPERATING VOICE ASSISTANT  /  WINDOWS",
-           fg=CYAN_DIM,size=8,bold=True).pack(anchor="w")
-    _label(brand,"JARVIS  NOVA",fg=TEXT,size=25,bold=True).pack(anchor="w")
-    indicator=tk.Frame(header,bg=BG)
-    indicator.pack(side="right",anchor="e")
-    app.hud_clock=_label(indicator,"--:--:--",fg=TEXT,size=15,bold=True)
-    app.hud_clock.pack(anchor="e")
-    app.hud_engine=_label(indicator,"LOCAL QWEN  •  OFFLINE",
-                          fg=GREEN,size=8,bold=True)
-    app.hud_engine.pack(anchor="e",pady=(1,0))
-    app.hud_access=_label(indicator,"УПРАВЛЕНИЕ: ЗАПРЕТ  /  ЗРЕНИЕ*: ЗАПРЕТ",
-                          fg=MUTED,size=8,bold=True)
-    app.hud_access.pack(anchor="e",pady=(3,0))
-
-    tk.Frame(app,bg=CYAN_DIM,height=1).pack(fill="x",padx=20)
     body=tk.Frame(app,bg=BG)
     body.pack(fill="both",expand=True,padx=20,pady=(12,9))
 
-    rail=tk.Frame(body,bg=SURFACE,width=251,highlightthickness=1,
+    rail=tk.Frame(body,bg=SURFACE,width=286,highlightthickness=1,
                   highlightbackground=EDGE)
     rail.pack(side="left",fill="y",padx=(0,12))
     rail.pack_propagate(False)
+    # NOVA identity and access status now live in the LEFT rail.
+    header=tk.Frame(rail,bg=SURFACE)
+    header.pack(fill="x",padx=12,pady=(9,2))
+    tk.Frame(header,bg=CYAN,width=3).pack(side="left",fill="y",padx=(0,9))
+    brand=tk.Frame(header,bg=SURFACE)
+    brand.pack(side="left",anchor="w")
+    _label(brand,"NEURAL VOICE  /  OFFLINE",fg=CYAN_DIM,size=8,bold=True).pack(anchor="w")
+    _label(brand,"JARVIS  NOVA",fg=TEXT,size=17,bold=True).pack(anchor="w")
+    meta=tk.Frame(rail,bg=SURFACE)
+    meta.pack(fill="x",padx=14,pady=(0,2))
+    app.hud_clock=_label(meta,"--:--:--",fg=TEXT,size=10,bold=True)
+    app.hud_clock.pack(side="left")
+    app.hud_engine=_label(meta,"QWEN  /  ЛОКАЛЬНО",fg=GREEN,size=8,bold=True)
+    app.hud_engine.pack(side="right")
+    app.hud_access=_label(rail,"УПРАВЛЕНИЕ: ЗАПРЕТ  /  ЗРЕНИЕ*: ЗАПРЕТ",
+                           fg=MUTED,size=7,bold=True)
+    app.hud_access.pack(anchor="w",padx=14,pady=(0,3))
+    tk.Frame(rail,bg=CYAN_DIM,height=1).pack(fill="x",padx=13,pady=(0,3))
     rail_top=tk.Frame(rail,bg=SURFACE)
-    rail_top.pack(fill="x",padx=14,pady=(11,0))
+    rail_top.pack(fill="x",padx=14,pady=(3,0))
     _label(rail_top,"01  /  ГОЛОСОВОЕ ЯДРО",fg=CYAN,size=9,bold=True).pack(anchor="w")
     app.hud_reactor=Reactor(rail)
     app.hud_reactor.pack(fill="x",padx=6,pady=(1,0))
@@ -232,7 +230,7 @@ def build_interface(app):
     controls=tk.Frame(rail,bg=SURFACE)
     controls.pack(fill="x",padx=11)
     def resize_rail(event):
-        target=136 if event.height<480 else 180
+        target=95 if event.height<650 else 133
         if int(app.hud_reactor.cget("height"))!=target:
             app.hud_reactor.configure(height=target)
     rail.bind("<Configure>",resize_rail,add="+")
@@ -243,7 +241,22 @@ def build_interface(app):
     _action(controls,"ТЕСТ СИГНАЛА",app.test_microphone,
             compact=True).pack(fill="x",pady=(0,6))
     _action(controls,"◉  СЛУШАЙ  /  F9",lambda:app.f9(),
-            compact=True).pack(fill="x",pady=(0,6))
+            compact=True).pack(fill="x",pady=(0,5))
+    _label(controls,"ЧУВСТВИТЕЛЬНОСТЬ",fg=CYAN_DIM,size=8,bold=True).pack(anchor="w")
+    app.hud_sensitivity_readout=_label(controls,"1.00×  /  ТИХАЯ РЕЧЬ",
+                                       fg=MUTED,size=8)
+    def update_sensitivity(value):
+        level=round(float(value),2)
+        if hasattr(app,"voice") and hasattr(app.voice,"set_sensitivity"):
+            app.voice.set_sensitivity(level)
+        app.hud_sensitivity_readout.configure(text=f"{level:.2f}×  /  ТИХАЯ РЕЧЬ")
+    app.hud_sensitivity=tk.Scale(controls,from_=0.75,to=2.0,resolution=.05,
+        orient="horizontal",command=update_sensitivity,
+        bg=SURFACE,fg=TEXT,activebackground=CYAN_DIM,
+        highlightthickness=0,bd=0,troughcolor=EDGE,showvalue=False,length=220)
+    app.hud_sensitivity.pack(fill="x",pady=(0,0))
+    app.hud_sensitivity_readout.pack(anchor="w",pady=(0,3))
+    app.hud_sensitivity.set(1.0)
 
     main=tk.Frame(body,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
     main.pack(side="left",fill="both",expand=True)
@@ -298,8 +311,11 @@ def build_interface(app):
     app.bind("<Control-Shift-M>",lambda e:(app.toggle_voice(),"break")[1])
     app.bind("<Control-Shift-R>",lambda e:(app.revoke(),"break")[1])
 
-    shortcuts=tk.Frame(main,bg=SURFACE)
-    shortcuts.grid(row=4,column=0,sticky="ew",padx=9,pady=(0,10))
+    # Left-side controls: no top or bottom shortcut bar.
+    shortcuts=tk.Frame(rail,bg=SURFACE)
+    shortcuts.pack(fill="x",padx=9,pady=(1,5))
+    _label(shortcuts,"БЫСТРЫЕ ДЕЙСТВИЯ",fg=CYAN,size=8,bold=True).grid(
+        row=0,column=0,columnspan=2,sticky="w",pady=(0,3))
     choices=(
         ("РОЛИКИ",lambda:app.open_viral_studio("audience")),
         ("ИГРЫ",lambda:app.activate_mode("gaming")),
@@ -310,28 +326,21 @@ def build_interface(app):
         ("ВОЗМОЖНОСТИ",app.show_capabilities),
     )
     app.hud_mode_buttons={}
-    for i,(name,callback) in enumerate(choices):
+    app.hud_shortcuts=shortcuts
+    app.hud_shortcut_buttons=[]
+    app.hud_shortcut_columns=2
+    for index,(name,callback) in enumerate(choices):
         widget=_action(shortcuts,name,callback,compact=True)
-        widget.grid(row=i//4,column=i%4,sticky="ew",padx=3,pady=3)
+        widget.grid(row=1+index//2,column=index%2,sticky="ew",padx=2,pady=2)
+        app.hud_shortcut_buttons.append(widget)
         if name in {"ИГРЫ","РАБОТА","ОФИС","УЧЁБА"}:
             app.hud_mode_buttons[{"ИГРЫ":"gaming","РАБОТА":"work",
                                   "ОФИС":"office","УЧЁБА":"study"}[name]]=widget
-    app.hud_shortcuts=shortcuts
-    app.hud_shortcut_buttons=list(shortcuts.winfo_children())
-    app.hud_shortcut_columns=4
-    for col in range(4):
-        shortcuts.grid_columnconfigure(col,weight=1)
+    for column in range(2):
+        shortcuts.grid_columnconfigure(column,weight=1)
 
     def resize_main(event):
         app.hud_status.configure(wraplength=max(140,event.width-35))
-        cols=2 if event.width<610 else 4
-        if cols==app.hud_shortcut_columns:
-            return
-        app.hud_shortcut_columns=cols
-        for index,button in enumerate(app.hud_shortcut_buttons):
-            button.grid_configure(row=index//cols,column=index%cols)
-        for col in range(4):
-            shortcuts.grid_columnconfigure(col,weight=1 if col<cols else 0)
     app.hud_reflow=resize_main
     main.bind("<Configure>",resize_main,add="+")
 
