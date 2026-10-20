@@ -8,6 +8,7 @@ from typing import Callable
 from agent_core import WAKE, strip_wake
 from speaker import assets
 from whisper_mode import WhisperClassifier, normalize_style
+from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
 
 
 class Voice:
@@ -180,7 +181,7 @@ class Voice:
             active = did_wake or force or now < self.until
             # A queued, already captured phrase is safe to recognize while
             # TTS plays; the worker waits for playback BEFORE dispatch.
-            if self.stopping or len(pcm)<16000 or (self.speaking() and not force):
+            if self.stopping or len(pcm)<9600 or (self.speaking() and not force):
                 return
             if self.whisper_busy:
                 # Never drop an explicitly awakened/manual follow-up just
@@ -194,7 +195,7 @@ class Voice:
                         self.on_status(
                             f"Whisper: команда в очереди ({len(self.whisper_queue)}/2)")
                 return
-            if not active and now-self.whisper_last_at < 3.0:
+            if not active and now-self.whisper_last_at < 1.0:
                 return
             path=assets()/"base.pt"
             if not path.is_file():
@@ -212,11 +213,10 @@ class Voice:
                 if self.whisper_model is None:
                     import whisper
                     self.whisper_model=whisper.load_model(str(path),device="cpu")
-                import numpy as np
-                samples=np.frombuffer(pcm,dtype="<i2").astype(np.float32)/32768.0
+                samples=prepare_whisper_audio(pcm)
                 result=self.whisper_model.transcribe(
                     samples,language="ru",fp16=False,condition_on_previous_text=False,
-                    temperature=0,beam_size=3,no_speech_threshold=0.55)
+                    temperature=0,beam_size=5,no_speech_threshold=0.65)
                 text=str(result.get("text","") or "").strip()
                 with self.lock:
                     if self.stopping or generation!=self._generation:
@@ -311,13 +311,11 @@ class Voice:
             recognizer.SetWords(True)
             audio_queue=queue.Queue(maxsize=60)
             segment=bytearray()
-            pre_roll=deque(maxlen=4)  # 400 ms before speech onset, in RAM only.
+            pre_roll=deque(maxlen=7)  # 700 ms before onset, preserves quiet first syllables.
             silent=0
             max_segment=16000*2*11
             vosk_parts=[]
-            # Adaptive PCM16 noise floor: retains quiet speech while avoiding
-            # a fixed threshold that fails between laptops/headsets.
-            noise_floor=8.0
+            gate=AdaptiveSpeechGate()
             segment_vosk_wake=False
             was_speaking=False
             last_level_report=0.0
@@ -340,6 +338,7 @@ class Voice:
                     silent=0
                     segment_vosk_wake=False
                     was_speaking=False
+                    gate=AdaptiveSpeechGate()
                     device_info=sd.query_devices(self.input_device,kind="input")
                     native_rate=int(round(device_info["default_samplerate"]))
                     if not 8000<=native_rate<=192000:
@@ -353,7 +352,7 @@ class Voice:
                             except queue.Full:pass
                     # Model initialization may finish after the application was closed.
                     if not self.running or generation!=self._generation:return
-                    # Try 16 kHz first; PortAudio can convert native Bluetooth/HFP rates.
+                    # Open the actual Windows device rate; resample packets in RAM.
                     with sd.RawInputStream(samplerate=native_rate,
                                            blocksize=max(256,int(native_rate/10)),channels=1,
                                            dtype="int16",callback=callback,
@@ -373,6 +372,7 @@ class Voice:
                                 if not was_speaking:
                                     segment.clear();pre_roll.clear();silent=0;segment_vosk_wake=False
                                     vosk_parts.clear()
+                                    gate.reset()
                                     recognizer=KaldiRecognizer(model,16000)
                                 was_speaking=True
                                 continue
@@ -388,19 +388,15 @@ class Voice:
                                 if self.running and generation==self._generation:
                                     try:self.on_audio_level(min(1.0,rms/32768.0))
                                     except Exception:pass  # UI errors cannot stop speech
-                            speech_threshold=max(24.0,min(200.0,noise_floor*2.6+12))
-                            if rms>speech_threshold:
-                                if not segment:
-                                    segment.extend(b"".join(pre_roll))
-                                    pre_roll.clear()
+                            state=gate.observe(rms)
+                            if state=="start":
+                                segment.extend(b"".join(pre_roll))
+                                pre_roll.clear()
                                 segment.extend(packet)
-                                silent=0
-                            elif segment:
+                            elif gate.active or state=="end":
                                 segment.extend(packet)
-                                silent+=1
                             else:
                                 pre_roll.append(packet)
-                                noise_floor=0.98*noise_floor+0.02*rms
                             if recognizer.AcceptWaveform(packet):
                                 result=json.loads(recognizer.Result())
                                 text=result.get("text","").strip()
@@ -412,9 +408,10 @@ class Voice:
                                         # but Vosk's potentially wrong words are NEVER executed yet.
                                         with self.lock: self.until=time.monotonic()+10
                                         self.on_status("Слышу «Джарвис». Уточняю через Whisper…")
-                            if segment and (silent>=7 or len(segment)>=max_segment):
+                            if segment and (state=="end" or len(segment)>=max_segment):
                                 utterance=bytes(segment)
                                 segment.clear();silent=0
+                                gate.reset()
                                 text=json.loads(recognizer.FinalResult()).get("text","").strip()
                                 combined=" ".join([*vosk_parts, text]).strip()
                                 vosk_parts.clear()
