@@ -18,7 +18,8 @@ class NoCameraTests(unittest.TestCase):
         requirements=(ROOT/"requirements-windows.txt").read_text(encoding="utf-8")
         spec=(ROOT/"jarvis_nova.spec").read_text(encoding="utf-8")
         self.assertNotIn("opencv-python",requirements)
-        self.assertNotIn("'cv2'",spec)
+        self.assertNotIn("'PIL','cv2'",spec)
+        self.assertNotIn("'pygetwindow','cv2'",spec)
         self.assertIn("excludes=['cv2'",spec)
 
     def test_ui_contains_no_camera_buttons_or_menu(self):
