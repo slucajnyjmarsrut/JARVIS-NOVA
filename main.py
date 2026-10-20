@@ -548,7 +548,7 @@ class Jarvis(tk.Tk):
             return
         if overlay_action=="hide":
             self.hide_main()
-            self.reply("Оверлей JARVIS справа. Чтобы вернуться, нажми «ОТКРЫТЬ».")
+            self.reply("Оверлей JARVIS слева. Чтобы вернуться, нажми «ОТКРЫТЬ».")
             return
         mode_command=self.modes.parse(text,self.desktop.is_installed)
         if mode_command is not None:
