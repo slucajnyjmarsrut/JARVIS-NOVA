@@ -13,6 +13,17 @@ MODELS = ROOT / 'assets' / 'models'
 WHISPER_BASE_SHA256 = 'ed3a0b6b1c0edf879ad9b11b1af5a0e6ab5db9205f891f668f8b0e6c6326e34e'
 
 
+def get_small_whisper_digest(whisper_module):
+    """Read upstream checkpoint SHA256 from the trusted installed Whisper package."""
+    from urllib.parse import urlparse
+    url=whisper_module._MODELS.get("small","")
+    pieces=urlparse(url).path.split("/")
+    sha=pieces[-2].lower() if len(pieces)>=3 else ""
+    if len(sha)!=64 or any(c not in "0123456789abcdef" for c in sha):
+        raise RuntimeError("Invalid official multilingual small Whisper digest")
+    return sha
+
+
 def hash_file(path):
     h = hashlib.sha256()
     with Path(path).open('rb') as stream:
@@ -30,11 +41,16 @@ def main():
     torch.set_num_threads(2)
     silero = MODELS / 'v5_ru.pt'
     wh = MODELS / 'base.pt'
+    quality = MODELS / 'small.pt'
     vosk = MODELS / 'vosk'
     if not silero.is_file(): raise RuntimeError('Silero model absent')
     if not wh.is_file(): raise RuntimeError('Whisper model absent')
+    if not quality.is_file(): raise RuntimeError('Whisper Russian quality model absent')
     if hash_file(wh) != WHISPER_BASE_SHA256:
         raise RuntimeError('Whisper base checkpoint checksum does not match official manifest')
+
+    if hash_file(quality)!=get_small_whisper_digest(whisper):
+        raise RuntimeError('Whisper small checkpoint SHA256 mismatch')
 
     print('Loading Silero v5_ru model...', flush=True)
     voice = torch.package.PackageImporter(str(silero)).load_pickle('tts_models','model')
@@ -47,7 +63,12 @@ def main():
     model = whisper.load_model(str(wh),device='cpu')
     if model is None: raise RuntimeError('Whisper failed to load')
     del model
-    print('Whisper loaded; SHA256 OK',flush=True)
+    print('Whisper base loaded; SHA256 OK',flush=True)
+    print('Loading Whisper multilingual small quality model...',flush=True)
+    quality_model=whisper.load_model(str(quality),device='cpu')
+    if quality_model is None: raise RuntimeError('Whisper small failed to load')
+    del quality_model
+    print('Whisper small loaded; SHA256 OK',flush=True)
 
     print('Loading Vosk model...',flush=True)
     SetLogLevel(-1)
