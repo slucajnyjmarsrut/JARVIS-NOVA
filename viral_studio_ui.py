@@ -270,7 +270,7 @@ class ViralStudioWindow(tk.Toplevel):
                 parent=self)
             return
         if not messagebox.askyesno('Разрешить полный автомонтаж',
-                f'Создать ролик по теме «{topic}»?\\n\\n'
+                f'Создать ролик по теме «{topic}»?\n\n'
                 'JARVIS получит публичные видео Wikimedia Commons, '
                 'подберёт фрагменты, выровняет громкость, добавит надписи, '
                 'сохранит авторство и соберёт MP4 на компьютере. '
@@ -308,14 +308,14 @@ class ViralStudioWindow(tk.Toplevel):
                 self.project=project
                 self.rendered_video=out
                 self._show(
-                    'Автомонтаж завершён.\\n\\n'
-                    'Тема: '+topic+'\\n'
-                    'Видео: '+str(out)+'\\n'
-                    'Длительность: '+str(round(result['duration'],1))+' сек.\\n'
-                    'Техническая проверка: '+str(result.get('technical_quality',{}))+'\\n'
-                    'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\\n'
-                    'Исходники и авторство: '+str(source/'CREDITS_RU.md')+'\\n\\n'
-                    +note+'\\n'
+                    'Автомонтаж завершён.\n\n'
+                    'Тема: '+topic+'\n'
+                    'Видео: '+str(out)+'\n'
+                    'Длительность: '+str(round(result['duration'],1))+' сек.\n'
+                    'Техническая проверка: '+str(result.get('technical_quality',{}))+'\n'
+                    'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n'
+                    'Исходники и авторство: '+str(source/'CREDITS_RU.md')+'\n\n'
+                    +note+'\n'
                     'Проверь сюжет, права, музыку, качество и соответствие теме перед публикацией.'
                 )
                 self.status.set('Автомонтаж готов. Публикации и автозагрузки нет.')
