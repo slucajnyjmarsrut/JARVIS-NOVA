@@ -368,7 +368,7 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
     Clips are matched to brief shots in alphabetical/number order, one per shot.
     Stops with an explicit error if footage is incomplete. No web access.
     """
-    from smart_montage import choose_highlight_start, verify_output_media
+    from smart_montage import choose_highlight_start, verify_output_media, caption_subtitles
     validate_brief(brief)
     width,height=size
     if not (144 <= width <= 2160 and 256 <= height <= 3840 and width < height):
@@ -447,4 +447,10 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             'created_utc':datetime.now(timezone.utc).isoformat()}
     (out_file.parent/(out_file.stem+'_EDL.json')).write_text(
         json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+    # Separate, time-aligned caption track for review/editing. The same text
+    # is already visible in the burned-in video; it is NOT a speech transcript.
+    srt=out_file.with_suffix('.srt')
+    with srt.open('x',encoding='utf-8-sig') as out:
+        out.write(caption_subtitles(decisions))
+    result['subtitle_file']=str(srt)
     return result
