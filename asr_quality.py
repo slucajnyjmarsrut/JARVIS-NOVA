@@ -72,7 +72,7 @@ def russian_app_vocabulary(result):
     if not isinstance(result,dict):
         return None
     phrase=strip_wake(str(result.get("text","") or "")).casefold().strip()
-    if not re.match(r"^(?:открой|запусти|включи)\\b",phrase):
+    if not re.match(r"^(?:открой|запусти|включи)\b",phrase):
         return None
     return ("Телеграм, Telegram, Дискорд, Discord, Стим, Steam, "
             "Гугл Хром, Google Chrome, Блокнот, Проводник, Калькулятор.")
