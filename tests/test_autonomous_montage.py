@@ -60,10 +60,15 @@ class AutonomousMontageTests(TestCase):
                   mock.patch("viral_studio_ui.create_local_brief",return_value=brief) as ai,
                   mock.patch("viral_studio_ui.search_free_video",return_value=items) as search,
                   mock.patch("viral_studio_ui.download_free_video",side_effect=downloader),
-                  mock.patch("viral_studio_ui.render_video",side_effect=rendering)):
+                  mock.patch("viral_studio_ui.render_video",side_effect=rendering),
+                  mock.patch("viral_studio_ui.try_narrate_video",
+                      return_value={"narrated":True,"source":"bundled Silero"}) as narrator):
                 ViralStudioWindow.auto_montage(app)
             ai.assert_called_once_with("лес",audience=None)
             search.assert_called_once_with("лес",consent=True)
+            narrator.assert_called_once()
+            self.assertEqual(narrator.call_args.args[0],app.rendered_video)
+            self.assertTrue((app.project/"NARRATION_REPORT.json").exists())
             self.assertTrue((app.project/"brief.json").exists())
             self.assertEqual(app.rendered_video.parent,app.project)
             self.assertTrue(app._show.called)
@@ -84,7 +89,9 @@ class AutonomousMontageTests(TestCase):
                   mock.patch("viral_studio_ui.download_free_video",
                              side_effect=lambda c,p,**k:p.mkdir()),
                   mock.patch("viral_studio_ui.render_video",
-                             return_value={"duration":23.,"technical_quality":{}})):
+                             return_value={"duration":23.,"technical_quality":{}}),
+                  mock.patch("viral_studio_ui.try_narrate_video",
+                             return_value={"narrated":False,"reason":"no voice"})):
                 ViralStudioWindow.auto_montage(app)
             self.assertIn("шаблон",app.brief.generator)
             self.assertIn("шаблон",app._show.call_args.args[0])
