@@ -8,7 +8,7 @@ import unittest
 
 from smart_montage import (
     FRAME_BYTES, MAX_ANALYSIS_SECONDS, MontageQualityError, _frame_scores,
-    best_start, choose_highlight_start, verify_output_media,
+    best_start, choose_highlight_start, verify_output_media, caption_subtitles,
 )
 
 
@@ -23,6 +23,19 @@ class SmartMontageTests(unittest.TestCase):
         start = best_start(scores,9.,3.,fps=2)
         self.assertGreaterEqual(start,2.5)
         self.assertLessEqual(start,6.)
+
+    def test_srt_captions_align_with_cuts_and_reject_bad_lengths(self):
+        captions=caption_subtitles([
+            {"seconds":2.5,"on_screen":"  ПРИВЕТ  МИР  "},
+            {"seconds":1.,"on_screen":"Второй кадр"},
+        ])
+        self.assertIn("00:00:00,000 --> 00:00:02,500",captions)
+        self.assertIn("00:00:02,500 --> 00:00:03,500",captions)
+        self.assertIn("ПРИВЕТ МИР",captions)
+        with self.assertRaises(MontageQualityError):
+            caption_subtitles([{"seconds":float("nan"),"on_screen":"ошибка"}])
+        with self.assertRaises(MontageQualityError):
+            caption_subtitles([{"seconds":2.,"on_screen":""}])
 
     def test_safe_bounded_selection_and_fallback(self):
         self.assertEqual(best_start([.5]*20,2.,2.5),0.)
