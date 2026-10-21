@@ -383,8 +383,8 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
         raise ViralStudioError(f'Нужно {len(brief.shots)} отдельных кадров, найдено {len(clips)}. '
                                'Сними кадры по плану и назови 01.mp4, 02.mp4 ...')
     clips=clips[:len(brief.shots)]
-    if out_file.exists():
-        raise ViralStudioError('Файл результата уже существует; оригиналы не перезаписываю')
+    if out_file.exists() or out_file.with_suffix('.srt').exists():
+        raise ViralStudioError('Файл результата или субтитров уже существует; оригиналы не перезаписываю')
     if out_file.parent==footage_dir or footage_dir in out_file.parents:
         raise ViralStudioError('Результат должен сохраняться вне папки исходных кадров')
     ffmpeg,ffprobe=tools if tools else ffmpeg_tools()
@@ -445,12 +445,12 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             'technical_quality':technical,
             'segments':decisions,'captions':'экранные вставки, не транскрипция речи',
             'created_utc':datetime.now(timezone.utc).isoformat()}
-    (out_file.parent/(out_file.stem+'_EDL.json')).write_text(
-        json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     # Separate, time-aligned caption track for review/editing. The same text
     # is already visible in the burned-in video; it is NOT a speech transcript.
     srt=out_file.with_suffix('.srt')
     with srt.open('x',encoding='utf-8-sig') as out:
         out.write(caption_subtitles(decisions))
     result['subtitle_file']=str(srt)
+    (out_file.parent/(out_file.stem+'_EDL.json')).write_text(
+        json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
     return result
