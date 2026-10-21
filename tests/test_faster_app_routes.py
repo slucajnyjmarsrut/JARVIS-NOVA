@@ -14,7 +14,7 @@ class FastRoutesTests(unittest.TestCase):
                                   start=Mock(side_effect=AssertionError("Qwen started")))
         chat = LocalChat(runtime)
         samples = ("Доброе утро!", "Ты здесь?", "Что ты умеешь?",
-                   "До свидания!", "Кто ты?", "Помоги", "Благодарю!")
+                   "До свидания!", "Добрый вечер!", "Помоги", "Благодарю!")
         for text in samples:
             with self.subTest(text=text):
                 self.assertTrue(chat.ask(text))
