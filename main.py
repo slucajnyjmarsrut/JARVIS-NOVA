@@ -604,6 +604,22 @@ class Jarvis(tk.Tk):
         if mode_command is not None:
             self.handle_mode_command(mode_command)
             return
+        # Voice/text can open the fully automatic studio, but must never
+        # silently grant network/media download permission.
+        auto_request=re.fullmatch(
+            r'(?:джарвис[,!]?\\s+)?(?:сделай|создай|смонтируй)\\s+'
+            r'(?:мне\\s+)?(?:качественный\\s+)?(?:ролик|видео)\\s+'
+            r'(?:сам\\s+)?(?:про|об)\\s+(.{2,100})',
+            text.strip(),flags=re.I)
+        auto_short=text.casefold().strip(' .!?,') in {
+            'сделай ролик сам','создай ролик автоматически',
+            'автомонтаж','автоматический монтаж'}
+        if auto_request or auto_short:
+            window=self.open_viral_studio('auto')
+            if auto_request and window is not None:
+                window.topic.set(auto_request.group(1).strip(' .!?,'))
+            self.status.set('Автомонтаж: проверь тему и дай отдельное разрешение на интернет.')
+            return
         if any(token in text.casefold() for token in (
             'смонтируй ролик', 'вирусный ролик', 'вирусное видео',
             'сценарий для рилс', 'сценарий для шортс', 'снять тикток')):
