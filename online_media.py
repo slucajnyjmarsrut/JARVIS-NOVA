@@ -7,6 +7,7 @@ No user footage is uploaded; no arbitrary URLs, scripts, shell or redirects.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from html import unescape
 import json
 from pathlib import Path
 import re
@@ -31,6 +32,7 @@ class FreeClip:
     license: str
     size: int
     mime: str
+    author: str = ""
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -114,8 +116,11 @@ def search_free_video(topic: str, *, consent=False, transport=None, limit=40) ->
         if not licence or not 1024 <= size <= MAX_CLIP:
             continue
         title = str(page["title"])[:220]
+        credit = meta.get("Attribution") or meta.get("Artist") or {}
+        author = unescape(re.sub(r"<[^>]*>", " ", str(credit.get("value", ""))))
+        author = " ".join(author.split())[:160] or "Укажи автора со страницы источника"
         source = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"), safe=":")
-        found.append(FreeClip(title, url, source, licence, size, mime))
+        found.append(FreeClip(title, url, source, licence, size, mime, author))
     return found
 
 
@@ -160,6 +165,7 @@ def download_free_video(clips: list[FreeClip], folder: Path, *, consent=False,
              "Проверь страницы авторов и условия лицензий перед публикацией.",
              "CC BY требует указания автора, лицензии и внесённых изменений.", ""]
     for entry in manifest:
-        notes.append(f"- {entry['local_file']}: {entry['title']} — {entry['license']} — {entry['page']}")
+        notes.append(f"- {entry['local_file']}: {entry['title']} — {entry['license']} — "
+                     f"{entry['author']} — {entry['page']}")
     (folder / "CREDITS_RU.md").write_text("\n".join(notes) + "\n", encoding="utf-8")
     return folder
