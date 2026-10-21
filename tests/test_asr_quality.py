@@ -12,7 +12,7 @@ import numpy as np  # Windows native extension preloaded before module mocks.
 
 from asr_quality import (should_refine,prefer_refined,transcript_confidence,
                          suspicious_wake_prefix,should_refine_short_phrase,
-                         prefer_short_refined)
+                         prefer_short_refined,russian_app_vocabulary)
 from speech_capture import AdaptiveSpeechGate
 from voice_engine import Voice
 from main import Jarvis
@@ -164,6 +164,64 @@ class RecognitionQualityTests(unittest.TestCase):
                 while voice.whisper_busy and time.monotonic()<deadline:
                     time.sleep(.01)
             self.assertEqual(calls,[2])
+
+    def test_low_confidence_suffix_triggers_bounded_retry(self):
+        phrase={"text":"джарвис расскажи прогноз","segments":[
+            {"avg_logprob":-.15,"no_speech_prob":.02,
+             "compression_ratio":1.0,"start":0.0,"end":.7},
+            {"avg_logprob":-1.13,"no_speech_prob":.04,
+             "compression_ratio":1.0,"start":.7,"end":1.15}]}
+        self.assertGreater(transcript_confidence(phrase),-.76)
+        self.assertTrue(should_refine(phrase,True))
+        self.assertFalse(should_refine(phrase,False))
+        bad_noise={**phrase,"segments":[phrase["segments"][0],
+                   {**phrase["segments"][1],"no_speech_prob":.9}]}
+        self.assertFalse(should_refine(bad_noise,True))
+        too_brief={**phrase,"segments":[phrase["segments"][0],
+                    {**phrase["segments"][1],"end":.8}]}
+        self.assertFalse(should_refine(too_brief,True))
+
+    def test_app_name_hints_are_only_vocabulary_not_commands(self):
+        self.assertIsNone(russian_app_vocabulary(recognition("что делаешь")))
+        self.assertIsNone(russian_app_vocabulary(recognition("помоги")))
+        prompt=russian_app_vocabulary(recognition("джарвис открой тилеграм"))
+        self.assertIn("Телеграм",prompt)
+        self.assertIn("Дискорд",prompt)
+        self.assertNotIn("открой",prompt.casefold())
+        self.assertNotIn("джарвис",prompt.casefold())
+        self.assertLess(len(prompt),200)
+
+    def test_poor_last_segment_refines_russian_app_name_with_local_hint(self):
+        finished=threading.Event()
+        heard=[]
+        calls=[]
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"fixture")
+            (root/"small.pt").write_bytes(b"fixture")
+            def transcribe(samples,**kwargs):
+                calls.append(kwargs)
+                if kwargs["beam_size"]==2:
+                    return {"text":"джарвис открой тилеграм","segments":[
+                        {"avg_logprob":-.15,"compression_ratio":1,
+                         "no_speech_prob":.01,"start":0.0,"end":.55},
+                        {"avg_logprob":-1.15,"compression_ratio":1,
+                         "no_speech_prob":.02,"start":.55,"end":1.2}]}
+                finished.set()
+                return recognition("джарвис открой телеграм",logprob=-.11)
+            v=Voice(heard.append,lambda _:None,lambda:False)
+            v._get_small_model=lambda _:types.SimpleNamespace(transcribe=transcribe)
+            v.until=time.monotonic()+8
+            with mock.patch("voice_engine.assets",return_value=root):
+                v._try_whisper((np.ones(16000,dtype="<i2")*120).tobytes(),False)
+                self.assertTrue(finished.wait(3))
+                deadline=time.monotonic()+3
+                while v.whisper_busy and time.monotonic()<deadline:
+                    time.sleep(.01)
+            self.assertEqual(heard,["открой телеграм"])
+            self.assertEqual([kw["beam_size"] for kw in calls],[2,5])
+            self.assertNotIn("initial_prompt",calls[0])
+            self.assertIn("Телеграм",calls[1]["initial_prompt"])
 
     def test_good_russian_transcript_skips_expensive_second_pass(self):
         self.assertFalse(should_refine(recognition("джарвис открой блокнот"),True))
