@@ -2,6 +2,7 @@
 """Native Tk dialog for Viral Studio. Footage stays local; publishing is manual."""
 from __future__ import annotations
 import os
+import json
 import queue
 from pathlib import Path
 import threading
@@ -308,9 +309,10 @@ class ViralStudioWindow(tk.Toplevel):
             # Optional fully local Russian Silero voiceover; if the model or
             # timing fails, preserve the already verified original montage.
             voice=try_narrate_video(out,brief,cancel=self.stop_event)
+            if self.stop_event.is_set():return
             result['narration']=voice
             (project/'NARRATION_REPORT.json').write_text(
-                __import__('json').dumps(voice,ensure_ascii=False,indent=2),encoding='utf-8')
+                json.dumps(voice,ensure_ascii=False,indent=2),encoding='utf-8')
             def done():
                 self.brief=brief
                 self.project=project
