@@ -50,7 +50,32 @@ def should_refine(result, authorized=False):
     if not content or len(content)<4:
         return True
     confidence=transcript_confidence(result)
-    return confidence is not None and confidence < -.76
+    if confidence is not None and confidence < -.76:
+        return True
+    # A weak *last segment* can hide behind a good average score: this often
+    # affects Russian word endings. Only retry speech-bearing spans of 180ms+.
+    chunks=_segments(result)
+    return len(chunks)>1 and any(
+        _number(s.get("avg_logprob"),0.0)<-1.05
+        and _number(s.get("no_speech_prob"),1.0)<.4
+        and _number(s.get("end"),0.0)-_number(s.get("start"),0.0)>=.18
+        for s in chunks
+    )
+
+
+def russian_app_vocabulary(result):
+    """Optional local Whisper vocabulary hint, NOT recognized command text.
+
+    Only call this for an already activated command during a quality retry.
+    Never prepend verbs or a wake word, so hints cannot authorize actions.
+    """
+    if not isinstance(result,dict):
+        return None
+    phrase=strip_wake(str(result.get("text","") or "")).casefold().strip()
+    if not re.match(r"^(?:открой|запусти|включи)\\b",phrase):
+        return None
+    return ("Телеграм, Telegram, Дискорд, Discord, Стим, Steam, "
+            "Гугл Хром, Google Chrome, Блокнот, Проводник, Калькулятор.")
 
 
 def suspicious_wake_prefix(result):
