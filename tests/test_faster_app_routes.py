@@ -13,7 +13,7 @@ class FastRoutesTests(unittest.TestCase):
         runtime = SimpleNamespace(config=SimpleNamespace(model="local"),
                                   start=Mock(side_effect=AssertionError("Qwen started")))
         chat = LocalChat(runtime)
-        samples = ("Доброе утро!", "Ты здесь?", "Что ты умеешь?",
+        samples = ("Доброе утро!", "Ты здесь?", "Ты меня слышишь?",
                    "До свидания!", "Добрый вечер!", "Помоги", "Благодарю!")
         for text in samples:
             with self.subTest(text=text):
