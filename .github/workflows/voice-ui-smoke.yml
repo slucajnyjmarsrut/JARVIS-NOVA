@@ -1,7 +1,7 @@
 name: JARVIS NOVA voice and offline chat smoke (no models)
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10]
     paths:
       - '.github/workflows/voice-ui-smoke.yml'
       - 'agent_core.py'
@@ -11,6 +11,10 @@ on:
       - 'tests/test_online_media.py'
       - 'tests/test_editing_knowledge.py'
       - 'tests/test_faster_app_routes.py'
+      - 'smart_montage.py'
+      - 'tests/test_smart_montage.py'
+      - 'tests/test_autonomous_montage.py'
+      - 'viral_studio.py'
       - 'voice_engine.py'
       - 'build_models.py'
       - 'verify_models.py'
@@ -77,6 +81,70 @@ jobs:
       - name: Minimal test dependencies
         run: python -m pip install numpy scipy pillow
       - name: Compile changed modules
-        run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py speech_capture.py asr_quality.py build_models.py verify_models.py local_chat.py online_media.py editing_knowledge.py agent_core.py viral_studio_ui.py
-      - name: Unit tests for voice and offline chat
-        run: python -m unittest discover -s tests -p 'test_voice_fallback.py' -v && python -m unittest discover -s tests -p 'test_voice_routing.py' -v && python -m unittest discover -s tests -p 'test_conversation_followup.py' -v && python -m unittest discover -s tests -p 'test_local_chat.py' -v && python -m unittest discover -s tests -p 'test_nova_ui.py' -v && python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v && python -m unittest discover -s tests -p 'test_nova_overlay.py' -v && python -m unittest discover -s tests -p 'test_whisper_queue.py' -v && python -m unittest discover -s tests -p 'test_voice_queue_polish.py' -v && python -m unittest discover -s tests -p 'test_overlay_commands.py' -v && python -m unittest discover -s tests -p 'test_voice_ready.py' -v && python -m unittest discover -s tests -p 'test_microphone_recovery.py' -v && python -m unittest discover -s tests -p 'test_microphone_ui_reconnect.py' -v && python -m unittest discover -s tests -p 'test_whisper_mode.py' -v && python -m unittest discover -s tests -p 'test_natural_voice.py' -v && python -m unittest discover -s tests -p 'test_shutdown.py' -v && python -m unittest discover -s tests -p 'test_trimodal_integration.py' -v && python -m unittest discover -s tests -p 'test_no_camera.py' -v && python -m unittest discover -s tests -p 'test_quiet_voice_capture.py' -v && python -m unittest discover -s tests -p 'test_fast_voice.py' -v && python -m unittest discover -s tests -p 'test_installer_appearance.py' -v && python -m unittest discover -s tests -p 'test_asr_quality.py' -v && python -m unittest discover -s tests -p 'test_dark_ui_fast_replies.py' -v && python -m unittest discover -s tests -p 'test_russian_small.py' -v && python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
+        run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py speech_capture.py asr_quality.py build_models.py verify_models.py local_chat.py online_media.py editing_knowledge.py agent_core.py viral_studio_ui.py smart_montage.py viral_studio.py
+      - name: Three complete regression passes on each Windows version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "===== WINDOWS regression pass $pass / 3 ====="
+            python -m unittest discover -s tests -p 'test_voice_fallback.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_voice_routing.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_conversation_followup.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_local_chat.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_nova_ui.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_nova_overlay.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_whisper_queue.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_voice_queue_polish.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_overlay_commands.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_voice_ready.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_microphone_recovery.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_microphone_ui_reconnect.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_whisper_mode.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_natural_voice.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_shutdown.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_trimodal_integration.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_no_camera.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_quiet_voice_capture.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_fast_voice.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_installer_appearance.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_asr_quality.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_dark_ui_fast_replies.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_russian_small.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_online_media.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_smart_montage.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_autonomous_montage.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            Write-Host "ALL TEST GROUPS PASSED: $pass / 3"
+          }
