@@ -10,7 +10,8 @@ from speaker import assets
 from whisper_mode import WhisperClassifier, normalize_style
 from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
 from asr_quality import (should_refine, prefer_refined, transcript_confidence,
-                         suspicious_wake_prefix)
+                         suspicious_wake_prefix, should_refine_short_phrase,
+                         prefer_short_refined)
 
 
 class Voice:
@@ -319,8 +320,14 @@ class Voice:
                               self.recognition_mode=="accurate" and
                               (root/"small.pt").is_file() and
                               suspicious_wake_prefix(first))
+                # Tiny Russian phrases sometimes become a confident but false
+                # single word (e.g. "джайдес" instead of "что делаешь").
+                # Spend one extra local decode only in the accurate, already
+                # activated mode, and only for short recorded utterances.
+                short_retry=(quality and active and len(pcm)<=16000*2*4 and
+                             should_refine_short_phrase(first,authorized))
                 result=first
-                if (should_refine(first,authorized) or recover_wake or
+                if (should_refine(first,authorized) or recover_wake or short_retry or
                         (not quality and self.recognition_mode=="accurate" and
                          (root/"small.pt").is_file() and
                          bool(WAKE.match(fast_text)))):
@@ -350,6 +357,8 @@ class Voice:
                             if (WAKE.match(second_text) and confidence is not None
                                     and confidence>=-.76):
                                 result=second
+                        elif short_retry:
+                            result=prefer_short_refined(first,second)
                         else:
                             result=prefer_refined(first,second)
                     except Exception as refine_exc:
