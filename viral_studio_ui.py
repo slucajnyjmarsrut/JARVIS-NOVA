@@ -67,6 +67,11 @@ class ViralStudioWindow(tk.Toplevel):
         self.review_button=ttk.Button(second,text='4. Оценить для аудитории',command=self.review)
         self.review_button.pack(side='left',padx=(0,8))
         ttk.Button(second,text='Отменить текущую работу',command=self.cancel).pack(side='left')
+        auto_row=ttk.Frame(self,padding=(12,0,12,7))
+        auto_row.pack(fill='x')
+        self.auto_button=ttk.Button(auto_row,text='АВТОМОНТАЖ: тема → исходники → ролик',
+                                    command=self.auto_montage)
+        self.auto_button.pack(side='left')
         guide_row=ttk.Frame(self,padding=(12,0,12,6))
         guide_row.pack(fill='x')
         ttk.Button(guide_row,text='Изучить официальную справку FFmpeg',
@@ -89,6 +94,7 @@ class ViralStudioWindow(tk.Toplevel):
             'shoot':('3. Съёмка: открой сценарий и озвучь список кадров.',self.speak_button),
             'edit':('4. Монтаж: выбери отснятые кадры и подтверди обработку.',self.edit_button),
             'review':('5. Оценка: проверь готовый MP4 относительно данных аудитории.',self.review_button),
+            'auto':('Автомонтаж: введи тему и разреши поиск свободных видеоматериалов.',self.auto_button),
         }
         message,button=descriptions.get(stage,descriptions['audience'])
         self.status.set(message)
@@ -105,7 +111,8 @@ class ViralStudioWindow(tk.Toplevel):
     def _busy(self, value):
         self.running=value
         state='disabled' if value else 'normal'
-        for widget in (self.make_button,self.edit_button,self.load_button,self.audience_button,self.review_button):
+        for widget in (self.make_button,self.edit_button,self.load_button,self.audience_button,
+                       self.review_button,self.auto_button):
             widget.configure(state=state)
 
     def _pump_notifications(self):
@@ -248,6 +255,73 @@ class ViralStudioWindow(tk.Toplevel):
             self._show((self.project/'WHAT_TO_FILM_RU.md').read_text('utf-8') if (self.project/'WHAT_TO_FILM_RU.md').exists() else brief.script)
             self.status.set('Сценарий открыт. Можно приступать к монтажу.')
         except Exception as exc:messagebox.showerror('Ошибка',str(exc),parent=self)
+
+    def auto_montage(self):
+        """One confirmed workflow: topic, offline AI brief, licensed sources, FFmpeg.
+
+        No mandatory channel CSV or manual clip selection. Does not publish.
+        Network permission is explicit and limited to the topic and selected
+        Commons clip downloads. The AI only provides bounded script content.
+        """
+        topic=self.topic.get().strip()
+        if not 2<=len(topic)<=100:
+            messagebox.showwarning('Тема ролика',
+                'Введи тему ролика (от 2 до 100 символов). Данные канала не обязательны.',
+                parent=self)
+            return
+        if not messagebox.askyesno('Разрешить полный автомонтаж',
+                f'Создать ролик по теме «{topic}»?\\n\\n'
+                'JARVIS получит публичные видео Wikimedia Commons, '
+                'подберёт фрагменты, выровняет громкость, добавит надписи, '
+                'сохранит авторство и соберёт MP4 на компьютере. '
+                'Будет отправлена только тема, без твоих файлов и голоса. '
+                'Скачанные материалы не публикуются автоматически. '
+                'Окончательный результат нужно проверить.',
+                parent=self):
+            return
+        self.status.set('Автомонтаж: создаю сценарий по теме…')
+        def work():
+            note=''
+            try:
+                brief=create_local_brief(topic,audience=self.profile)
+            except Exception as exc:
+                note='Локальная Qwen недоступна; использован шаблон: '+str(exc)[:120]
+                brief=template_brief(topic)
+            if self.stop_event.is_set():return
+            project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
+            save_brief(brief,project)
+            candidates=search_free_video(topic,consent=True)
+            if len(candidates)<len(brief.shots):
+                raise OnlineMediaError(
+                    f'Недостаточно подходящих свободных исходников: {len(candidates)} из '
+                    f'{len(brief.shots)}. Попробуй более конкретную тему. '
+                    'Готовый сценарий сохранён: '+str(project))
+            if self.stop_event.is_set():return
+            source=project/'licensed_media'
+            download_free_video(candidates[:len(brief.shots)],source,
+                                consent=True,cancel=self.stop_event)
+            if self.stop_event.is_set():return
+            out=project/'JARVIS_NOVA_AUTO_VERTICAL.mp4'
+            result=render_video(brief,source,out,cancel=self.stop_event)
+            def done():
+                self.brief=brief
+                self.project=project
+                self.rendered_video=out
+                self._show(
+                    'Автомонтаж завершён.\\n\\n'
+                    'Тема: '+topic+'\\n'
+                    'Видео: '+str(out)+'\\n'
+                    'Длительность: '+str(round(result['duration'],1))+' сек.\\n'
+                    'Техническая проверка: '+str(result.get('technical_quality',{}))+'\\n'
+                    'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\\n'
+                    'Исходники и авторство: '+str(source/'CREDITS_RU.md')+'\\n\\n'
+                    +note+'\\n'
+                    'Проверь сюжет, права, музыку, качество и соответствие теме перед публикацией.'
+                )
+                self.status.set('Автомонтаж готов. Публикации и автозагрузки нет.')
+                self._speak('Ролик готов. Проверь результат и подписи к источникам.')
+            self._notify(done)
+        self._spawn(work)
 
     def montage(self):
         if not self.brief or not self.project:
