@@ -14,6 +14,7 @@ from viral_studio import (ViralStudioError, create_local_brief, research_trends,
                           template_brief, save_brief, load_brief, render_video)
 from online_media import search_free_video, download_free_video, OnlineMediaError
 from editing_knowledge import read_ffmpeg_guide
+from video_narration import try_narrate_video
 from channel_audience import read_channel_csv, analyze_audience, AudienceDataError
 from creator_experts import recommend_topic, expert_report
 from video_forecast import evaluate_final_cut, save_review
@@ -303,6 +304,13 @@ class ViralStudioWindow(tk.Toplevel):
             if self.stop_event.is_set():return
             out=project/'JARVIS_NOVA_AUTO_VERTICAL.mp4'
             result=render_video(brief,source,out,cancel=self.stop_event)
+            if self.stop_event.is_set():return
+            # Optional fully local Russian Silero voiceover; if the model or
+            # timing fails, preserve the already verified original montage.
+            voice=try_narrate_video(out,brief,cancel=self.stop_event)
+            result['narration']=voice
+            (project/'NARRATION_REPORT.json').write_text(
+                __import__('json').dumps(voice,ensure_ascii=False,indent=2),encoding='utf-8')
             def done():
                 self.brief=brief
                 self.project=project
@@ -313,6 +321,8 @@ class ViralStudioWindow(tk.Toplevel):
                     'Видео: '+str(out)+'\n'
                     'Длительность: '+str(round(result['duration'],1))+' сек.\n'
                     'Техническая проверка: '+str(result.get('technical_quality',{}))+'\n'
+                    'Русская озвучка: '+('готова' if voice.get('narrated') else
+                       'не добавлена, оставлен исходный звук ('+voice.get('reason','')+')')+'\n'
                     'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n'
                     'Исходники и авторство: '+str(source/'CREDITS_RU.md')+'\n\n'
                     +note+'\n'
