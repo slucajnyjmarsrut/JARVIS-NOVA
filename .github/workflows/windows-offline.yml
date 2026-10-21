@@ -160,18 +160,30 @@ jobs:
       - name: Obtain and check Vosk, Whisper and Silero before packaging
         timeout-minutes: 40
         run: python build_models.py
-      - name: Real Whisper, Vosk and Silero checkpoint verification
-        timeout-minutes: 30
-        run: python verify_models.py
+      - name: Three real Whisper, Vosk and Silero checkpoint verification passes
+        shell: pwsh
+        timeout-minutes: 70
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "REAL OFFLINE MODEL VERIFICATION $pass / 3"
+            python verify_models.py
+            if ($LASTEXITCODE -ne 0) { throw "Real model check failed pass $pass" }
+          }
       - name: Download official portable Ollama and full Qwen Vision weights
         timeout-minutes: 75
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/prepare_ollama.ps1 -Tag "${{ inputs.ollama_release_tag || 'latest' }}"
-      - name: Real Whisper-to-Vision-to-Silero synthetic E2E (no mocks)
-        timeout-minutes: 35
-        run: python offline_e2e_test.py
+      - name: Three real Whisper-to-Vision-to-Silero E2E passes (no mocks)
+        shell: pwsh
+        timeout-minutes: 75
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "REAL WHISPER-VISION-SILERO E2E $pass / 3"
+            python offline_e2e_test.py
+            if ($LASTEXITCODE -ne 0) { throw "Actual model inference failed on pass $pass" }
+          }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
       - name: Generate original dark NOVA installer wizard graphics
@@ -201,10 +213,15 @@ jobs:
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
-      - name: Execute packaged EXE self-test and actual model E2E
-        timeout-minutes: 45
+      - name: Three packaged EXE self-test, video render and actual model E2E passes
+        timeout-minutes: 90
         shell: pwsh
-        run: ./scripts/verify_offline_distribution.ps1
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "PACKAGED EXE + REAL MODELS $pass / 3"
+            ./scripts/verify_offline_distribution.ps1
+            if (!$?) { throw "Packaged test failed in pass $pass" }
+          }
       - name: Verify packaged AMD64 app and all THREE offline model stores with blob digests
         timeout-minutes: 15
         run: python scripts/verify_installer_payload.py --dir dist/JarvisNova
@@ -229,10 +246,15 @@ jobs:
           if ($setups.Count -ne 1) { throw 'Expected exactly one installer EXE' }
           Write-Host "Real Windows installer bytes: $($setups[0].Length)"
           Get-FileHash $setups[0].FullName -Algorithm SHA256 | Format-List
-      - name: Test single EXE installer, real installed E2E, uninstall and user-data retention
+      - name: Three real Windows install, model E2E, uninstall and data-retention passes
         shell: pwsh
-        timeout-minutes: 50
-        run: ./scripts/test_installer.ps1
+        timeout-minutes: 120
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "FULL WINDOWS INSTALLER + UNINSTALL $pass / 3"
+            ./scripts/test_installer.ps1
+            if (!$?) { throw "Real installation test failed pass $pass" }
+          }
       - name: Validate model store (FULL checksums at build-time)
         shell: pwsh
         run: |
@@ -248,7 +270,7 @@ jobs:
         shell: pwsh
         run: |
           @'
-          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE. Video Studio import and real H264 FFmpeg encoding are also checked inside the installed application.
+          This CI runs the unit suites, bundled models, FFmpeg montage, packaged executable, and real installation/uninstall verifications THREE times on hosted Windows. Content quality, source relevance, actual Commons availability, screen appearance, real microphone and user-experience tests still require hardware/manual verification.
           CI exercises Tk widgets and HUD callbacks but does NOT prove real microphone, camera, Bluetooth, audio output, a user-visible foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
