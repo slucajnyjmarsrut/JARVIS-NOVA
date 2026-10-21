@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.18 studio sources and fast actions candidate
+name: JARVIS NOVA 0.5.18 autonomous video quality triple verification candidate
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -25,6 +25,11 @@ on:
       - 'tests/test_online_media.py'
       - 'tests/test_editing_knowledge.py'
       - 'tests/test_faster_app_routes.py'
+      - 'smart_montage.py'
+      - 'tests/test_smart_montage.py'
+      - 'tests/test_autonomous_montage.py'
+      - 'viral_studio.py'
+      - 'main.py'
       - 'build_models.py'
       - 'verify_models.py'
       - 'tests/test_russian_small.py'
@@ -143,8 +148,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Windows app dependency installation failed' }
       - name: Gate online-license security, offline documentation, fast local routes
         run: python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
-      - name: Run unit suite, including real Tkinter HUD tests (NOT inference)
-        run: python -m unittest discover -s tests -v
+      - name: Three complete offline unit suite passes, including HUD and video quality
+        shell: pwsh
+        timeout-minutes: 45
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "FULL OFFLINE UNIT SUITE $pass / 3"
+            python -m unittest discover -s tests -v
+            if ($LASTEXITCODE -ne 0) { throw "Offline tests failed on pass $pass" }
+          }
       - name: Obtain and check Vosk, Whisper and Silero before packaging
         timeout-minutes: 40
         run: python build_models.py
@@ -173,16 +185,19 @@ jobs:
           foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
             if (!(Test-Path (Join-Path 'assets/bin' $name))) { throw "Video module missing $name" }
           }
-      - name: Validate local Video Studio rendering with bundled FFmpeg on Windows
-        timeout-minutes: 15
+      - name: Three real FFmpeg montage and audience regression passes on Windows
+        timeout-minutes: 45
         shell: pwsh
         run: |
-          python -m unittest discover -s tests -p 'test_viral*.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Real Video Studio tests failed' }
-          python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Audience integration tests failed' }
-          python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
-          if ($LASTEXITCODE -ne 0) { throw 'Game/video modes tests failed' }
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "REAL FFMPEG MONTAGE PASS $pass / 3"
+            foreach ($suite in @('test_viral*.py','test_audience_pipeline.py',
+                                 'test_game_video_modes.py','test_smart_montage.py',
+                                 'test_autonomous_montage.py')) {
+              python -m unittest discover -s tests -p $suite -v
+              if ($LASTEXITCODE -ne 0) { throw "Video suite $suite failed in pass $pass" }
+            }
+          }
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
@@ -239,7 +254,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.18-STUDIO-SOURCES-DEV-UNVERIFIED-INSTALLER
+          name: JARVIS-NOVA-0.5.18-AUTONOMOUS-VIDEO-TRIPLE-DEV-UNVERIFIED-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
