@@ -1,7 +1,7 @@
 name: JARVIS NOVA voice and offline chat smoke (no models)
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, feat/video-narration-quality-triple-ci-2026-10]
     paths:
       - '.github/workflows/voice-ui-smoke.yml'
       - 'agent_core.py'
@@ -16,6 +16,8 @@ on:
       - 'tests/test_viral_studio.py'
       - 'smart_montage.py'
       - 'tests/test_autonomous_montage.py'
+      - 'video_narration.py'
+      - 'tests/test_video_narration.py'
       - 'viral_studio.py'
       - 'voice_engine.py'
       - 'build_models.py'
@@ -83,7 +85,7 @@ jobs:
       - name: Minimal test dependencies
         run: python -m pip install numpy scipy pillow
       - name: Compile changed modules
-        run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py speech_capture.py asr_quality.py build_models.py verify_models.py local_chat.py online_media.py editing_knowledge.py agent_core.py viral_studio_ui.py smart_montage.py viral_studio.py
+        run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py speech_capture.py asr_quality.py build_models.py verify_models.py local_chat.py online_media.py editing_knowledge.py agent_core.py viral_studio_ui.py smart_montage.py viral_studio.py video_narration.py
       - name: Three complete regression passes on each Windows version
         shell: pwsh
         run: |
@@ -148,5 +150,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_autonomous_montage.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_video_narration.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Narration regression failed in pass '+$pass }
             Write-Host "ALL TEST GROUPS PASSED: $pass / 3"
           }
