@@ -174,8 +174,10 @@ class RecognitionQualityTests(unittest.TestCase):
         self.assertGreater(transcript_confidence(phrase),-.76)
         self.assertTrue(should_refine(phrase,True))
         self.assertFalse(should_refine(phrase,False))
-        bad_noise={**phrase,"segments":[phrase["segments"][0],
-                   {**phrase["segments"][1],"no_speech_prob":.9}]}
+        bad_noise={**phrase,"segments":[
+                   {**phrase["segments"][0],"avg_logprob":0.0},
+                   {**phrase["segments"][1],"avg_logprob":-1.1,
+                    "no_speech_prob":.9}]}
         self.assertFalse(should_refine(bad_noise,True))
         too_brief={**phrase,"segments":[phrase["segments"][0],
                     {**phrase["segments"][1],"end":.8}]}
