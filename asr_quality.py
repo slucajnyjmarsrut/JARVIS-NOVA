@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """Confidence-guided Russian Whisper decoding, with no extra I/O.
 
-Second pass is reserved for user-activated commands with unreliable first-pass
-decoding; ordinary background audio never causes expensive repeated inference.
+Second pass is reserved for user-activated low-confidence commands or unusually
+short Russian hypotheses; background audio never causes the extra decode.
 These heuristics do NOT authorize commands: that remains voice_engine's job.
 """
 from __future__ import annotations
 import math
 import re
 from difflib import SequenceMatcher
+
+from agent_core import strip_wake
 
 
 def _segments(result):
@@ -73,6 +75,62 @@ def suspicious_wake_prefix(result):
         return False
     return max(SequenceMatcher(None,first,real).ratio()
                for real in ("джарвис","жарвис"))>=.79
+
+
+# One-word commands/answers where another expensive decode rarely helps.
+_KNOWN_SHORT_RU = frozenset({
+    "привет", "здравствуй", "спасибо", "пожалуйста", "пока", "хорошо",
+    "нормально", "отмена", "прекрати", "джарвис", "жарвис",
+    "открой", "запусти", "включи", "выключи", "сверни",
+    "блокнот", "браузер", "калькулятор", "проводник",
+    "телеграм", "дискорд",
+})
+# A second decode must never turn a dubious single word into a new computer action.
+_NEW_ACTION = re.compile(
+    r"\\b(?:открой|запусти|включи|выключи|закрой|удали|нажми|"
+    r"напечатай|введи|напиши|кликни|перемести|отправь|сверни|разверни)\\b",
+    re.I,
+)
+
+
+def should_refine_short_phrase(result, authorized=False):
+    """Detect short possibly mangled Russian utterances, even if confidence is high.
+
+    In accurate mode this may spend one extra local beam-search decode to
+    recover phrases such as 'что делаешь' transcribed as a single false word.
+    It is an ASR hint only; never grants wake or device permissions.
+    """
+    if not authorized or not isinstance(result,dict):
+        return False
+    text=strip_wake(str(result.get("text","") or "")).casefold()
+    words=re.findall(r"[а-яё]+",text)
+    if len(words)!=1 or not 5<=len(words[0])<=12 or words[0] in _KNOWN_SHORT_RU:
+        return False
+    confidence=transcript_confidence(result)
+    # Normal low-confidence retry already handles that case. Do not refine
+    # missing-metadata adapters or likely-silent audio based on text alone.
+    if confidence is None or confidence<-.76:
+        return False
+    return max(_number(s.get("no_speech_prob"),0.0) for s in _segments(result))<.45
+
+
+def prefer_short_refined(first,second):
+    """Accept a clearer second hypothesis without inventing a computer action."""
+    if not isinstance(first,dict) or not isinstance(second,dict):
+        return first
+    a=str(first.get("text","") or "").strip()
+    b=str(second.get("text","") or "").strip()
+    if not b:
+        return first
+    original=strip_wake(a)
+    candidate=strip_wake(b)
+    if _NEW_ACTION.search(candidate) and not _NEW_ACTION.search(original):
+        return first
+    a_score=transcript_confidence(first)
+    b_score=transcript_confidence(second)
+    if a_score is None or b_score is None or b_score<-.7:
+        return first
+    return second if b_score>a_score+.04 else first
 
 
 def prefer_refined(first,second):
