@@ -123,3 +123,32 @@ def verify_output_media(file: Path, ffprobe: str, expected_seconds: float,
         raise MontageQualityError("Итоговый ролик не прошёл техническую проверку") from exc
     return {"duration":length,"video_codec":"h264","audio_codec":"aac",
             "width":width,"height":height,"quality_checked":True}
+
+
+def caption_subtitles(segments: list[dict]) -> str:
+    """Write a synchronized SRT of screen captions, NOT fake ASR subtitles.
+
+    Each title is timed to the rendered clip duration. Captions are already
+    burned into the MP4; SRT is an accessible sidecar for manual corrections.
+    """
+    def clock(milliseconds: int) -> str:
+        hours,remain=divmod(milliseconds,3_600_000)
+        mins,remain=divmod(remain,60_000)
+        sec,ms=divmod(remain,1000)
+        return f"{hours:02d}:{mins:02d}:{sec:02d},{ms:03d}"
+    current=0
+    entries=[]
+    if len(segments)>10:
+        raise MontageQualityError("Слишком много титров")
+    for item in segments:
+        try:
+            seconds=float(item["seconds"])
+            caption=" ".join(str(item["on_screen"]).split())[:100]
+        except (ValueError,KeyError,TypeError,OverflowError) as exc:
+            raise MontageQualityError("Некорректная разметка титров") from exc
+        if not math.isfinite(seconds) or not .7<=seconds<=15. or not caption:
+            raise MontageQualityError("Недопустимая длина титра")
+        start=current
+        current+=round(seconds*1000)
+        entries.append(f"{len(entries)+1}\\n{clock(start)} --> {clock(current)}\\n{caption}\\n")
+    return "\\n".join(entries)+"\\n" if entries else ""
