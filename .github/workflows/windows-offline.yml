@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.18 autonomous video quality triple verification candidate
+name: JARVIS NOVA 0.5.18 offline voice-narrated montage triple verified candidate
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, feat/video-narration-quality-triple-ci-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -28,6 +28,8 @@ on:
       - 'smart_montage.py'
       - 'tests/test_smart_montage.py'
       - 'tests/test_autonomous_montage.py'
+      - 'video_narration.py'
+      - 'tests/test_video_narration.py'
       - 'viral_studio.py'
       - 'main.py'
       - 'build_models.py'
@@ -205,7 +207,7 @@ jobs:
             Write-Host "REAL FFMPEG MONTAGE PASS $pass / 3"
             foreach ($suite in @('test_viral*.py','test_audience_pipeline.py',
                                  'test_game_video_modes.py','test_smart_montage.py',
-                                 'test_autonomous_montage.py')) {
+                                 'test_autonomous_montage.py','test_video_narration.py')) {
               python -m unittest discover -s tests -p $suite -v
               if ($LASTEXITCODE -ne 0) { throw "Video suite $suite failed in pass $pass" }
             }
@@ -270,13 +272,13 @@ jobs:
         shell: pwsh
         run: |
           @'
-          This CI runs the unit suites, bundled models, FFmpeg montage, packaged executable, and real installation/uninstall verifications THREE times on hosted Windows. Content quality, source relevance, actual Commons availability, screen appearance, real microphone and user-experience tests still require hardware/manual verification.
+          This CI runs unit suites, local Silero narration, FFmpeg montage, bundled models, packaged executable, and installation/uninstall verifications THREE times on hosted Windows. Content quality, source relevance, actual Commons availability, screen appearance, real microphone and user-experience tests still require hardware/manual verification.
           CI exercises Tk widgets and HUD callbacks but does NOT prove real microphone, camera, Bluetooth, audio output, a user-visible foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.18-AUTONOMOUS-VIDEO-TRIPLE-DEV-UNVERIFIED-INSTALLER
+          name: JARVIS-NOVA-0.5.18-VOICED-MONTAGE-TRIPLE-DEV-UNVERIFIED-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
