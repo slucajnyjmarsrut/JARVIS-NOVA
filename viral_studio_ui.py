@@ -13,6 +13,7 @@ from uuid import uuid4
 from viral_studio import (ViralStudioError, create_local_brief, research_trends,
                           template_brief, save_brief, load_brief, render_video)
 from online_media import search_free_video, download_free_video, OnlineMediaError
+from editing_knowledge import read_ffmpeg_guide
 from channel_audience import read_channel_csv, analyze_audience, AudienceDataError
 from creator_experts import recommend_topic, expert_report
 from video_forecast import evaluate_final_cut, save_review
@@ -66,6 +67,10 @@ class ViralStudioWindow(tk.Toplevel):
         self.review_button=ttk.Button(second,text='4. Оценить для аудитории',command=self.review)
         self.review_button.pack(side='left',padx=(0,8))
         ttk.Button(second,text='Отменить текущую работу',command=self.cancel).pack(side='left')
+        guide_row=ttk.Frame(self,padding=(12,0,12,6))
+        guide_row.pack(fill='x')
+        ttk.Button(guide_row,text='Изучить официальную справку FFmpeg',
+                   command=self.study_editing).pack(side='left')
         self.viewer=tk.Text(self,wrap='word',font=('Segoe UI',10))
         self.viewer.pack(fill='both',expand=True,padx=12,pady=(2,8))
         self.viewer.insert('end','JARVIS подготовит оригинальный сценарий и пронумерованный список кадров.\n'
@@ -209,6 +214,21 @@ class ViralStudioWindow(tk.Toplevel):
             self._notify(done)
         self._spawn(work)
 
+    def study_editing(self):
+        if not messagebox.askyesno('Разрешить справку FFmpeg',
+                'Загрузить только публичную официальную документацию с ffmpeg.org? '
+                'Никакие команды с сайта не выполняются и модели не переобучаются.',
+                parent=self):
+            return
+        self.status.set('Читаю официальную документацию FFmpeg…')
+        def work():
+            reference=read_ffmpeg_guide(consent=True)
+            def done():
+                self._show(reference)
+                self.status.set('Справка получена. Это справочная информация, не изменение алгоритмов.')
+            self._notify(done)
+        self._spawn(work)
+
     def read_shots(self):
         if not self.brief:
             messagebox.showinfo('Сценарий','Сначала создай или открой сценарий.',parent=self);return
@@ -233,10 +253,10 @@ class ViralStudioWindow(tk.Toplevel):
         if not self.brief or not self.project:
             messagebox.showinfo('Нет сценария','Сначала подготовь сценарий.',parent=self);return
         online=messagebox.askyesno('Источник видео',
-            'Искать открытые видеоклипы на Wikimedia Commons?\\n\\n'
+            'Искать открытые видеоклипы на Wikimedia Commons?\n\n'
             'Будет передана только тема ролика. Сохраняются ссылки на '
             'источники и условия CC0, Public Domain или CC BY. '
-            'Авторство и применимость лицензии проверь до публикации.\\n\\n'
+            'Авторство и применимость лицензии проверь до публикации.\n\n'
             'Нет — выбрать собственные видео.',parent=self)
         folder=None
         if not online:
