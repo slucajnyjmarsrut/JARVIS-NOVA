@@ -70,14 +70,28 @@ class LocalChat:
             raise LocalChatError("JARVIS закрывается")
         # Unambiguous small-talk needs no multi-gigabyte Qwen model warm-up.
         # Exact matches only; never intercept work, app or safety commands.
-        greeting=question.casefold().strip(" .,!?…")
+        greeting=" ".join(question.casefold().replace("ё", "е").strip(" .,!?…").split())
+        # Exact harmless chat replies are immediate, with no model startup.
+        # Do not add any desktop, privacy, money or online actions here.
         quick={
             "как дела":"Всё хорошо. Чем помочь?",
             "как ты":"Работаю. Чем помочь?",
             "привет":"Привет! Слушаю.",
             "здравствуй":"Привет! Слушаю.",
+            "доброе утро":"Доброе утро! Чем помочь?",
+            "добрый день":"Добрый день! Слушаю.",
+            "добрый вечер":"Добрый вечер! Слушаю.",
             "что делаешь":"Жду твою команду.",
             "спасибо":"Пожалуйста!",
+            "благодарю":"Всегда пожалуйста.",
+            "пока":"До встречи!",
+            "до свидания":"До встречи!",
+            "ты здесь":"Да, я здесь.",
+            "ты меня слышишь":"Я готов обрабатывать команды, когда микрофон включён.",
+            "как тебя зовут":"Я JARVIS NOVA.",
+            "кто ты":"Я JARVIS NOVA, локальный помощник.",
+            "что ты умеешь":"Могу общаться, открывать разрешённые программы, помогать с роликами и анализировать экран с разрешения.",
+            "помоги":"Скажи, что нужно сделать, и я помогу.",
         }
         if greeting in quick:
             answer=quick[greeting]
