@@ -64,18 +64,19 @@ def synthesize_narration(text: str, target: Path, max_seconds: float, *,
         raise NarrationError("Синтезированная речь слишком тихая")
     if Path(target).exists():
         raise NarrationError("Не перезаписываю существующую озвучку")
-    with wave.open(str(target),"xb") as output:
-        output.setnchannels(1)
-        output.setsampwidth(2)
-        output.setframerate(sample_rate)
-        output.writeframes((sound*32767).astype("<i2").tobytes())
+    with Path(target).open("xb") as raw:
+        with wave.open(raw,"wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(sample_rate)
+            output.writeframes((sound*32767).astype("<i2").tobytes())
     return sound.size/sample_rate
 
 
 def mix_local_narration(video: Path, text: str, *, synthesizer=None,
                         tools=None, executor=None, cancel=None) -> dict:
     """Only replace video after new H264/AAC version passes independent probe."""
-    from viral_studio import _execute, ffmpeg_tools, _probe
+    from viral_studio import _execute, ffmpeg_tools
     from smart_montage import verify_output_media
     video=Path(video)
     if not video.is_file() or video.is_symlink():
