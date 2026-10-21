@@ -1,8 +1,8 @@
-name: JARVIS NOVA 0.5.17 Russian lexical retry candidate installer
+name: JARVIS NOVA 0.5.18 studio sources and fast actions candidate
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
@@ -18,6 +18,13 @@ on:
       - 'tests/test_bootstrap.py'
       - 'bootstrap.py'
       - 'voice_engine.py'
+      - 'agent_core.py'
+      - 'online_media.py'
+      - 'editing_knowledge.py'
+      - 'viral_studio_ui.py'
+      - 'tests/test_online_media.py'
+      - 'tests/test_editing_knowledge.py'
+      - 'tests/test_faster_app_routes.py'
       - 'build_models.py'
       - 'verify_models.py'
       - 'tests/test_russian_small.py'
@@ -134,6 +141,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Torch installation failed' }
           python -m pip install -r requirements-windows.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows app dependency installation failed' }
+      - name: Gate online-license security, offline documentation, fast local routes
+        run: python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
       - name: Run unit suite, including real Tkinter HUD tests (NOT inference)
         run: python -m unittest discover -s tests -v
       - name: Obtain and check Vosk, Whisper and Silero before packaging
@@ -230,7 +239,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.17-RUSSIAN-LEXICAL-RETRY-UNVERIFIED-INSTALLER
+          name: JARVIS-NOVA-0.5.18-STUDIO-SOURCES-DEV-UNVERIFIED-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
