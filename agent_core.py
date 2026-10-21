@@ -38,7 +38,19 @@ UNSAFE_APPS = {"powershell", "cmd", "regedit", "terminal", "taskkill", "wscript"
 ALIASES = {"хром": "Google Chrome", "храм": "Google Chrome",
            "браузер": "Google Chrome", "гугл хром": "Google Chrome",
            "стим": "Steam", "дискорд": "Discord", "телеграм": "Telegram",
-           "блокнот": "Notepad", "проводник": "Explorer", "калькулятор": "Calculator"}
+           "блокнот": "Notepad", "проводник": "Explorer", "калькулятор": "Calculator",
+           "файрфокс": "Mozilla Firefox", "мозила": "Mozilla Firefox",
+           "эдж": "Microsoft Edge", "майкрософт эдж": "Microsoft Edge",
+           "пейнт": "Paint", "рисовалка": "Paint",
+           "ворд": "Word", "майкрософт ворд": "Word",
+           "эксель": "Excel", "майкрософт эксель": "Excel",
+           "пауэрпоинт": "PowerPoint", "презентации": "PowerPoint",
+           "влс": "VLC media player", "влц": "VLC media player",
+           "обс": "OBS Studio", "обс студио": "OBS Studio",
+           "спотифай": "Spotify", "зум": "Zoom",
+           "визуал студио код": "Visual Studio Code",
+           "вс код": "Visual Studio Code", "фотошоп": "Adobe Photoshop",
+           "вотсап": "WhatsApp", "вацап": "WhatsApp"}
 WAKE = re.compile(r"^\s*(?:эй|окей|слушай|ну)?\s*(?:джарвис|жарвис|джервис|гарвис)\b[\s,.:;!?-]*", re.I)
 NEGATE = re.compile(r"\b(?:не\s+(?:открывай|закрывай|нажимай|пиши|трогай|запускай|сворачивай)|отмена)\b", re.I)
 
