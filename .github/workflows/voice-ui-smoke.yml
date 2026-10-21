@@ -13,6 +13,8 @@ on:
       - 'tests/test_faster_app_routes.py'
       - 'smart_montage.py'
       - 'tests/test_smart_montage.py'
+      - 'tests/test_viral_studio.py'
+      - 'smart_montage.py'
       - 'tests/test_autonomous_montage.py'
       - 'viral_studio.py'
       - 'voice_engine.py'
