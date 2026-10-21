@@ -1,5 +1,5 @@
 ; ONE offline Inno Setup EXE; refuse compilation if onedir missing.
-#define AppVersion "0.5.17-dev"
+#define AppVersion "0.5.18-dev"
 #define AppName "JARVIS NOVA"
 #define AppExecutable "JarvisNova.exe"
 #if !FileExists("..\dist\JarvisNova\JarvisNova.exe")
