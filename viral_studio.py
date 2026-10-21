@@ -21,7 +21,7 @@ import threading
 import urllib.request
 import xml.etree.ElementTree as ET
 
-VIDEO_EXTS = frozenset({'.mp4', '.mov', '.mkv', '.webm', '.m4v'})
+VIDEO_EXTS = frozenset({'.mp4', '.mov', '.mkv', '.webm', '.m4v', '.ogv'})
 TREND_NS = {'ht': 'https://trends.google.com/trending/rss'}
 MAX_RSS = 500_000
 
@@ -368,6 +368,7 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
     Clips are matched to brief shots in alphabetical/number order, one per shot.
     Stops with an explicit error if footage is incomplete. No web access.
     """
+    from smart_montage import choose_highlight_start, verify_output_media
     validate_brief(brief)
     width,height=size
     if not (144 <= width <= 2160 and 256 <= height <= 3840 and width < height):
@@ -396,8 +397,11 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             if clip.stat().st_size > 10_000_000_000:
                 raise ViralStudioError('Слишком большой исходный файл')
             available,has_audio=_probe(clip,ffprobe,cancel)
-            begin=0.15 if available > shot.seconds+0.2 else 0
-            length=min(shot.seconds,available-begin-0.05)
+            # Find the best-lit, most relevant-looking moving excerpt in RAM
+            # rather than always taking the first seconds of unrelated footage.
+            duration=min(shot.seconds,available-.08)
+            begin=choose_highlight_start(clip,available,duration,ffmpeg,cancel=cancel)
+            length=min(duration,available-begin-.05)
             if length<0.7:
                 raise ViralStudioError(f'Кадр {clip.name} слишком короткий')
             length=round(length,2)
@@ -416,8 +420,12 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             argv.extend(['-t',str(length),'-filter_complex',filter_graph,
                          '-map','[v]', '-map','0:a:0' if has_audio else '2:a:0',
                          '-c:v','libx264','-preset','veryfast','-crf','23',
-                         '-ar','48000','-ac','2','-c:a','aac','-b:a','128k',
-                         '-shortest',str(segment)])
+                         '-ar','48000','-ac','2','-c:a','aac','-b:a','128k'])
+            if has_audio:
+                # Keep mixed source recordings at a broadly consistent loudness.
+                # Do not normalize synthetic silent filler.
+                argv.extend(['-af','loudnorm=I=-16:TP=-1.5:LRA=11'])
+            argv.extend(['-shortest',str(segment)])
             _execute(argv,timeout=900,cancel=cancel)
             segments.append(segment)
             decisions.append({'file':clip.name,'start':begin,'seconds':length,'on_screen':shot.caption})
@@ -430,8 +438,11 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
         verified_duration,_=_probe(temp_final,ffprobe,cancel)
         if verified_duration<0.7 or temp_final.stat().st_size<1000:
             raise ViralStudioError('FFmpeg создал некорректный MP4')
+        technical=verify_output_media(temp_final,ffprobe,
+                                      sum(part['seconds'] for part in decisions),cancel=cancel)
         shutil.move(str(temp_final),str(out_file))
     result={'output':str(out_file),'duration':verified_duration,'size':[width,height],
+            'technical_quality':technical,
             'segments':decisions,'captions':'экранные вставки, не транскрипция речи',
             'created_utc':datetime.now(timezone.utc).isoformat()}
     (out_file.parent/(out_file.stem+'_EDL.json')).write_text(
