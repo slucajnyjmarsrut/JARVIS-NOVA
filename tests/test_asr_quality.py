@@ -11,7 +11,8 @@ from unittest import mock
 import numpy as np  # Windows native extension preloaded before module mocks.
 
 from asr_quality import (should_refine,prefer_refined,transcript_confidence,
-                         suspicious_wake_prefix)
+                         suspicious_wake_prefix,should_refine_short_phrase,
+                         prefer_short_refined)
 from speech_capture import AdaptiveSpeechGate
 from voice_engine import Voice
 from main import Jarvis
@@ -85,6 +86,84 @@ class RecognitionQualityTests(unittest.TestCase):
                     while v.whisper_busy and time.monotonic()<deadline:
                         time.sleep(.01)
                 self.assertEqual(called,[])
+
+    def test_short_russian_false_word_is_refined_but_greeting_is_fast(self):
+        self.assertTrue(should_refine_short_phrase(
+            recognition("джарвис джайдес",logprob=-.14),True))
+        self.assertTrue(should_refine_short_phrase(
+            recognition("джайдес",logprob=-.14),True))
+        self.assertFalse(should_refine_short_phrase(
+            recognition("джайдес",logprob=-.14),False))
+        self.assertFalse(should_refine_short_phrase(
+            recognition("привет",logprob=-.14),True))
+        self.assertFalse(should_refine_short_phrase(
+            recognition("блокнот",logprob=-.14),True))
+        self.assertFalse(should_refine_short_phrase(
+            recognition("джайдес",logprob=-1.1),True))
+        self.assertFalse(should_refine_short_phrase(
+            {"text":"джайдес"},True))
+        self.assertFalse(should_refine_short_phrase(
+            recognition("джайдес",logprob=-.14,silence=.8),True))
+
+    def test_second_pass_cannot_invent_app_command_from_garbled_word(self):
+        first=recognition("джайдес",logprob=-.3)
+        corrected=recognition("что делаешь",logprob=-.05)
+        invented=recognition("открой блокнот",logprob=-.01)
+        self.assertIs(prefer_short_refined(first,corrected),corrected)
+        self.assertIs(prefer_short_refined(first,invented),first)
+        self.assertIs(prefer_short_refined(first,{"text":"что делаешь"}),first)
+
+    def test_accurate_mode_recovers_short_question_with_bounded_second_pass(self):
+        utterance=(np.ones(16000,dtype="<i2")*120).tobytes()
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"stub")
+            (root/"small.pt").write_bytes(b"stub")
+            calls=[]
+            delivered=[]
+            done=threading.Event()
+            def transcribe(*a,**kw):
+                calls.append(kw)
+                result=(recognition("джарвис джайдес",logprob=-.35) if
+                        kw["beam_size"]==2 else
+                        recognition("джарвис что делаешь",logprob=-.06))
+                if len(calls)==2:done.set()
+                return result
+            voice=Voice(delivered.append,lambda _:None,lambda:False)
+            voice._get_small_model=lambda _:types.SimpleNamespace(transcribe=transcribe)
+            voice.until=time.monotonic()+8
+            with mock.patch("voice_engine.assets",return_value=root):
+                voice._try_whisper(utterance,False)
+                self.assertTrue(done.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:
+                    time.sleep(.01)
+            self.assertEqual(delivered,["что делаешь"])
+            self.assertEqual([c["beam_size"] for c in calls],[2,5])
+            self.assertTrue(all(c["language"]=="ru" for c in calls))
+
+    def test_short_question_does_not_trigger_extra_decode_in_fast_mode(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"stub")
+            (root/"small.pt").write_bytes(b"stub")
+            calls=[]
+            done=threading.Event()
+            def transcribe(*a,**kw):
+                calls.append(kw["beam_size"])
+                done.set()
+                return recognition("джайдес",logprob=-.25)
+            voice=Voice(lambda _:None,lambda _:None,lambda:False)
+            voice.recognition_mode="fast"
+            voice._get_whisper_model=lambda _:types.SimpleNamespace(transcribe=transcribe)
+            voice.until=time.monotonic()+8
+            with mock.patch("voice_engine.assets",return_value=root):
+                voice._try_whisper((np.ones(16000,dtype="<i2")*120).tobytes(),False)
+                self.assertTrue(done.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:
+                    time.sleep(.01)
+            self.assertEqual(calls,[2])
 
     def test_good_russian_transcript_skips_expensive_second_pass(self):
         self.assertFalse(should_refine(recognition("джарвис открой блокнот"),True))
