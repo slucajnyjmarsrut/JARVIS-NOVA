@@ -150,5 +150,5 @@ def caption_subtitles(segments: list[dict]) -> str:
             raise MontageQualityError("Недопустимая длина титра")
         start=current
         current+=round(seconds*1000)
-        entries.append(f"{len(entries)+1}\\n{clock(start)} --> {clock(current)}\\n{caption}\\n")
-    return "\\n".join(entries)+"\\n" if entries else ""
+        entries.append(f"{len(entries)+1}\n{clock(start)} --> {clock(current)}\n{caption}\n")
+    return "\n".join(entries)+"\n" if entries else ""
