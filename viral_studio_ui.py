@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from viral_studio import (ViralStudioError, create_local_brief, research_trends,
                           template_brief, save_brief, load_brief, render_video)
+from online_media import search_free_video, download_free_video, OnlineMediaError
 from channel_audience import read_channel_csv, analyze_audience, AudienceDataError
 from creator_experts import recommend_topic, expert_report
 from video_forecast import evaluate_final_cut, save_review
@@ -60,7 +61,7 @@ class ViralStudioWindow(tk.Toplevel):
         self.speak_button=ttk.Button(row,text='Озвучить, что снимать',command=self.read_shots)
         self.speak_button.pack(side='left')
         second=ttk.Frame(self,padding=(12,0,12,8));second.pack(fill='x')
-        self.edit_button=ttk.Button(second,text='3. Смонтировать мои кадры',command=self.montage)
+        self.edit_button=ttk.Button(second,text='3. Монтаж: мои или онлайн-кадры',command=self.montage)
         self.edit_button.pack(side='left',padx=(0,8))
         self.review_button=ttk.Button(second,text='4. Оценить для аудитории',command=self.review)
         self.review_button.pack(side='left',padx=(0,8))
@@ -69,7 +70,7 @@ class ViralStudioWindow(tk.Toplevel):
         self.viewer.pack(fill='both',expand=True,padx=12,pady=(2,8))
         self.viewer.insert('end','JARVIS подготовит оригинальный сценарий и пронумерованный список кадров.\n'
                       'После съёмки положи видео в одну папку: 01.mp4, 02.mp4 и т. д.\n'
-                      'Монтаж работает локально. Чужая музыка и чужие ролики не скачиваются.\n')
+                      'Монтаж работает локально. Онлайн-поиск видео доступен только после разрешения.\n')
         self.viewer.configure(state='disabled')
         ttk.Label(self,textvariable=self.status,wraplength=690).pack(fill='x',padx=12,pady=(0,10))
         self.focus_set()
@@ -231,17 +232,39 @@ class ViralStudioWindow(tk.Toplevel):
     def montage(self):
         if not self.brief or not self.project:
             messagebox.showinfo('Нет сценария','Сначала подготовь сценарий.',parent=self);return
-        folder=filedialog.askdirectory(parent=self,title='Выбери папку с твоими видео 01.mp4, 02.mp4 ...')
-        if not folder:return
-        if not messagebox.askyesno('Подтверждение монтажа',
-            f'Собрать 9:16 MP4 из {len(self.brief.shots)} отснятых кадров в папке:\n{folder}\n\n'
-            'Исходные файлы не будут изменены.',parent=self):return
+        online=messagebox.askyesno('Источник видео',
+            'Искать открытые видеоклипы на Wikimedia Commons?\\n\\n'
+            'Будет передана только тема ролика. Сохраняются ссылки на '
+            'источники и условия CC0, Public Domain или CC BY. '
+            'Авторство и применимость лицензии проверь до публикации.\\n\\n'
+            'Нет — выбрать собственные видео.',parent=self)
+        folder=None
+        if not online:
+            folder=filedialog.askdirectory(parent=self,title='Выбери папку с клипами 01.mp4, 02.mp4 ...')
+            if not folder:return
+            if not messagebox.askyesno('Подтверждение монтажа',
+                f'Смонтировать {len(self.brief.shots)} кадров из {folder}? '
+                'Исходные файлы не изменятся.',parent=self):return
         brief=self.brief
         project=self.project
         out=project/'JARVIS_NOVA_VERTICAL.mp4'
-        self.status.set('Монтирую локально: кадрирование, склейка, экранные тексты…')
+        self.status.set('Ищу открытые материалы…' if online else
+                        'Монтирую локально: кадрирование, склейка, экранные тексты…')
         def work():
-            data=render_video(brief,Path(folder),out,cancel=self.stop_event)
+            source=Path(folder) if folder is not None else None
+            credits=''
+            if online:
+                candidates=search_free_video(brief.topic,consent=True)
+                if len(candidates)<len(brief.shots):
+                    raise OnlineMediaError(
+                        f'По теме «{brief.topic}» найдено {len(candidates)} клипов, '
+                        f'нужно {len(brief.shots)}. Уточни тему или выбери свою папку.')
+                source=project/('online_clips_'+uuid4().hex[:8])
+                download_free_video(candidates[:len(brief.shots)],source,
+                                    consent=True,cancel=self.stop_event)
+                credits=str(source/'CREDITS_RU.md')
+            if self.stop_event.is_set():return
+            data=render_video(brief,source,out,cancel=self.stop_event)
             review=None; report=None
             if self.profile is not None and not self.stop_event.is_set():
                 try:
@@ -259,6 +282,7 @@ class ViralStudioWindow(tk.Toplevel):
                 self._show('Готово!\n\nФайл: '+data['output']+'\n'
                            'Длительность: '+str(round(data['duration'],1))+' сек.\n'
                            'Соотношение: 9:16\n'
+                           'Лицензии и авторство: '+credits+'\\n'
                            'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n'
                            'Аудитория и потенциал: '+str(report)+'\n\n'
                            'Проверь результат перед публикацией. JARVIS ничего не публикует автоматически.')
