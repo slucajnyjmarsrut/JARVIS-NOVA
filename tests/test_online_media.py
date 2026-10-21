@@ -19,7 +19,8 @@ def result(licence="CC BY 4.0", url=GOOD, mime="video/webm", size=2048):
     return json.dumps({"query": {"pages": {
         "7": {"title": "File:Example.webm", "imageinfo": [{
             "url": url, "mime": mime, "size": size,
-            "extmetadata": {"LicenseShortName": {"value": licence}},
+            "extmetadata": {"LicenseShortName": {"value": licence},
+                            "Artist": {"value": "<b>Example &amp; Co</b>"}},
         }]},
     }}}).encode("utf-8")
 
@@ -37,6 +38,7 @@ class CommonsTests(unittest.TestCase):
                                   transport=lambda url, maxsize: result())
         self.assertEqual(len(clips), 1)
         self.assertEqual(clips[0].license, "CC BY 4.0")
+        self.assertEqual(clips[0].author, "Example & Co")
         self.assertIn("commons.wikimedia.org/wiki/File:", clips[0].page)
         for licence in ("Unknown", "All Rights Reserved", "CC BY-NC 4.0", "CC BY-SA 4.0"):
             self.assertEqual(search_free_video("природа", consent=True,
