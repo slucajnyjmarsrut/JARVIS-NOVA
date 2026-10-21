@@ -11,7 +11,7 @@ from whisper_mode import WhisperClassifier, normalize_style
 from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
 from asr_quality import (should_refine, prefer_refined, transcript_confidence,
                          suspicious_wake_prefix, should_refine_short_phrase,
-                         prefer_short_refined)
+                         prefer_short_refined, russian_app_vocabulary)
 
 
 class Voice:
@@ -344,11 +344,19 @@ class Voice:
                                        and (root/"small.pt").is_file())
                         selected=(self._get_small_model(root/"small.pt")
                                   if quality_retry else model)
-                        second=selected.transcribe(
-                            samples,language="ru",fp16=False,
+                        retry_options=dict(
+                            language="ru",fp16=False,
                             condition_on_previous_text=False,temperature=0,
                             beam_size=2 if quality_retry else 5,
                             best_of=1,no_speech_threshold=0.65)
+                        # Give accurate-mode Whisper a small offline Russian
+                        # app-name vocabulary only for a justified second pass.
+                        # Do NOT bias passive listening or the fast/base mode.
+                        if active and self.recognition_mode=="accurate" and (quality or quality_retry):
+                            vocabulary=russian_app_vocabulary(first)
+                            if vocabulary:
+                                retry_options["initial_prompt"]=vocabulary
+                        second=selected.transcribe(samples,**retry_options)
                         if recover_wake:
                             # A weak/hallucinated second pass is not sufficient
                             # to authorize even a supposedly harmless command.
