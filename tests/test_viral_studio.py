@@ -85,6 +85,11 @@ class ViralTests(unittest.TestCase):
             self.assertGreater(output.stat().st_size,2000)
             self.assertEqual(len(meta['segments']),2)
             self.assertTrue(output.with_name('final_EDL.json').exists())
+            self.assertTrue(output.with_suffix('.srt').exists())
+            self.assertIn('00:00:00,000 -->',output.with_suffix('.srt').read_text('utf-8-sig'))
+            self.assertTrue(meta['technical_quality']['quality_checked'])
+            self.assertEqual(meta['technical_quality']['video_codec'],'h264')
+            self.assertEqual(meta['technical_quality']['audio_codec'],'aac')
             self.assertTrue((raw/'01.mp4').exists())
     def test_cancel_preempts_render(self):
         with tempfile.TemporaryDirectory() as temp:
