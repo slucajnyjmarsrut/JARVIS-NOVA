@@ -141,7 +141,7 @@ def download_free_video(clips: list[FreeClip], folder: Path, *, consent=False,
         payload = (transport or _fetch)(clip.url, min(MAX_CLIP, clip.size + 2048))
         if not isinstance(payload, bytes) or len(payload) > MAX_CLIP or not payload:
             raise OnlineMediaError("Некорректные данные видео")
-        if clip.mime == "video/webm" and not payload.startswith(b"\\x1a\\x45\\xdf\\xa3"):
+        if clip.mime == "video/webm" and not payload.startswith(b"\x1a\x45\xdf\xa3"):
             raise OnlineMediaError("Неверный заголовок WebM")
         if clip.mime == "video/mp4" and payload[4:8] != b"ftyp":
             raise OnlineMediaError("Неверный заголовок MP4")
