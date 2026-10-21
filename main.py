@@ -607,9 +607,9 @@ class Jarvis(tk.Tk):
         # Voice/text can open the fully automatic studio, but must never
         # silently grant network/media download permission.
         auto_request=re.fullmatch(
-            r'(?:джарвис[,!]?\\s+)?(?:сделай|создай|смонтируй)\\s+'
-            r'(?:мне\\s+)?(?:качественный\\s+)?(?:ролик|видео)\\s+'
-            r'(?:сам\\s+)?(?:про|об)\\s+(.{2,100})',
+            r'(?:джарвис[,!]?\s+)?(?:сделай|создай|смонтируй)\s+'
+            r'(?:мне\s+)?(?:качественный\s+)?(?:ролик|видео)\s+'
+            r'(?:сам\s+)?(?:про|об)\s+(.{2,100})',
             text.strip(),flags=re.I)
         auto_short=text.casefold().strip(' .!?,') in {
             'сделай ролик сам','создай ролик автоматически',
