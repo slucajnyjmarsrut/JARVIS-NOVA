@@ -135,6 +135,46 @@ class SelfRepairTests(unittest.TestCase):
         self.assertIn("ручной",app.reply.call_args.args[0])
         self.assertIn("не изменены",app.reply.call_args.args[0])
 
+    def test_concurrent_fix_during_backup_is_never_erased(self):
+        from self_repair import _backup_exclusive
+        broken=self.folder/"learning-v1.json"
+        broken.write_bytes(b"{bad-json")
+        repaired=json.dumps({"version":1,"aliases":{"обзор":"Notepad"},
+                             "stats":{}},ensure_ascii=False).encode("utf-8")
+        def competing_instance(source):
+            backup=_backup_exclusive(source)
+            source.write_bytes(repaired)
+            return backup
+        with mock.patch("self_repair._backup_exclusive",side_effect=competing_instance):
+            report=repair_configs(consent=True,folder=self.folder)
+        self.assertEqual(report.repaired,())
+        self.assertIn("learning-v1.json",report.manual)
+        self.assertEqual(broken.read_bytes(),repaired)
+        self.assertEqual((self.folder/"learning-v1.json.corrupt-1.bak").read_bytes(),
+                         b"{bad-json")
+
+    def test_backup_rejects_growth_and_never_leaves_partial_archive(self):
+        from self_repair import _backup_exclusive,MAX_REPAIR_BYTES,RepairError
+        corrupt=self.folder/"learning-v1.json"
+        corrupt.write_bytes(b"{broken")
+        original_open=Path.open
+        class Growing:
+            def __init__(self,handle): self.handle=handle
+            def __enter__(self): return self
+            def __exit__(self,*args): self.handle.close()
+            def fileno(self): return self.handle.fileno()
+            def read(self,n=-1):
+                return b"A"*(MAX_REPAIR_BYTES+1)
+        def counterfeit_open(path,mode="r",*args,**kwargs):
+            if path==corrupt and mode=="rb":
+                return Growing(original_open(path,mode,*args,**kwargs))
+            return original_open(path,mode,*args,**kwargs)
+        with mock.patch("pathlib.Path.open",new=counterfeit_open):
+            with self.assertRaisesRegex(RepairError,"изменились"):
+                _backup_exclusive(corrupt)
+        self.assertEqual(corrupt.read_bytes(),b"{broken")
+        self.assertFalse(list(self.folder.glob("*.bak")))
+
     def test_http_permission_errors_are_not_retried(self):
         import urllib.error
         calls=[]
