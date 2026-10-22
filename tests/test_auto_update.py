@@ -303,6 +303,8 @@ class UpdaterTests(unittest.TestCase):
                 self.assertEqual(Path(args[0]).resolve(),candidate.resolve())
                 self.assertIn("/VERYSILENT",args)
                 self.assertIn("/NORESTART",args)
+                self.assertIn("/NOCLOSEAPPLICATIONS",args)
+                self.assertNotIn("/CLOSEAPPLICATIONS",args)
                 self.assertEqual(Path(args[-1][5:]).resolve(),installed.resolve())
                 order.append("install")
                 (installed/"JARVIS_NOVA_VERSION.txt").write_text(rel.version)
@@ -315,6 +317,7 @@ class UpdaterTests(unittest.TestCase):
                 release_lookup=lambda:rel,wait=wait,installer_run=install,
                 relaunch=relaunch,folder=folder))
             self.assertEqual(order,["wait","install","launch"])
+            self.assertFalse(candidate.exists(), "Successful update must remove large cached EXE")
             self.assertEqual(json.loads((folder/"update-status.json").read_text())["status"],"installed")
 
     def test_worker_fails_closed_for_version_change_bad_hash_or_exit_timeout(self):
