@@ -72,6 +72,8 @@ class PlanTests(unittest.TestCase):
             "https://[::1]/", "https://10.0.0.2/path",
             "https://user:password@example.org/",
             "https://example.org:4443/", "https://example.org:bad/",
+            "https://example..org/", "https://-example.org/",
+            "https://example-.org/", "https://example.1/",
             "https://evil.example.com@localhost/admin", "https://bad%2Fexample.org/",
             "https://example.org\evil", "https://example.org/a b",
             "https://example.org/a\ninjected", "https://example.org/\tinjected",
@@ -103,6 +105,7 @@ class PlanTests(unittest.TestCase):
             "https://example.org/", "https://commons.wikimedia.org/wiki/File:Example",
             "https://www.youtube.com/watch?v=AbCdE_99",
             "https://1.1.1.1/dns-query", "https://example.com:443/path#fragment",
+            "https://пример.рф/Путь?Ключ=АБВ",
         ):
             with self.subTest(address=address):
                 validate_plan(Plan(steps=[Step("open_url",address)]))
