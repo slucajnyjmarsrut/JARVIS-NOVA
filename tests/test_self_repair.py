@@ -84,6 +84,26 @@ class SelfRepairTests(unittest.TestCase):
         self.assertEqual(report.repaired,("learning-v1.json",))
         self.assertEqual((self.folder/"learning-v1.json.corrupt-1.bak").read_bytes(),data)
 
+    def test_extremely_large_or_unknown_settings_are_never_rewritten(self):
+        enormous=self.folder/"learning-v1.json"
+        enormous.write_bytes(b"Z"*600_000)
+        self.assertEqual(inspect_configs(self.folder)[0].status,"unsafe")
+        result=repair_configs(consent=True,folder=self.folder)
+        self.assertEqual(result.repaired,())
+        self.assertEqual(enormous.stat().st_size,600_000)
+        self.assertFalse(list(self.folder.glob("*.bak")))
+
+    def test_http_permission_errors_are_not_retried(self):
+        import urllib.error
+        calls=[]
+        def server_denied():
+            calls.append(1)
+            raise urllib.error.HTTPError("https://commons.wikimedia.org/w/api.php",
+                                         403,"Forbidden",{},None)
+        with self.assertRaises(urllib.error.HTTPError):
+            retry_readonly("commons_search",server_denied)
+        self.assertEqual(calls,[1])
+
     def test_readonly_transient_search_can_retry_once(self):
         attempts=[]
         def transient():
