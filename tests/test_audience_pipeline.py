@@ -60,6 +60,32 @@ class ChannelAudienceTests(unittest.TestCase):
             file=save_profile(orig,pathlib.Path(td))
             self.assertEqual(load_profile(file),orig)
             with self.assertRaises(AudienceDataError):save_profile(orig,pathlib.Path(td))
+    def test_profile_save_never_overwrites_file_created_after_preflight(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td)
+            dest=root/'channel_profile.json'
+            original_open=pathlib.Path.open
+            def concurrent_create(path,mode='r',*args,**kwargs):
+                if path==dest and mode=='x':
+                    dest.write_text('PRIVATE USER CONTENT',encoding='utf-8')
+                return original_open(path,mode,*args,**kwargs)
+            with patch('pathlib.Path.open',new=concurrent_create):
+                with self.assertRaisesRegex(AudienceDataError,'существует'):
+                    save_profile(self._profile(),root)
+            self.assertEqual(dest.read_text('utf-8'),'PRIVATE USER CONTENT')
+
+    def test_profile_save_rolls_back_partial_write_after_disk_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td)
+            def broken_dump(data,stream,*args,**kwargs):
+                stream.write('{"partial":')
+                raise OSError('disk full')
+            with patch('channel_audience.json.dump',side_effect=broken_dump):
+                with self.assertRaisesRegex(OSError,'disk full'):
+                    save_profile(self._profile(),root)
+            self.assertFalse((root/'channel_profile.json').exists())
+            self.assertEqual(list(root.iterdir()),[])
+
     def test_model_receives_aggregates_without_full_titles(self):
         profile=self._profile()
         runtime=Mock();runtime.start.return_value='http://127.0.0.1:1234'
