@@ -58,7 +58,8 @@ def _approved_video(url: str, mime: str) -> bool:
     try:
         u = urlsplit(url)
         return (u.scheme == "https" and u.hostname == "upload.wikimedia.org"
-                and not (u.username or u.password or u.port or u.query or u.fragment)
+                and u.username is None and u.password is None and u.port is None
+                and not (u.query or u.fragment)
                 and u.path.startswith("/wikipedia/commons/")
                 and not any(p in ("..", ".") for p in u.path.split("/"))
                 and "%2e" not in u.path.casefold() and "%2f" not in u.path.casefold()
