@@ -209,6 +209,14 @@ class UpdaterTests(unittest.TestCase):
                     download_release(rel,cache,opener=request)
             self.assertFalse(request.requests)
             self.assertFalse(list(cache.iterdir()))
+            # Previous check accepted a disk with download space but no room
+            # to unpack a replacement offline app. Reject it before HTTP.
+            with mock.patch("auto_update.shutil.disk_usage",
+                            return_value=SimpleNamespace(
+                                free=rel.size+DISK_RESERVE_BYTES+50)):
+                with self.assertRaisesRegex(UpdateError,"свободного места"):
+                    download_release(rel,cache,opener=request)
+            self.assertFalse(request.requests)
 
     def test_recent_failed_installer_does_not_restart_endlessly(self):
         import time
