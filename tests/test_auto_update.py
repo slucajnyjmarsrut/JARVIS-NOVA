@@ -253,6 +253,36 @@ class UpdaterTests(unittest.TestCase):
             self.assertEqual(restarted[0].resolve(),app.resolve())
             self.assertEqual(json.loads((folder/"update-status.json").read_text())["status"],"failed")
 
+    def test_auto_relaunch_never_interrupts_active_work_or_unsent_text(self):
+        from main import Jarvis
+        from types import SimpleNamespace
+        app=SimpleNamespace(
+            _closing=False,_auto_update_pending=(
+                parse_release(release_data()),Path("C:/Cache/candidate-0.5.19.exe")),
+            _auto_update_first_seen=-10000,
+            executing=True,
+            _viral_window=SimpleNamespace(running=False),
+            speaker=SimpleNamespace(busy=False),
+            trimodal=SimpleNamespace(speaking=False),
+            voice=SimpleNamespace(whisper_busy=False),
+            entry=SimpleNamespace(get=lambda:""),
+            after=mock.Mock(),status=SimpleNamespace(set=mock.Mock()),
+            close=mock.Mock())
+        with mock.patch("main.installed_application",
+                        return_value=Path("C:/Programs/JarvisNova/JarvisNova.exe")), \
+             mock.patch("main.stage_helper") as staged:
+            Jarvis._finish_auto_update(app)
+            staged.assert_not_called()
+            app.after.assert_called()
+            app.executing=False
+            app.entry=SimpleNamespace(get=lambda:"unfinished message")
+            Jarvis._finish_auto_update(app)
+            staged.assert_not_called()
+            app.entry=SimpleNamespace(get=lambda:"")
+            Jarvis._finish_auto_update(app)
+            staged.assert_called_once()
+            app.close.assert_called_once()
+
     def test_dev_python_run_never_checks_for_updates(self):
         from auto_update import installed_application
         self.assertIsNone(installed_application())
