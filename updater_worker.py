@@ -113,7 +113,12 @@ def apply_update(installer: Path, application: Path, expected_version: str,
             raise UpdateError("Установленная версия не подтверждена")
         if not application.is_file():
             raise UpdateError("Установщик не создал JarvisNova.exe")
-        record_status(folder,"installed",expected_version)
+        # A full/locked cache must not prevent JARVIS from relaunching after
+        # an otherwise successful install.
+        try:
+            record_status(folder,"installed",expected_version)
+        except OSError:
+            pass
         # Never accumulate multi-gigabyte installers after a successful
         # upgrade. This file was owned by the update cache and is no longer
         # needed once Inno Setup has returned and the version was verified.
@@ -129,7 +134,12 @@ def apply_update(installer: Path, application: Path, expected_version: str,
         relaunch(application)
         return True
     except Exception as exc:
-        record_status(folder,"failed",expected_version,type(exc).__name__)
+        # This is a recovery path: log failure must NEVER prevent recovery.
+        # In particular, disk-full and antivirus file locks can affect JSON.
+        try:
+            record_status(folder,"failed",expected_version,type(exc).__name__)
+        except OSError:
+            pass
         # The old installation may still be functional. Never try to delete it.
         if application.is_file():
             try:
