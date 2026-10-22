@@ -7,7 +7,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from viral_studio import (Trend, Shot, Brief, ViralStudioError, research_trends,
                           template_brief, save_brief, load_brief, create_local_brief,
@@ -66,6 +66,53 @@ class ViralTests(unittest.TestCase):
             footage=pathlib.Path(temp)/'raw';footage.mkdir()
             for i in range(5):(footage/f'{i}.mp4').write_bytes(b'fake')
             with self.assertRaises(ViralStudioError):render_video(template_brief('Кофе'),footage,footage/'output.mp4')
+    def test_existing_edit_decisions_are_never_overwritten(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp)
+            clips=root/'raw'
+            clips.mkdir()
+            for i in range(5):
+                (clips/f'{i:02}.mp4').write_bytes(b'bad media')
+            output=root/'ready.mp4'
+            metadata=root/'ready_EDL.json'
+            metadata.write_text('USER FILE: DO NOT CHANGE',encoding='utf-8')
+            with self.assertRaisesRegex(ViralStudioError,'существ'):
+                render_video(template_brief('Книги'),clips,output)
+            self.assertEqual(metadata.read_text('utf-8'),'USER FILE: DO NOT CHANGE')
+            self.assertFalse(output.exists())
+
+    def test_publishing_failure_rolls_back_partial_video_and_sidecars(self):
+        try:
+            ffmpeg,ffprobe=ffmpeg_tools()
+        except ViralStudioError:
+            self.skipTest('FFmpeg not installed on this runner')
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp)
+            clips=root/'raw';clips.mkdir()
+            for i in range(2):
+                subprocess.run([ffmpeg,'-hide_banner','-loglevel','error','-y',
+                    '-f','lavfi','-i','color=c=blue:s=180x320:r=12:d=1.6',
+                    '-c:v','libx264','-pix_fmt','yuv420p',
+                    str(clips/f'{i+1:02}.mp4')],check=True,capture_output=True)
+            shot=Shot(1.,'Снимок','Тест')
+            brief=Brief('Тест','Синий','Хук','Сюжет',(shot,shot),'Финал','шаблон')
+            out=root/'export'/'video.mp4'
+            calls=[]
+            original=shutil.copyfileobj
+            def faulty_copy(src,dst,**kwargs):
+                calls.append(dst.name)
+                if len(calls)==2:
+                    dst.write(b'PARTIAL')
+                    raise OSError('simulated interrupted metadata write')
+                return original(src,dst,**kwargs)
+            with patch('viral_studio.shutil.copyfileobj',side_effect=faulty_copy):
+                with self.assertRaisesRegex(OSError,'interrupted'):
+                    render_video(brief,clips,out,size=(180,320),tools=(ffmpeg,ffprobe))
+            self.assertFalse(out.exists())
+            self.assertFalse(out.with_suffix('.srt').exists())
+            self.assertFalse(out.with_name('video_EDL.json').exists())
+            self.assertTrue((clips/'01.mp4').exists())
+
     def test_render_real_ffmpeg_clip_to_mp4(self):
         try: ffmpeg,ffprobe=ffmpeg_tools()
         except ViralStudioError: self.skipTest('FFmpeg not installed on this runner')
