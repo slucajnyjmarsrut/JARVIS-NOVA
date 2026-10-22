@@ -113,6 +113,32 @@ class ViralTests(unittest.TestCase):
             self.assertFalse(out.with_name('video_EDL.json').exists())
             self.assertTrue((clips/'01.mp4').exists())
 
+    def test_short_source_audio_does_not_cut_off_video(self):
+        """Real FFmpeg file with 3s video but 0.8s audio must export 2s."""
+        try:
+            ffmpeg,ffprobe=ffmpeg_tools()
+        except ViralStudioError:
+            self.skipTest('FFmpeg not installed on this runner')
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp);raw=root/'raw';raw.mkdir()
+            cmd=[ffmpeg,'-hide_banner','-loglevel','error','-y',
+                 '-f','lavfi','-i','color=c=green:s=180x320:r=15:d=3',
+                 '-f','lavfi','-i','sine=frequency=500:sample_rate=48000:duration=0.8',
+                 '-map','0:v:0','-map','1:a:0','-c:v','libx264',
+                 '-pix_fmt','yuv420p','-c:a','aac','-t','3',
+                 str(raw/'01.mp4')]
+            subprocess.run(cmd,check=True,capture_output=True)
+            brief=Brief('Проба','Звук','Вступление','Проверяем длину',
+                        (Shot(2.,'Зелёный фон','Аудио короче видео'),),
+                        'Готово','шаблон')
+            output=root/'edited'/'result.mp4'
+            data=render_video(brief,raw,output,size=(180,320),tools=(ffmpeg,ffprobe))
+            self.assertTrue(data['technical_quality']['quality_checked'])
+            self.assertGreater(data['duration'],1.5)
+            self.assertLess(data['duration'],2.4)
+            self.assertTrue(output.exists())
+            self.assertTrue((raw/'01.mp4').exists())
+
     def test_render_real_ffmpeg_clip_to_mp4(self):
         try: ffmpeg,ffprobe=ffmpeg_tools()
         except ViralStudioError: self.skipTest('FFmpeg not installed on this runner')
