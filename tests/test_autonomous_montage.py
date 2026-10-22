@@ -49,24 +49,32 @@ class AutonomousMontageTests(TestCase):
                 self.assertEqual(folder.name,"licensed_media")
                 folder.mkdir()
                 return folder
-            def rendering(b,folder,out,**opts):
+            def finishing(b,folder,project,**opts):
                 self.assertEqual(b,brief)
                 self.assertEqual(folder.name,"licensed_media")
-                self.assertEqual(out.parent.name[:5],"auto_")
-                out.write_bytes(b"fake-FFmpeg-test-output")
-                return {"duration":23.,"technical_quality":{"quality_checked":True}}
+                self.assertEqual(project.name[:5],"auto_")
+                self.assertIsNone(opts["profile"])
+                self.assertEqual(opts["filename"],"JARVIS_NOVA_AUTO_VERTICAL.mp4")
+                output=project/"JARVIS_NOVA_AUTO_VERTICAL.mp4"
+                output.write_bytes(b"fake-FFmpeg-test-output")
+                return SimpleNamespace(brief=brief,output=output,
+                   rendered={"duration":23.,"technical_quality":{"quality_checked":True}},
+                   attempts=[1],report=project/"POST_MONTAGE_REVIEW_RU.md",
+                   speech="Проверил ролик. Повторный монтаж не нужен.")
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=source),
                   mock.patch("viral_studio_ui.create_local_brief",return_value=brief) as ai,
                   mock.patch("viral_studio_ui.search_free_video",return_value=items) as search,
                   mock.patch("viral_studio_ui.download_free_video",side_effect=downloader),
-                  mock.patch("viral_studio_ui.render_video",side_effect=rendering)):
+                  mock.patch("viral_studio_ui.analyze_and_recut",side_effect=finishing)):
                 ViralStudioWindow.auto_montage(app)
             ai.assert_called_once_with("лес",audience=None)
             search.assert_called_once_with("лес",consent=True)
             self.assertTrue((app.project/"brief.json").exists())
             self.assertEqual(app.rendered_video.parent,app.project)
             self.assertTrue(app._show.called)
+            self.assertIn("Отчёт о просмотрах",app._show.call_args.args[0])
+            app._speak.assert_called_once()
 
     def test_model_failure_uses_explicitly_marked_template_not_fake_ai(self):
         with TemporaryDirectory() as t:
@@ -83,8 +91,12 @@ class AutonomousMontageTests(TestCase):
                              return_value=[object() for _ in range(10)]),
                   mock.patch("viral_studio_ui.download_free_video",
                              side_effect=lambda c,p,**k:p.mkdir()),
-                  mock.patch("viral_studio_ui.render_video",
-                             return_value={"duration":23.,"technical_quality":{}})):
+                  mock.patch("viral_studio_ui.analyze_and_recut",
+                             side_effect=lambda brief,folder,project,**k:SimpleNamespace(
+                               brief=brief,output=project/"result.mp4",
+                               rendered={"duration":23.,"technical_quality":{}},
+                               attempts=[1],report=project/"review.md",
+                               speech="Проверил и объяснил результат."))):
                 ViralStudioWindow.auto_montage(app)
             self.assertIn("шаблон",app.brief.generator)
             self.assertIn("шаблон",app._show.call_args.args[0])
