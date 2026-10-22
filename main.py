@@ -6,6 +6,7 @@ from agent_core import Plan, parse_local, validate_plan, ask_ai_for_plan
 from desktop import Desktop, AppSuggestion
 from speaker import Speaker
 from self_improve import LearningStore, safe_name
+from self_repair import repair_configs, inspect_configs
 from trimodal_service import TrimodalService
 from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
@@ -129,6 +130,9 @@ class Jarvis(tk.Tk):
         learning_menu.add_command(label="Удалить выученное название…",command=self.remove_alias)
         learning_menu.add_command(label="Сбросить обучение",command=self.reset_learning)
         learning_menu.add_command(label="Проверить офлайн-модели",command=self.check_models)
+        learning_menu.add_separator()
+        learning_menu.add_command(label="Самовосстановление: проверить и исправить настройки…",
+                                  command=self.self_repair_now)
         menu.add_cascade(label="Самоулучшение",menu=learning_menu)
         menu.add_command(label="Стоп/Выключить микрофон",command=self.toggle_voice)
         # The native Tk menu bar is bright on Windows and duplicates the
@@ -586,9 +590,43 @@ class Jarvis(tk.Tk):
             self._answer_style="normal"  # typed requests do not inherit voice volume
             self.handle_text(s)
 
+    def self_repair_now(self):
+        """Safely repair ONLY local settings after asking the user.
+
+        Full source changes or installing software are deliberately excluded.
+        """
+        problems=[f for f in inspect_configs()
+                  if f.status in ("corrupt","too_large")]
+        if not problems:
+            self.reply("Самодиагностика: повреждённых настроек не найдено. "
+                       "Исправление программного кода выполняется отдельно, через тесты.")
+            return
+        names=", ".join(item.name for item in problems)
+        if not messagebox.askyesno(
+            "Самовосстановление JARVIS",
+            "Обнаружены повреждённые локальные настройки: "+names+
+            "\n\nСделать резервную копию каждого файла и создать чистые настройки? "
+            "Личные файлы, видео, модели и исходный код не затрагиваются.",
+            parent=self):
+            self.reply("Самовосстановление отменено. Оригиналы не изменены.")
+            return
+        report=repair_configs(consent=True)
+        # Reload only after successful on-disk verification. Previously learned
+        # application aliases and profiles are preserved in .bak backups.
+        if report.repaired:
+            self.learning=LearningStore()
+            self.desktop.learning=self.learning
+            self.modes=ModeManager()
+        self.reply(report.say())
+
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        if text.casefold().strip(" .!?,") in {
+            "проверь и исправь ошибки", "джарвис проверь и исправь ошибки",
+            "самовосстановление", "исправь ошибки джарвис"}:
+            self.self_repair_now()
+            return
         # These are exact, local window controls, not desktop automation.
         # A conversational mention of the overlay is never interpreted as one.
         overlay_action=overlay_intent(text)
