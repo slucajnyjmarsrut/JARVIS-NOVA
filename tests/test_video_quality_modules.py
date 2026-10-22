@@ -4,6 +4,7 @@ from array import array
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import threading
+import subprocess
 import unittest
 
 from video_frame_audit import (FRAME_BYTES, FrameAudit, FrameAuditError,
@@ -89,6 +90,65 @@ class MediaQualityTests(unittest.TestCase):
             self.assertEqual(len(calls),2)
             with self.assertRaises(ValueError):
                 audit_finished_media(Path(temp)/"missing.mp4",ffmpeg="ffmpeg",executor=exec_)
+
+    def test_real_ffmpeg_silent_mp4_still_receives_complete_visual_audit(self):
+        from viral_studio import ffmpeg_tools, ViralStudioError
+        try:
+            ffmpeg,ffprobe=ffmpeg_tools()
+        except ViralStudioError:
+            self.skipTest("FFmpeg absent in fast smoke environment")
+        with TemporaryDirectory() as temp:
+            video=Path(temp)/"silent.mp4"
+            subprocess.run([ffmpeg,"-hide_banner","-loglevel","error","-y",
+                "-f","lavfi","-i","color=c=black:s=180x320:r=12:d=2",
+                "-c:v","libx264","-pix_fmt","yuv420p","-an",str(video)],
+                check=True,capture_output=True,timeout=30)
+            check=audit_finished_media(video,tools=(ffmpeg,ffprobe))
+            self.assertTrue(check.checked)
+            self.assertEqual(check.audio["sampled_seconds"],0.)
+            self.assertEqual(check.audio["quiet_fraction"],1.)
+            self.assertGreater(check.video["black_fraction"],.95)
+            self.assertIn("звуковая дорожка"," ".join(check.warnings))
+            self.assertGreaterEqual(check.penalty,5)
+            self.assertTrue(video.exists())
+
+    def test_no_audio_stream_is_not_confused_with_bad_decoder_or_cancellation(self):
+        with TemporaryDirectory() as temp:
+            clip=Path(temp)/"silent.mp4"
+            clip.write_bytes(b"MZ"*1200)
+            visited=[]
+            frames=bytes([100 if i%2 else 140 for i in range(FRAME_BYTES)])*6
+            def quiet_executor(argv,**kwargs):
+                visited.append(argv)
+                if "-select_streams" in argv:
+                    return b""
+                if "-pix_fmt" in argv:
+                    return frames
+                self.fail("Audio decoder should never run for video-only file")
+            check=audit_finished_media(clip,tools=("ffmpeg","ffprobe"),
+                                       executor=quiet_executor)
+            self.assertTrue(check.checked)
+            self.assertEqual(len(visited),2)
+            self.assertEqual(check.audio["sampled_seconds"],0.)
+            self.assertIn("отсутствует"," ".join(check.warnings))
+            def broken_executor(argv,**kwargs):
+                if "-pix_fmt" in argv:
+                    return frames
+                if "-select_streams" in argv:
+                    return b"0\\n"
+                raise OSError("decoder failure")
+            with self.assertRaisesRegex(OSError,"decoder failure"):
+                audit_finished_media(clip,tools=("ffmpeg","ffprobe"),
+                                     executor=broken_executor)
+            stopped=threading.Event()
+            def cancel_after_probe(argv,**kwargs):
+                if "-pix_fmt" in argv:
+                    return frames
+                stopped.set()
+                return b""
+            with self.assertRaises(AudioAuditError):
+                audit_finished_media(clip,tools=("ffmpeg","ffprobe"),
+                                     executor=cancel_after_probe,cancel=stopped)
 
     def test_cancel_after_video_decode_cannot_continue_to_audio(self):
         event=threading.Event()
