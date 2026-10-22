@@ -28,7 +28,7 @@ DefaultDirName={localappdata}\Programs\JarvisNova
 DefaultGroupName=JARVIS NOVA
 DisableProgramGroupPage=yes
 OutputDir=..\dist\installer
-OutputBaseFilename=JARVIS-NOVA-0.5.17-OFFLINE-SETUP-DEV
+OutputBaseFilename=JARVIS-NOVA-0.5.18-OFFLINE-SETUP-DEV
 SetupIconFile=..\assets\jarvis.ico
 UninstallDisplayIcon={app}\{#AppExecutable}
 Compression=lzma2/ultra64
@@ -52,7 +52,7 @@ ChangesEnvironment=no
 ChangesAssociations=no
 VersionInfoDescription=JARVIS NOVA Dark Offline Installer (development)
 VersionInfoProductName=JARVIS NOVA
-VersionInfoVersion=0.5.17.0
+VersionInfoVersion=0.5.18.0
 
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
