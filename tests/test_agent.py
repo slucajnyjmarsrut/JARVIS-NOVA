@@ -103,6 +103,24 @@ class PlanTests(unittest.TestCase):
         with mock.patch.object(d,"shortcuts",return_value=[]):
             with self.assertRaises(FileNotFoundError):
                 d.open_app("nonexistent-app-111")
+    def test_legacy_screen_description_uses_bundled_model_and_loopback(self):
+        from PIL import Image
+        picture=Image.new("RGB",(16,16),(120,40,80))
+        seen=[]
+        def requester(endpoint,payload,**kwargs):
+            seen.append((endpoint,payload))
+            self.assertEqual(payload["model"],"qwen3-vl:2b-instruct")
+            self.assertTrue(payload["images"][0])
+            self.assertEqual(endpoint,"http://127.0.0.1:11434/api/generate")
+            return {"response":"На экране тестовая картинка."}
+        d=Desktop(lambda:False,lambda:True)
+        with mock.patch.dict("desktop.os.environ",{},clear=True), \
+             mock.patch("PIL.ImageGrab.grab",return_value=picture), \
+             mock.patch("desktop.request_json",side_effect=requester):
+            result=d.describe_screen()
+        self.assertIn("тестовая",result)
+        self.assertEqual(len(seen),1)
+
     def test_control_permission_required(self):
         d=Desktop(lambda:False)
         with self.assertRaises(PermissionError):
