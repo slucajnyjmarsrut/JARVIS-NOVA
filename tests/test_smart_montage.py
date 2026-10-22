@@ -87,6 +87,7 @@ class SmartMontageTests(unittest.TestCase):
             self.assertEqual(good["audio_codec"],"aac")
             for payload in [sample(codec="mpeg4"),sample(sound="mp3"),
                             sample(width=1280,height=720),sample(duration=19.),
+                            sample(duration=8.8),
                             b"not-json",json.dumps({"streams":[]}).encode()]:
                 with self.subTest(payload=payload[:55]),self.assertRaises(MontageQualityError):
                     verify_output_media(file,"ffprobe",8.,executor=lambda *_a,**_kw:payload)
