@@ -145,6 +145,7 @@ class ViralTests(unittest.TestCase):
         except ViralStudioError:
             self.skipTest('FFmpeg not installed on this runner')
         from post_montage_review import analyze_and_recut
+        from video_quality_gate import audit_finished_media
         with tempfile.TemporaryDirectory() as temp:
             root=pathlib.Path(temp)
             raw=root/'raw';raw.mkdir()
@@ -161,8 +162,14 @@ class ViralTests(unittest.TestCase):
             def render(brief,clips,out,*,cancel=None):
                 return render_video(brief,clips,out,size=(180,320),
                                     tools=(ffmpeg,ffprobe),cancel=cancel)
-            result=analyze_and_recut(b,raw,project,renderer=render)
+            def actual_audit(file,*,cancel=None):
+                return audit_finished_media(file,tools=(ffmpeg,ffprobe),cancel=cancel)
+            result=analyze_and_recut(b,raw,project,renderer=render,
+                                    media_auditor=actual_audit)
             self.assertEqual(len(result.attempts),2)
+            self.assertTrue(all(a.media_checked for a in result.attempts))
+            self.assertIn("media_audits",
+                json.loads((project/'POST_MONTAGE_REVIEW.json').read_text('utf-8')))
             self.assertEqual(result.output.name,'JARVIS_NOVA_AUTO_VERTICAL_V2.mp4')
             self.assertLess(result.rendered['duration'],14)
             self.assertTrue(result.rendered['technical_quality']['quality_checked'])
