@@ -16,6 +16,7 @@ import re
 import statistics
 
 MAX_CSV_BYTES = 6_000_000
+MAX_PROFILE_BYTES = 6_000_000  # bounded even when a saved profile is replaced externally
 MAX_ROWS = 1500
 ALIASES = {
     'title': ('video title', 'video', 'content', 'title', 'название видео', 'название', 'контент', 'ролик', 'заголовок'),
@@ -247,10 +248,57 @@ def save_profile(profile: AudienceProfile, folder: Path):
     return destination
 
 
+def _verified_metric(entry: dict) -> VideoMetric:
+    """Fail closed on corrupted or untrusted stored metrics before arithmetic."""
+    if not isinstance(entry,dict):
+        raise AudienceDataError('Некорректная запись статистики канала')
+    keys=VideoMetric.__dataclass_fields__
+    if not {'title','views'} <= entry.keys() or any(k not in keys for k in entry):
+        raise AudienceDataError('Неизвестный формат записи статистики канала')
+    title=entry['title']
+    if (not isinstance(title,str) or not title.strip() or len(title)>180
+            or any(ord(ch)<32 for ch in title)):
+        raise AudienceDataError('Некорректное название ролика в профиле')
+    for name in ('views','likes','comments','shares','impressions'):
+        value=entry.get(name)
+        if value is None and name!='views':
+            continue
+        if type(value) is not int or not 0<=value<=10_000_000_000:
+            raise AudienceDataError('Недопустимое количество '+name)
+    for name in ('avg_view_pct','ctr','avg_duration','duration'):
+        value=entry.get(name)
+        if value is None:
+            continue
+        if type(value) not in (int,float) or not math.isfinite(value):
+            raise AudienceDataError('Некорректное числовое значение '+name)
+        limit=1000 if name in ('avg_view_pct','ctr') else 86400
+        if not (0<=value<=limit if name in ('avg_view_pct','ctr') else 0<value<=limit):
+            raise AudienceDataError('Значение вне допустимого диапазона '+name)
+    published=entry.get('published','')
+    if not isinstance(published,str) or len(published)>32:
+        raise AudienceDataError('Некорректная дата публикации')
+    return VideoMetric(**entry)
+
+
 def load_profile(path: Path):
+    """Load bounded owner data, never trusting user-editable JSON as prevalidated."""
     try:
-        info=json.loads(Path(path).read_text('utf-8'))
-        videos=tuple(VideoMetric(**item) for item in info['videos'])
-        return analyze_audience(videos,source=str(info['source'])[:120])
-    except (OSError, KeyError, ValueError, TypeError) as exc:
+        path=Path(path)
+        if path.is_symlink() or not path.is_file() or not 0<path.stat().st_size<=MAX_PROFILE_BYTES:
+            raise AudienceDataError('Файл профиля отсутствует или превышает лимит')
+        with path.open('rb') as stream:
+            raw=stream.read(MAX_PROFILE_BYTES+1)
+        if len(raw)>MAX_PROFILE_BYTES:
+            raise AudienceDataError('Файл профиля слишком велик')
+        info=json.loads(raw.decode('utf-8'))
+        if not isinstance(info,dict):
+            raise AudienceDataError('Профиль должен быть JSON-объектом')
+        entries=info.get('videos')
+        source=info.get('source')
+        if (not isinstance(entries,list) or not 3<=len(entries)<=MAX_ROWS
+                or not isinstance(source,str) or not source.strip() or len(source)>120):
+            raise AudienceDataError('Некорректный список роликов или источник статистики')
+        videos=tuple(_verified_metric(item) for item in entries)
+        return analyze_audience(videos,source=source)
+    except (OSError, KeyError, ValueError, TypeError, UnicodeError, OverflowError) as exc:
         raise AudienceDataError('Не удалось прочитать данные анализа канала') from exc
