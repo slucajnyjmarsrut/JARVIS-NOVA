@@ -7,6 +7,7 @@ from desktop import Desktop, AppSuggestion
 from speaker import Speaker
 from self_improve import LearningStore, safe_name
 from self_repair import repair_configs, inspect_configs
+from auto_update import installed_application, check_and_download, stage_helper
 from trimodal_service import TrimodalService
 from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
@@ -47,6 +48,9 @@ class Jarvis(tk.Tk):
         self._focus_deadline=None
         self._focus_epoch=0
         self._pending_alias=None
+        self._auto_update_busy=False
+        self._auto_update_pending=None
+        self._auto_update_first_seen=0.0
         self.speaker=Speaker()
         self.trimodal=TrimodalService()
         self.local_chat=LocalChat(self.trimodal.runtime)
@@ -143,6 +147,9 @@ class Jarvis(tk.Tk):
         self.bind("<F10>",lambda event:self.show_settings_menu())
         self.log("Система","Управление голосом: «Джарвис, открой Chrome». F9 — ручная активация.")
         self.after(100,self.pump)
+        # No update check on developer Python runs. For installed EXEs,
+        # read-only network discovery begins after startup, off the UI thread.
+        self.after(20000,self._check_auto_update)
         threading.Thread(target=self.init_voice,daemon=True).start()
 
     def _set_native_dark_titlebar(self):
@@ -590,6 +597,54 @@ class Jarvis(tk.Tk):
             self._answer_style="normal"  # typed requests do not inherit voice volume
             self.handle_text(s)
 
+    def _check_auto_update(self):
+        """Unattended stable-release detection; no internet on developer runs."""
+        if self._closing or self._auto_update_busy or self._auto_update_pending:
+            return
+        installed=installed_application()
+        if installed is None:
+            return
+        self._auto_update_busy=True
+        def worker():
+            try:
+                result=check_and_download(cancel=self._shutdown)
+                if result is not None and not self._shutdown.is_set():
+                    self.q.put(("update_ready",result))
+            except Exception as exc:
+                # Only error *class* is displayed. No arbitrary remote payload,
+                # URL, token, user footage or local paths are logged.
+                if not self._shutdown.is_set():
+                    self.q.put(("update_error",type(exc).__name__))
+            finally:
+                self.q.put(("update_check_done",None))
+        threading.Thread(target=worker,daemon=True,name="jarvis-update-check").start()
+
+    def _finish_auto_update(self):
+        if self._closing or not self._auto_update_pending:
+            return
+        release,installer=self._auto_update_pending
+        studio=getattr(self,"_viral_window",None)
+        busy=(self.executing or getattr(studio,"running",False) or
+              self.speaker.busy or self.trimodal.speaking or
+              getattr(self.voice,"whisper_busy",False))
+        # Never interrupt an active video export or spoken answer. When idle,
+        # the local helper takes over and restarts the installed app.
+        if busy or time.monotonic()-self._auto_update_first_seen<12:
+            self.after(6000,self._finish_auto_update)
+            return
+        installed=installed_application()
+        if installed is None:
+            self._auto_update_pending=None
+            return
+        try:
+            stage_helper(release,installer,installed,installer.parent)
+        except Exception as exc:
+            self.status.set("Обновление отложено: "+type(exc).__name__)
+            self._auto_update_pending=None
+            return
+        self.status.set("Устанавливаю проверенное обновление, JARVIS перезапустится.")
+        self.close()
+
     def self_repair_now(self):
         """Safely repair ONLY local settings after asking the user.
 
@@ -846,6 +901,17 @@ class Jarvis(tk.Tk):
                     else:
                         self.log("Ошибка трёхмодельного цикла",result)
                         self.status.set("Ошибка Whisper/Vision/Silero — подробности в журнале")
+                elif op=="update_ready":
+                    self._auto_update_pending=val
+                    self._auto_update_first_seen=time.monotonic()
+                    self.status.set("Проверенное обновление загружено. Автоматическая установка при простое.")
+                    self.after(3000,self._finish_auto_update)
+                elif op=="update_error":
+                    self.status.set("Не удалось проверить обновления: "+str(val)[:60])
+                elif op=="update_check_done":
+                    self._auto_update_busy=False
+                    # Check again periodically while JARVIS remains open.
+                    self.after(12*60*60*1000,self._check_auto_update)
                 elif op=="trimodal_complete":
                     self.executing=False
                 elif op=="chat_result":
