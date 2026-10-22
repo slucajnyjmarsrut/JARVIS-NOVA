@@ -120,6 +120,81 @@ class UpdaterTests(unittest.TestCase):
                 download_release(r,folder,opener=FakeOpener(blob))
             self.assertEqual(path.read_bytes(),b"MZ"+b"tampered")
 
+    def test_github_multi_part_reassembly_and_per_part_hashes(self):
+        from auto_update import GITHUB_ASSET_LIMIT
+        complete=b"MZ"+b"x"*130_000
+        parts=(complete[:70_000],complete[70_000:])
+        ver="0.5.19"
+        base=f"JARVIS-NOVA-{ver}-OFFLINE-SETUP.exe"
+        assets=[]
+        for i,body in enumerate(parts,1):
+            name=f"{base}.part{i:02d}"
+            assets.append({
+                "name":name,
+                "browser_download_url":(
+                    f"https://github.com/slucajnyjmarsrut/JARVIS-NOVA/releases/download/v{ver}/{name}"),
+                "digest":"sha256:"+hashlib.sha256(body).hexdigest(),
+                "size":len(body),"state":"uploaded"})
+        release_doc={"draft":False,"prerelease":False,
+             "tag_name":"v"+ver,"assets":assets,
+             "body":("JARVIS-NOVA-INSTALLER-SHA256: "+
+                     hashlib.sha256(complete).hexdigest()+"\\n"+
+                     "JARVIS-NOVA-INSTALLER-SIZE: "+str(len(complete))+"\\n").replace("\\n","\n")}
+        release=parse_release(release_doc)
+        self.assertEqual(len(release.parts),2)
+        self.assertEqual(release.size,len(complete))
+        self.assertTrue(all(part.size<GITHUB_ASSET_LIMIT for part in release.parts))
+        class SequenceOpener:
+            def __init__(self,chunks):
+                self.chunks=list(chunks)
+                self.calls=0
+            def open(self,req,timeout=None):
+                self.calls+=1
+                return io.BytesIO(self.chunks.pop(0))
+        with tempfile.TemporaryDirectory() as td:
+            downloader=SequenceOpener(parts)
+            result=download_release(release,Path(td)/"Updates",opener=downloader)
+            self.assertEqual(result.read_bytes(),complete)
+            self.assertEqual(downloader.calls,2)
+        for bad_name,bad_doc in (
+            ("missing",lambda d:d["assets"].pop()),
+            ("duplicate",lambda d:d["assets"].append(dict(d["assets"][0]))),
+            ("size_mismatch",lambda d:d["assets"][1].__setitem__("size",70_001)),
+            ("wrong_full_hash",lambda d:d.__setitem__("body",
+                     "JARVIS-NOVA-INSTALLER-SHA256: "+"0"*64+"\n"
+                     "JARVIS-NOVA-INSTALLER-SIZE: "+str(len(complete))+"\n")),
+        ):
+            data=json.loads(json.dumps(release_doc))
+            bad_doc(data)
+            if bad_name=="wrong_full_hash":
+                with tempfile.TemporaryDirectory() as td:
+                    parsed=parse_release(data)
+                    with self.assertRaises(UpdateError):
+                        download_release(parsed,Path(td)/"Updates",
+                                         opener=SequenceOpener(parts))
+            else:
+                with self.subTest(bad=bad_name),self.assertRaises(UpdateError):
+                    parse_release(data)
+        with tempfile.TemporaryDirectory() as td:
+            downloader=SequenceOpener((parts[0],b"evil"+parts[1][4:]))
+            with self.assertRaises(UpdateError):
+                download_release(release,Path(td)/"Updates",opener=downloader)
+            self.assertFalse(list((Path(td)/"Updates").glob("*")))
+
+    def test_split_tool_creates_reproducible_release_parts_below_2_gib(self):
+        from scripts.split_release_installer import split_release
+        full=b"MZ"+b"x"*220_000
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td);exe=root/"full.exe";exe.write_bytes(full)
+            folder=root/"release"
+            pieces=split_release(exe,folder,"0.5.19",part_bytes=110_000)
+            self.assertEqual(len(pieces),4)  # 3 parts + one release body
+            self.assertEqual(b"".join(item.read_bytes() for item in pieces[:-1]),full)
+            self.assertIn(hashlib.sha256(full).hexdigest(),
+                          pieces[-1].read_text("utf-8"))
+            with self.assertRaises(FileExistsError):
+                split_release(exe,folder,"0.5.19",part_bytes=110_000)
+
     def test_bad_downloads_are_cleaned_before_execution(self):
         blob=b"MZ"+b"x"*120_000
         r=parse_release(release_data(blob=blob))
