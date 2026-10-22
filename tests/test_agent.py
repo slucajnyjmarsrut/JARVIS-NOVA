@@ -90,6 +90,14 @@ class PlanTests(unittest.TestCase):
                         d.run(Step("open_url",value))
                     browser.assert_not_called()
 
+    def test_unsafe_spoken_browser_links_yield_question_not_desktop_action(self):
+        for url in ("https://localhost/admin","https://127.0.0.1:443/",
+                    "https://example.org:bad","http://example.org/"):
+            with self.subTest(url=url):
+                plan=parse_local("Джарвис открой "+url)
+                self.assertEqual(plan.steps,[])
+                self.assertIn("HTTPS",plan.question)
+
     def test_public_links_remain_usable(self):
         for address in (
             "https://example.org/", "https://commons.wikimedia.org/wiki/File:Example",
