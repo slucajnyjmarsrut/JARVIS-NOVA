@@ -7,6 +7,10 @@ on:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_viral_studio.py'
       - 'agent_core.py'
+      - 'tests/test_agent.py'
+      - 'tests/test_self_improve.py'
+      - 'tests/test_installer_contract.py'
+      - 'tests/test_vision_chat_protocol.py'
       - 'online_media.py'
       - 'tests/test_online_media.py'
       - 'tests/test_viral_studio.py'
@@ -155,6 +159,14 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_agent.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Desktop agent safety regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_self_improve.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Offline learning safety regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_vision_chat_protocol.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Vision local-only regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_installer_contract.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Installer security contract failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_smart_montage.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_autonomous_montage.py' -v
