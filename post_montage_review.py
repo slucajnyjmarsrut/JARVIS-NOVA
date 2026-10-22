@@ -22,6 +22,7 @@ import threading
 from channel_audience import AudienceProfile, title_tokens
 from viral_studio import Brief, Shot, render_video, validate_brief
 from video_forecast import FinalReview, evaluate_final_cut
+from video_quality_gate import audit_finished_media
 
 MAX_REVISIONS = 2
 
@@ -36,6 +37,8 @@ class EditAttempt:
     file: str
     score: int
     structure_score: int
+    media_penalty: int
+    media_checked: bool
     issues: tuple[str, ...]
     actual_seconds: float
     audience_index: int | None
@@ -150,6 +153,7 @@ def analyze_and_recut(
     max_revisions: int = MAX_REVISIONS,
     renderer=None,
     reviewer=None,
+    media_auditor=None,
 ) -> MontageOutcome:
     """Render, assess, recut if actionable, reassess, keep highest-scoring version.
 
@@ -173,6 +177,7 @@ def analyze_and_recut(
     records: list[EditAttempt] = []
     errors: list[str] = []
     versions: list[tuple[Brief,Path,dict,FinalReview | None]] = []
+    audits: list[dict] = []
     current=brief
     for attempt in range(max_revisions+1):
         if cancel is not None and cancel.is_set():
@@ -196,13 +201,36 @@ def analyze_and_recut(
         if rendered.get("technical_quality",{}).get("quality_checked") is not True:
             raise MontageReviewError("Монтаж не прошёл технический контроль FFmpeg")
         structure, problems=_score_structure(current,duration)
+        # Real production renders must be inspected. Tests injecting synthetic
+        # renderers explicitly inject a media auditor to request quality checks.
+        media=None
+        audit_note=""
+        if renderer is None or media_auditor is not None:
+            try:
+                media=(media_auditor or audit_finished_media)(path,cancel=cancel)
+            except Exception as exc:
+                if cancel is not None and cancel.is_set():
+                    raise MontageReviewError("Проверка после монтажа отменена") from exc
+                audit_note="Дополнительная проверка аудио/видео недоступна: "+type(exc).__name__
+        audits.append({
+            "version":attempt+1,
+            "status":"checked" if media is not None else
+                     ("unavailable" if audit_note else "skipped_test_renderer"),
+            "warning":audit_note,
+            "media":asdict(media) if media is not None else None,
+        })
         review=evaluate(current,profile,path,rendered=rendered) if profile is not None else None
         # Audience index is a heuristic, never a probability of views.
         score=round(.65*review.index + .35*structure) if review is not None else structure
+        score=max(0,score-(media.penalty if media is not None else 0))
         issues=tuple(problems)+(
             tuple(s for s in review.suggestions if not s.startswith("Просмотри ролик вручную"))
-            if review is not None else ())
+            if review is not None else ()) + (
+            tuple(media.warnings) if media is not None else
+            ((audit_note,) if audit_note else ()))
         record=EditAttempt(attempt+1,str(path),int(score),int(structure),
+                           media.penalty if media is not None else 0,
+                           media is not None,
                            issues,round(duration,2),
                            review.index if review is not None else None)
         records.append(record)
@@ -225,11 +253,19 @@ def analyze_and_recut(
     speech=_speech(history,tuple(records),chosen)
     if errors:
         speech+=" Повторная обработка завершилась ошибкой; сохранён проверенный предыдущий вариант."
+    if chosen.media_checked:
+        media_alerts=[x for x in chosen.issues if x in (
+            audits[selected]["media"] or {}).get("warnings",[])]
+        if media_alerts:
+            speech+=" По аудио и видео: "+"; ".join(media_alerts[:2])+"."
+    elif audits[selected]["status"]=="unavailable":
+        speech+=" Видеопроверка кадров и звука не завершилась."
     report={
         "schema":1,"created_utc":datetime.now(timezone.utc).isoformat(),
         "selected_version":chosen.number,
         "chosen_video":str(best_path),
         "attempts":[asdict(x) for x in records],
+        "media_audits":audits,
         "revision_errors":errors,
         "historical_channel_data":history,
         "technical_quality":best_render["technical_quality"],
@@ -251,7 +287,8 @@ def analyze_and_recut(
         "# Проверка ролика и автоматические правки","",
         f"Выбран монтаж №{chosen.number}: {best_path.name}",
         f"Оценка по явным признакам: {chosen.score}/100. Это НЕ вероятность просмотров.",
-        f"Количество вариантов: {len(records)}","",
+        f"Количество вариантов: {len(records)}",
+        f"Проверка аудио/кадров выбранной версии: {audits[selected]['status']}","",
         "## Исторические данные канала (НЕ прогноз)",
         f"Сравнимых роликов: {history['comparable_count']}",
         f"Типичные просмотры канала: {history['typical_views'] if history['typical_views'] is not None else 'нет CSV'}",
