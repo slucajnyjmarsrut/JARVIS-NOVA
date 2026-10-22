@@ -116,7 +116,9 @@ def verify_output_media(file: Path, ffprobe: str, expected_seconds: float,
         width=int(video.get("width",0))
         height=int(video.get("height",0))
         length=float(obj["format"]["duration"])
-        if not math.isfinite(length) or length<.7 or length>95 or abs(length-expected_seconds)>max(2.,expected_seconds*.14):
+        if (not math.isfinite(length) or length<.7 or length>95
+                or not math.isfinite(expected_seconds)
+                or abs(length-expected_seconds)>max(.45,expected_seconds*.08)):
             raise ValueError("unexpected duration")
         if video.get("codec_name")!="h264" or width<144 or height<256 or width>=height:
             raise ValueError("video codec/geometry")
