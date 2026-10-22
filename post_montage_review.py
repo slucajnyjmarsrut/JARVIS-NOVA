@@ -166,6 +166,7 @@ def analyze_and_recut(
     render=renderer or render_video
     evaluate=reviewer or evaluate_final_cut
     records: list[EditAttempt] = []
+    errors: list[str] = []
     versions: list[tuple[Brief,Path,dict,FinalReview | None]] = []
     current=brief
     for attempt in range(max_revisions+1):
@@ -173,7 +174,13 @@ def analyze_and_recut(
             raise MontageReviewError("Монтаж отменён")
         suffix="" if attempt==0 else f"_V{attempt+1}"
         path=project_dir/(Path(filename).stem+suffix+".mp4")
-        rendered=render(current,footage_dir,path,cancel=cancel)
+        try:
+            rendered=render(current,footage_dir,path,cancel=cancel)
+        except Exception as exc:
+            if attempt==0 or (cancel is not None and cancel.is_set()):
+                raise
+            errors.append("Повторная обработка не завершилась: "+type(exc).__name__)
+            break
         # Actual FFmpeg renderer verifies H264/AAC/vertical and duration.
         try:
             duration=float(rendered.get("duration",float("nan")))
@@ -211,11 +218,14 @@ def analyze_and_recut(
     best_brief,best_path,best_render,best_review=versions[selected]
     history=_historical(profile,brief)
     speech=_speech(history,tuple(records),chosen)
+    if errors:
+        speech+=" Повторная обработка завершилась ошибкой; сохранён проверенный предыдущий вариант."
     report={
         "schema":1,"created_utc":datetime.now(timezone.utc).isoformat(),
         "selected_version":chosen.number,
         "chosen_video":str(best_path),
         "attempts":[asdict(x) for x in records],
+        "revision_errors":errors,
         "historical_channel_data":history,
         "technical_quality":best_render["technical_quality"],
         "viewer_metrics_are_predictions":False,
@@ -248,6 +258,7 @@ def analyze_and_recut(
     for row in records:
         lines.append(f"- Версия {row.number}: {row.score}/100; {row.file}")
         lines.extend("  - "+issue for issue in row.issues)
+    lines.extend("Ошибка: "+error for error in errors)
     lines+=["","## Голосовой вывод",speech,"",
             "Ни один результат не публикуется автоматически.",
             "Проверь подбор кадров, авторские права, музыку и субтитры перед публикацией."]
