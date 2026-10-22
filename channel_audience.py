@@ -113,9 +113,14 @@ def _seconds(value, name):
     if not val:
         return None
     if re.fullmatch(r'\d+(?::\d{1,2}){1,2}',val):
-        v = 0
-        for item in val.split(':'):
-            v = v * 60 + int(item)
+        pieces=[int(item) for item in val.split(':')]
+        # CSV hh:mm:ss and mm:ss must use base-60 for EVERY trailing
+        # component. Previously "1:99" silently became 2m39s.
+        if any(part>=60 for part in pieces[1:]):
+            raise AudienceDataError(f'Некорректные минуты или секунды {name}')
+        v=0
+        for part in pieces:
+            v=v*60+part
     elif re.fullmatch(r'\d+(?:[.,]\d+)?',val):
         v = float(val.replace(',','.'))
     else:
