@@ -65,14 +65,16 @@ class ChannelAudienceTests(unittest.TestCase):
             src=pathlib.Path(td)/'metrics.csv'
             for bad in ('1:60','1:75','1:99','0:61','1:60:00','3:23:90'):
                 with self.subTest(bad=bad):
-                    src.write_text('Video title,Views,Duration\\n'
-                        f'One,10,{bad}\\nTwo,30,0:35\\nThree,50,0:40\\n'
-                        .replace('\\n','\n'),encoding='utf-8')
+                    src.write_text(
+                        'Video title,Views,Duration\n'
+                        f'One,10,{bad}\nTwo,30,0:35\nThree,50,0:40\n',
+                        encoding='utf-8')
                     with self.assertRaises(AudienceDataError):
                         read_channel_csv(src)
-            src.write_text('Video title,Views,Duration\\n'
-                'One,10,1:59\\nTwo,30,0:59\\nThree,50,1:02:03\\n'
-                .replace('\\n','\n'),encoding='utf-8')
+            src.write_text(
+                'Video title,Views,Duration\n'
+                'One,10,1:59\nTwo,30,0:59\nThree,50,1:02:03\n',
+                encoding='utf-8')
             rows=read_channel_csv(src)
             self.assertEqual([row.duration for row in rows],[119.,59.,3723.])
 
