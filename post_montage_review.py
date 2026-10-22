@@ -35,6 +35,7 @@ class EditAttempt:
     number: int
     file: str
     score: int
+    structure_score: int
     issues: tuple[str, ...]
     actual_seconds: float
     audience_index: int | None
@@ -174,23 +175,27 @@ def analyze_and_recut(
         path=project_dir/(Path(filename).stem+suffix+".mp4")
         rendered=render(current,footage_dir,path,cancel=cancel)
         # Actual FFmpeg renderer verifies H264/AAC/vertical and duration.
-        if not isinstance(rendered,dict) or not math.isfinite(float(rendered.get("duration",float("nan")))):
+        try:
+            duration=float(rendered.get("duration",float("nan")))
+        except (ValueError,TypeError,AttributeError,OverflowError) as exc:
+            raise MontageReviewError("Монтаж не подтвердил правильную длительность") from exc
+        if not math.isfinite(duration):
             raise MontageReviewError("Монтаж не подтвердил правильную длительность")
         if rendered.get("technical_quality",{}).get("quality_checked") is not True:
             raise MontageReviewError("Монтаж не прошёл технический контроль FFmpeg")
-        duration=float(rendered["duration"])
         structure, problems=_score_structure(current,duration)
         review=evaluate(current,profile,path,rendered=rendered) if profile is not None else None
         # Audience index is a heuristic, never a probability of views.
-        score=review.index if review is not None else structure
+        score=round(.65*review.index + .35*structure) if review is not None else structure
         issues=tuple(problems)+(
             tuple(s for s in review.suggestions if not s.startswith("Просмотри ролик вручную"))
             if review is not None else ())
-        record=EditAttempt(attempt+1,str(path),int(score),issues,round(duration,2),
+        record=EditAttempt(attempt+1,str(path),int(score),int(structure),
+                           issues,round(duration,2),
                            review.index if review is not None else None)
         records.append(record)
         versions.append((current,path,rendered,review))
-        if not problems or score>=85:
+        if not problems:
             break
         candidate=revised_brief(current)
         if candidate is None:
@@ -199,8 +204,9 @@ def analyze_and_recut(
         if len(records)>=2 and records[-1].score<=records[-2].score:
             break
         current=candidate
-    # Ties favour the earlier version: no falsely advertised improvement.
-    selected=max(range(len(records)),key=lambda i:records[i].score)
+    # Ties favour actual structure improvement, then earlier versions.
+    selected=max(range(len(records)),
+                 key=lambda i:(records[i].score,records[i].structure_score,-i))
     chosen=records[selected]
     best_brief,best_path,best_render,best_review=versions[selected]
     history=_historical(profile,brief)
@@ -233,7 +239,7 @@ def analyze_and_recut(
         f"Количество вариантов: {len(records)}","",
         "## Исторические данные канала (НЕ прогноз)",
         f"Сравнимых роликов: {history['comparable_count']}",
-        f"Типичные просмотры канала: {history['typical_views'] or 'нет CSV'}",
+        f"Типичные просмотры канала: {history['typical_views'] if history['typical_views'] is not None else 'нет CSV'}",
         f"Исторический диапазон просмотров: {history['historical_view_band'] or 'недостаточно данных'}",
         f"Медиана удержания похожих роликов: {history['median_retention_pct']}",
         f"Медиана CTR похожих роликов: {history['median_ctr_pct']}","",
