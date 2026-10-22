@@ -10,6 +10,7 @@ import unittest
 from channel_audience import VideoMetric
 from post_montage_review import (analyze_and_recut, revised_brief,
                                  MontageReviewError)
+from video_quality_gate import MediaQuality
 from video_forecast import FinalReview
 from viral_studio import Brief, Shot, template_brief
 
@@ -116,6 +117,39 @@ class PostMontageReviewTests(unittest.TestCase):
             self.assertEqual(path.read_text("utf-8"),
                              "PERSONAL NOTES - DO NOT OVERWRITE")
             self.assertEqual(tuple(root.glob("*.mp4")),())
+
+    def test_media_audit_penalizes_problematic_clip_and_speaks_about_it(self):
+        calls=[]
+        with TemporaryDirectory() as td:
+            root=Path(td)
+            def auditor(path,*,cancel=None):
+                first=path.name.endswith("AUTO_VERTICAL.mp4")
+                return MediaQuality(True,18 if first else 0,
+                    ("Чёрные кадры",) if first else (),
+                    {"sampled_frames":30,"black_fraction":.3 if first else .0},
+                    {"quiet_fraction":0.})
+            out=analyze_and_recut(slow_brief(),root,root,
+                renderer=renderer_factory(calls),media_auditor=auditor)
+            self.assertEqual(len(out.attempts),2)
+            self.assertTrue(all(row.media_checked for row in out.attempts))
+            self.assertEqual(out.attempts[0].media_penalty,18)
+            self.assertEqual(out.attempts[1].media_penalty,0)
+            self.assertEqual(out.output.name,"JARVIS_NOVA_AUTO_VERTICAL_V2.mp4")
+            audit=json.loads((root/"POST_MONTAGE_REVIEW.json").read_text("utf-8"))
+            self.assertEqual(audit["media_audits"][0]["status"],"checked")
+            self.assertEqual(audit["media_audits"][1]["media"]["penalty"],0)
+
+    def test_missing_optional_audit_records_caveat_without_fake_success(self):
+        with TemporaryDirectory() as td:
+            root=Path(td)
+            def failing(path,*,cancel=None):
+                raise OSError("cannot decode audio")
+            o=analyze_and_recut(template_brief("Лес"),root,root,
+                               renderer=renderer_factory([]),media_auditor=failing)
+            self.assertFalse(o.attempts[0].media_checked)
+            self.assertIn("не завершилась",o.speech)
+            data=json.loads((root/"POST_MONTAGE_REVIEW.json").read_text("utf-8"))
+            self.assertEqual(data["media_audits"][0]["status"],"unavailable")
 
     def test_cancel_and_invalid_media_never_pretend_to_succeed(self):
         stopped=threading.Event()
