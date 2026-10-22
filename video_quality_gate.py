@@ -46,12 +46,12 @@ def audit_finished_media(file: Path, *, ffmpeg=None, tools=None,
     file=Path(file)
     if not file.is_file() or file.stat().st_size<1000:
         raise ValueError("Для контроля нужен настоящий MP4")
-    if ffmpeg is None:
-        if tools is not None:
-            ffmpeg=tools[0]
-        else:
-            from viral_studio import ffmpeg_tools
-            ffmpeg,_=ffmpeg_tools()
+    ffprobe=None
+    if tools is not None:
+        ffmpeg,ffprobe=tools
+    elif ffmpeg is None:
+        from viral_studio import ffmpeg_tools
+        ffmpeg,ffprobe=ffmpeg_tools()
     video=inspect_video_frames(file,ffmpeg,cancel=cancel,executor=executor)
-    audio=inspect_audio(file,ffmpeg,cancel=cancel,executor=executor)
+    audio=inspect_audio(file,ffmpeg,ffprobe=ffprobe,cancel=cancel,executor=executor)
     return combine_quality(video,audio)
