@@ -37,12 +37,16 @@ API_URL = f"https://api.github.com/repos/{OWNER}/{REPO}/releases/latest"
 MAX_API_BYTES = 700_000
 MAX_INSTALLER_BYTES = 4_000_000_000
 MIN_INSTALLER_BYTES = 100_000
+GITHUB_ASSET_LIMIT = 2 * 1024**3  # release assets must be STRICTLY smaller
+MAX_PARTS = 8
 BUFFER = 1024 * 1024
 # GitHub release browser_download_url redirects to its release asset CDN.
 ALLOWED_HOSTS = frozenset({"github.com", "release-assets.githubusercontent.com",
                             "objects.githubusercontent.com"})
 RELEASE_ASSET = re.compile(
     r"^JARVIS-NOVA-(\d+)\.(\d+)\.(\d+)-OFFLINE-SETUP\.exe$", re.I)
+RELEASE_PART = re.compile(
+    r"^JARVIS-NOVA-(\d+)\.(\d+)\.(\d+)-OFFLINE-SETUP\.exe\.part(\d{2})$", re.I)
 VERSION = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$", re.I)
 SHA256 = re.compile(r"^sha256:([a-fA-F0-9]{64})$")
 
@@ -52,12 +56,21 @@ class UpdateError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ReleasePart:
+    name: str
+    url: str
+    sha256: str
+    size: int
+
+
+@dataclass(frozen=True)
 class Release:
     version: str
     installer_name: str
     download_url: str
     sha256: str
     size: int
+    parts: tuple[ReleasePart, ...] = ()
 
 
 def version_tuple(value: str) -> tuple[int,int,int]:
@@ -77,6 +90,35 @@ def _exact_repo_url(url: str) -> bool:
         return False
 
 
+def _official_asset(asset: dict, tag: str, *, expected_name: str,
+                    min_size: int=1, max_size: int=GITHUB_ASSET_LIMIT-1) -> ReleasePart:
+    name=asset.get("name")
+    digest=asset.get("digest")
+    dm=SHA256.fullmatch(digest) if isinstance(digest,str) else None
+    url=asset.get("browser_download_url")
+    size=asset.get("size")
+    if (name!=expected_name or not dm or type(size) is not int
+            or not min_size<=size<=max_size or not _exact_repo_url(url)
+            or urlsplit(url).path!=f"/{OWNER}/{REPO}/releases/download/{tag}/{name}"
+            or asset.get("state")!="uploaded"):
+        raise UpdateError("Часть обновления не прошла проверку имени, адреса, SHA256 или размера")
+    return ReleasePart(name,url,dm.group(1).lower(),size)
+
+
+def _manifest_fields(body: str) -> tuple[str,int]:
+    """A release-author supplied combined hash, plus per-asset GitHub digests."""
+    if not isinstance(body,str) or len(body)>30_000:
+        raise UpdateError("Отсутствует компактный манифест установщика")
+    hashes=re.findall(r"(?m)^JARVIS-NOVA-INSTALLER-SHA256: ([a-f0-9]{64})\s*$",body)
+    sizes=re.findall(r"(?m)^JARVIS-NOVA-INSTALLER-SIZE: (\d{6,12})\s*$",body)
+    if len(hashes)!=1 or len(sizes)!=1:
+        raise UpdateError("Манифест многотомного установщика отсутствует или неоднозначен")
+    size=int(sizes[0])
+    if not MIN_INSTALLER_BYTES<=size<=MAX_INSTALLER_BYTES:
+        raise UpdateError("Общий размер установщика недопустим")
+    return hashes[0],size
+
+
 def parse_release(data: dict, current: str = APP_VERSION) -> Release | None:
     if not isinstance(data,dict) or data.get("draft") is not False or data.get("prerelease") is not False:
         raise UpdateError("Официального стабильного релиза нет")
@@ -86,27 +128,38 @@ def parse_release(data: dict, current: str = APP_VERSION) -> Release | None:
         return None
     if not isinstance(data.get("assets"),list):
         raise UpdateError("Релиз не содержит установщика")
-    matches=[]
+    version=".".join(map(str,ver))
+    base=f"JARVIS-NOVA-{version}-OFFLINE-SETUP.exe"
+    singles=[]
+    found_parts={}
     for asset in data["assets"]:
         if not isinstance(asset,dict):
             continue
         name=asset.get("name")
-        m=RELEASE_ASSET.fullmatch(name) if isinstance(name,str) else None
-        if not m or tuple(map(int,m.groups())) != ver:
-            continue
-        digest=asset.get("digest")
-        dm=SHA256.fullmatch(digest) if isinstance(digest,str) else None
-        url=asset.get("browser_download_url")
-        size=asset.get("size")
-        if (not dm or type(size) is not int or not MIN_INSTALLER_BYTES <= size <= MAX_INSTALLER_BYTES
-                or not _exact_repo_url(url)
-                or urlsplit(url).path != f"/{OWNER}/{REPO}/releases/download/{tag}/{name}"
-                or asset.get("state") != "uploaded"):
-            raise UpdateError("Установщик не прошёл проверку источника, SHA256 и размера")
-        matches.append(Release(".".join(map(str,ver)),name,url,dm.group(1).lower(),size))
-    if len(matches)!=1:
-        raise UpdateError("Нужен ровно один официальный установщик с SHA256")
-    return matches[0]
+        if name==base:
+            part=_official_asset(asset,tag,expected_name=base,
+                min_size=MIN_INSTALLER_BYTES)
+            singles.append(part)
+        elif isinstance(name,str) and name.startswith(base+".part"):
+            match=RELEASE_PART.fullmatch(name)
+            if not match or tuple(map(int,match.groups()[:3]))!=ver:
+                raise UpdateError("Неправильное имя части установщика")
+            index=int(match.group(4))
+            if index<1 or index>MAX_PARTS or index in found_parts:
+                raise UpdateError("Дублирующаяся или лишняя часть установщика")
+            found_parts[index]=_official_asset(asset,tag,expected_name=name)
+    if len(singles)==1 and not found_parts:
+        item=singles[0]
+        return Release(version,base,item.url,item.sha256,item.size)
+    if singles or not (2<=len(found_parts)<=MAX_PARTS):
+        raise UpdateError("Для обновления нужен один EXE или проверенный комплект частей")
+    if set(found_parts)!=set(range(1,len(found_parts)+1)):
+        raise UpdateError("В многотомном установщике отсутствует часть")
+    full_hash,full_size=_manifest_fields(data.get("body"))
+    parts=tuple(found_parts[i] for i in range(1,len(found_parts)+1))
+    if sum(part.size for part in parts)!=full_size:
+        raise UpdateError("Общий размер частей не соответствует манифесту")
+    return Release(version,base,parts[0].url,full_hash,full_size,parts)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -208,9 +261,22 @@ def download_release(release: Release, folder: Path, *,
     if not isinstance(release,Release) or not _exact_repo_url(release.download_url):
         raise UpdateError("Недоверенный адрес")
     version_tuple(release.version)
-    if (release.installer_name != f"JARVIS-NOVA-{release.version}-OFFLINE-SETUP.exe"
-            or urlsplit(release.download_url).path.split("/")[-1] != release.installer_name):
-        raise UpdateError("Адрес и имя файла не совпадают с подтверждённым релизом")
+    if release.installer_name != f"JARVIS-NOVA-{release.version}-OFFLINE-SETUP.exe":
+        raise UpdateError("Некорректное имя установщика")
+    parts=release.parts or (ReleasePart(release.installer_name,release.download_url,
+                                        release.sha256,release.size),)
+    if (release.parts and (not 2<=len(parts)<=MAX_PARTS or
+            release.download_url!=parts[0].url or
+            sum(p.size for p in parts)!=release.size)):
+        raise UpdateError("Некорректный комплект частей установщика")
+    for index,p in enumerate(parts,1):
+        expected=(release.installer_name+f".part{index:02d}"
+                  if release.parts else release.installer_name)
+        if (p.name!=expected or not _exact_repo_url(p.url)
+                or urlsplit(p.url).path.split("/")[-1]!=expected
+                or not SHA256.fullmatch("sha256:"+p.sha256)
+                or type(p.size) is not int or not 1<=p.size<GITHUB_ASSET_LIMIT):
+            raise UpdateError("Части релиза или контрольные суммы не подтверждены")
     if (not SHA256.fullmatch("sha256:"+release.sha256)
             or type(release.size) is not int
             or not MIN_INSTALLER_BYTES<=release.size<=MAX_INSTALLER_BYTES):
@@ -228,23 +294,31 @@ def download_release(release: Release, folder: Path, *,
         if opener is None:
             opener=urllib.request.build_opener(
                 urllib.request.ProxyHandler({}),_RestrictedAssetRedirect())
-        req=urllib.request.Request(release.download_url,headers={
-            "User-Agent":"JARVIS-NOVA-Verified-Updater/1"})
-        response=opener.open(req,timeout=90)
-        with response, temp.open("xb") as writer:
-            count=0
-            digest=hashlib.sha256()
-            while True:
-                if cancel is not None and cancel.is_set():
-                    raise UpdateError("Загрузка отменена")
-                piece=response.read(BUFFER)
-                if not piece:
-                    break
-                count+=len(piece)
-                if count>release.size:
-                    raise UpdateError("Сервер вернул слишком большой файл")
-                writer.write(piece)
-                digest.update(piece)
+        count=0
+        digest=hashlib.sha256()
+        with temp.open("xb") as writer:
+            for part in parts:
+                req=urllib.request.Request(part.url,headers={
+                    "User-Agent":"JARVIS-NOVA-Verified-Updater/1"})
+                response=opener.open(req,timeout=90)
+                part_count=0
+                part_digest=hashlib.sha256()
+                with response:
+                    while True:
+                        if cancel is not None and cancel.is_set():
+                            raise UpdateError("Загрузка отменена")
+                        piece=response.read(BUFFER)
+                        if not piece:
+                            break
+                        part_count+=len(piece)
+                        count+=len(piece)
+                        if part_count>part.size or count>release.size:
+                            raise UpdateError("Сервер вернул слишком большой файл")
+                        writer.write(piece)
+                        part_digest.update(piece)
+                        digest.update(piece)
+                if part_count!=part.size or part_digest.hexdigest()!=part.sha256:
+                    raise UpdateError("Контрольная сумма части обновления не совпала")
         if count!=release.size or digest.hexdigest()!=release.sha256:
             raise UpdateError("Неполная загрузка или неверный SHA256")
         with temp.open("rb") as f:
