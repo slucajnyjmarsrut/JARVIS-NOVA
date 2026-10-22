@@ -18,6 +18,7 @@ from channel_audience import read_channel_csv, analyze_audience, AudienceDataErr
 from creator_experts import recommend_topic, expert_report
 from video_forecast import evaluate_final_cut, save_review
 from post_montage_review import analyze_and_recut
+from self_repair import retry_readonly
 
 
 def _home():
@@ -230,7 +231,9 @@ class ViralStudioWindow(tk.Toplevel):
             return
         self.status.set('Читаю официальную документацию FFmpeg…')
         def work():
-            reference=read_ffmpeg_guide(consent=True)
+            reference=retry_readonly('official_ffmpeg_docs',
+                                     lambda:read_ffmpeg_guide(consent=True),
+                                     cancel=self.stop_event)
             def done():
                 self._show(reference)
                 self.status.set('Справка получена. Это справочная информация, не изменение алгоритмов.')
@@ -291,7 +294,9 @@ class ViralStudioWindow(tk.Toplevel):
             if self.stop_event.is_set():return
             project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
             save_brief(brief,project)
-            candidates=search_free_video(topic,consent=True)
+            candidates=retry_readonly('commons_search',
+                                      lambda:search_free_video(topic,consent=True),
+                                      cancel=self.stop_event)
             if len(candidates)<len(brief.shots):
                 raise OnlineMediaError(
                     f'Недостаточно подходящих свободных исходников: {len(candidates)} из '
@@ -354,7 +359,9 @@ class ViralStudioWindow(tk.Toplevel):
             source=Path(folder) if folder is not None else None
             credits=''
             if online:
-                candidates=search_free_video(brief.topic,consent=True)
+                candidates=retry_readonly('commons_search',
+                                          lambda:search_free_video(brief.topic,consent=True),
+                                          cancel=self.stop_event)
                 if len(candidates)<len(brief.shots):
                     raise OnlineMediaError(
                         f'По теме «{brief.topic}» найдено {len(candidates)} клипов, '
