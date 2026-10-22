@@ -60,6 +60,9 @@ class PlanTests(unittest.TestCase):
         with mock.patch("desktop.webbrowser.open",return_value=True) as browser:
             d.run(plan.steps[0])
         browser.assert_called_once_with(address)
+        upper=parse_local("Джарвис, открой HTTPS://Example.org/Path?Secret=XYZ")
+        self.assertEqual(upper.steps,[Step("open_url","https://Example.org/Path?Secret=XYZ")])
+        validate_plan(upper)
 
     def test_reject_malformed_local_or_credentialed_https(self):
         blocked=(
