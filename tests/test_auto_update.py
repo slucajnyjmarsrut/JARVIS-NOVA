@@ -286,6 +286,28 @@ class UpdaterTests(unittest.TestCase):
             stage_helper(r,candidate,app,cache,launcher=capture)
             self.assertEqual(len(spawned),1)
 
+    def test_partial_helper_copy_does_not_leave_executable_in_cache(self):
+        blob=b"MZ"+b"x"*120_000
+        rel=parse_release(release_data(blob=blob))
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            app=root/"Installed"/"JarvisNova.exe"
+            app.parent.mkdir()
+            app.write_bytes(b"MZ-app")
+            helper=app.parent/"JarvisNovaUpdater.exe"
+            helper.write_bytes(b"MZ"+b"WORKER"*100)
+            cache=root/"Updates"
+            candidate=download_release(rel,cache,opener=FakeOpener(blob))
+            def broken_copy(source,target,length=None):
+                target.write(b"MZ-partial")
+                raise OSError("disk full")
+            with mock.patch("auto_update.shutil.copyfileobj",side_effect=broken_copy):
+                with self.assertRaisesRegex(OSError,"disk full"):
+                    stage_helper(rel,candidate,app,cache,
+                                 launcher=lambda *a,**k:self.fail("must not start"))
+            self.assertFalse(list(cache.glob("JARVIS-NOVA-Worker-*.exe")))
+            self.assertEqual(candidate.read_bytes(),blob)
+
     def test_worker_checks_same_release_and_runs_silent_installer_only_after_exit(self):
         blob=b"MZ"+b"x"*120_000
         rel=parse_release(release_data(blob=blob))
