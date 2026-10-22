@@ -624,9 +624,12 @@ class Jarvis(tk.Tk):
             return
         release,installer=self._auto_update_pending
         studio=getattr(self,"_viral_window",None)
+        # Do not discard an unsent typed message when applying an update.
+        input_widget=getattr(self,"entry",None)
+        unsent=bool(input_widget is not None and input_widget.get().strip())
         busy=(self.executing or getattr(studio,"running",False) or
               self.speaker.busy or self.trimodal.speaking or
-              getattr(self.voice,"whisper_busy",False))
+              getattr(self.voice,"whisper_busy",False) or unsent)
         # Never interrupt an active video export or spoken answer. When idle,
         # the local helper takes over and restarts the installed app.
         if busy or time.monotonic()-self._auto_update_first_seen<12:
