@@ -116,9 +116,9 @@ class UpdaterTests(unittest.TestCase):
             self.assertEqual(reused,path)
             self.assertEqual(sorted(folder.iterdir()),[path])
             path.write_bytes(b"MZ"+b"tampered")
-            with self.assertRaises(UpdateError):
-                download_release(r,folder,opener=FakeOpener(blob))
-            self.assertEqual(path.read_bytes(),b"MZ"+b"tampered")
+            repaired=download_release(r,folder,opener=FakeOpener(blob))
+            self.assertEqual(repaired,path)
+            self.assertEqual(repaired.read_bytes(),blob)
 
     def test_github_multi_part_reassembly_and_per_part_hashes(self):
         from auto_update import GITHUB_ASSET_LIMIT
@@ -194,6 +194,60 @@ class UpdaterTests(unittest.TestCase):
                           pieces[-1].read_text("utf-8"))
             with self.assertRaises(FileExistsError):
                 split_release(exe,folder,"0.5.19",part_bytes=110_000)
+
+    def test_prevent_disk_exhaustion_during_full_offline_download(self):
+        from types import SimpleNamespace
+        from auto_update import DISK_RESERVE_BYTES
+        blob=b"MZ"+b"x"*120_000
+        rel=parse_release(release_data(blob=blob))
+        with tempfile.TemporaryDirectory() as td:
+            cache=Path(td)/"Updates"
+            request=FakeOpener(blob)
+            with mock.patch("auto_update.shutil.disk_usage",
+                            return_value=SimpleNamespace(free=rel.size+DISK_RESERVE_BYTES-1)):
+                with self.assertRaisesRegex(UpdateError,"свободного места"):
+                    download_release(rel,cache,opener=request)
+            self.assertFalse(request.requests)
+            self.assertFalse(list(cache.iterdir()))
+
+    def test_recent_failed_installer_does_not_restart_endlessly(self):
+        import time
+        from auto_update import _recent_failed_version,RETRY_FAILED_AFTER
+        blob=b"MZ"+b"x"*120_000
+        data=json.dumps(release_data(blob=blob)).encode()
+        with tempfile.TemporaryDirectory() as td:
+            folder=Path(td)
+            report=folder/"update-status.json"
+            report.write_text(json.dumps({"status":"failed","version":"0.5.19",
+                         "checked_at":time.time()}),encoding="utf-8")
+            downloader=FakeOpener(blob)
+            self.assertIsNone(check_and_download(requester=lambda:data,
+                              opener=downloader,folder=folder))
+            self.assertEqual(len(downloader.requests),0)
+            self.assertFalse(_recent_failed_version(folder,"0.5.19",
+                             now=time.time()+RETRY_FAILED_AFTER+60))
+            report.write_text(json.dumps({"status":"failed","version":"0.5.18",
+                         "checked_at":time.time()}),encoding="utf-8")
+            result=check_and_download(requester=lambda:data,
+                        opener=downloader,folder=folder)
+            self.assertEqual(result[0].version,"0.5.19")
+            self.assertTrue(result[1].exists())
+            self.assertEqual(len(downloader.requests),1)
+
+    def test_corrupted_cached_exe_is_replaced_only_after_verifying_fresh_copy(self):
+        blob=b"MZ"+b"x"*120_000
+        rel=parse_release(release_data(blob=blob))
+        with tempfile.TemporaryDirectory() as td:
+            folder=Path(td)/"Updates"
+            folder.mkdir()
+            existing=folder/"candidate-0.5.19.exe"
+            existing.write_bytes(b"MZ"+b"tampered")
+            with self.assertRaises(UpdateError):
+                download_release(rel,folder,opener=FakeOpener(b"MZ"+b"evil"))
+            self.assertEqual(existing.read_bytes(),b"MZ"+b"tampered")
+            self.assertEqual(list(folder.glob("*.part")),[])
+            repaired=download_release(rel,folder,opener=FakeOpener(blob))
+            self.assertEqual(repaired.read_bytes(),blob)
 
     def test_bad_downloads_are_cleaned_before_execution(self):
         blob=b"MZ"+b"x"*120_000
