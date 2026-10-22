@@ -171,7 +171,7 @@ class UpdaterTests(unittest.TestCase):
                 order.append("wait")
             def install(args):
                 self.assertEqual(order,["wait"])
-                self.assertEqual(args[0],str(candidate))
+                self.assertEqual(Path(args[0]).resolve(),candidate.resolve())
                 self.assertIn("/VERYSILENT",args)
                 self.assertIn("/NORESTART",args)
                 self.assertIn(f"/DIR={installed}",args)
@@ -224,7 +224,8 @@ class UpdaterTests(unittest.TestCase):
                 apply_update(candidate,app,rel.version,rel.sha256,10,
                              release_lookup=lambda:rel,wait=lambda pid:None,
                              installer_run=lambda argv:7,relaunch=restarted.append,folder=folder)
-            self.assertEqual(restarted,[app])
+            self.assertEqual(len(restarted),1)
+            self.assertEqual(restarted[0].resolve(),app.resolve())
             self.assertEqual(json.loads((folder/"update-status.json").read_text())["status"],"failed")
 
     def test_dev_python_run_never_checks_for_updates(self):
