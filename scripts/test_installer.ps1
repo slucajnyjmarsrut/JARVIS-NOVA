@@ -32,6 +32,20 @@ try {
         $Run=Start-Process -FilePath $Exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden
         if ($Run.ExitCode -ne 0) { throw "Installed EXE failed ${Mode}: $($Run.ExitCode)" }
     }
+    # Prove the same Inno Setup can silently replace an existing installation
+    # IN PLACE, without uninstalling or deleting user learning files.
+    $Reinstall=Start-Process -FilePath $Setup.FullName -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    if ($Reinstall.ExitCode -ne 0) { throw "Silent in-place upgrade failed: $($Reinstall.ExitCode)" }
+    if (!(Test-Path $Exe) -or !(Test-Path $Updater)) {
+        throw 'In-place reinstall removed JARVIS or its updater'
+    }
+    if ((Get-Content -LiteralPath $VersionMarker -Raw).Trim() -ne '0.5.18') {
+        throw 'In-place upgrade has wrong version marker'
+    }
+    if ((Get-Content -LiteralPath $Sentinel -Raw).Trim() -ne $Marker) {
+        throw 'In-place upgrade overwrote user learning data'
+    }
+    Write-Host 'Silent in-place upgrade retained JARVIS updater and user data'
     $Uninstall=Join-Path $Target 'unins000.exe'
     if (!(Test-Path $Uninstall)) { throw 'No uninstaller' }
     $remove=Start-Process -FilePath $Uninstall -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru -WindowStyle Hidden
