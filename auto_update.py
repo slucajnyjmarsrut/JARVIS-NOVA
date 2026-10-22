@@ -377,9 +377,11 @@ def stage_helper(release: Release, installer: Path, application: Path,
     # The helper must run outside Inno Setup's installation directory.
     detached=folder/("JARVIS-NOVA-Worker-"+secrets.token_hex(6)+".exe")
     # Create exclusively and don't replace a possibly-running Windows worker.
-    with helper.open("rb") as source, detached.open("xb") as target:
-        shutil.copyfileobj(source,target,length=BUFFER)
+    # The copy itself belongs in the cleanup guard: previously a full disk or
+    # I/O failure here left behind a truncated .exe indefinitely.
     try:
+        with helper.open("rb") as source, detached.open("xb") as target:
+            shutil.copyfileobj(source,target,length=BUFFER)
         flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
         launcher([str(detached),"--apply",str(installer),"--sha256",release.sha256,
                   "--version",release.version,"--parent-pid",str(os.getpid()),
