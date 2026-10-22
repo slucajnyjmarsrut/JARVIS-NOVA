@@ -138,6 +138,8 @@ def parse_local(text: str) -> Plan:
         if target in UNSAFE_APPS:
             return Plan(question="Запуск системных оболочек не поддерживается.")
         if target.startswith(("http://","https://")):
+            if not _safe_https_url(target):
+                return Plan(question="Можно открыть только корректную внешнюю HTTPS-ссылку.")
             st=Step("open_url",target)
         else:
             application=ALIASES.get(target,target)
