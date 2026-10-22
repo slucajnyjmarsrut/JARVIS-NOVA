@@ -197,7 +197,7 @@ class UpdaterTests(unittest.TestCase):
             app=installed/"JarvisNova.exe";app.write_bytes(b"MZxxxx")
             candidate=download_release(rel,folder,opener=FakeOpener(blob))
             for kwargs in (
-                {"release_lookup":lambda:None},
+                {"release_lookup":lambda:None,"wait":lambda pid:None},
                 {"release_lookup":lambda:rel,"wait":lambda pid:(_ for _ in ()).throw(UpdateError("busy"))},
             ):
                 with self.assertRaises(UpdateError):
@@ -210,6 +210,31 @@ class UpdaterTests(unittest.TestCase):
                              release_lookup=lambda:rel,
                              installer_run=lambda a:self.fail("unverified install"),
                              folder=folder)
+
+    def test_worker_restarts_old_app_when_release_changes_after_exit(self):
+        blob=b"MZ"+b"x"*120_000
+        rel=parse_release(release_data(blob=blob))
+        with tempfile.TemporaryDirectory() as td:
+            folder=Path(td)/"Updates"
+            installed=Path(td)/"Installed";installed.mkdir()
+            app=installed/"JarvisNova.exe";app.write_bytes(b"MZoriginal")
+            candidate=download_release(rel,folder,opener=FakeOpener(blob))
+            calls=[]
+            def wait(pid):
+                calls.append("old-app-exited")
+            def look():
+                calls.append("recheck-release")
+                raise TimeoutError("lost connection")
+            def start(exe):
+                calls.append("old-app-restarted")
+                self.assertEqual(exe.resolve(),app.resolve())
+            with self.assertRaises(TimeoutError):
+                apply_update(candidate,app,rel.version,rel.sha256,100,
+                    release_lookup=look,wait=wait,
+                    installer_run=lambda args:self.fail("no installer without verification"),
+                    relaunch=start,folder=folder)
+            self.assertEqual(calls,["old-app-exited","recheck-release","old-app-restarted"])
+            self.assertEqual(json.loads((folder/"update-status.json").read_text())["status"],"failed")
 
     def test_worker_restarts_previous_app_if_install_fails(self):
         blob=b"MZ"+b"x"*120_000
