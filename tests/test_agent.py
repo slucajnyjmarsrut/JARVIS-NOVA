@@ -20,6 +20,26 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(parse_local("не открывай Chrome").steps,[])
     def test_unsafe_executable(self):
         self.assertEqual(parse_local("открой powershell").steps,[])
+    def test_every_executable_alias_and_system_shell_is_denied(self):
+        names=("powershell.exe","cmd.exe","pwsh","rundll32","mshta",
+               "wscript","cscript","taskkill","regedit.exe","shutdown",
+               "taskmgr","windows terminal","командная строка")
+        for name in names:
+            with self.subTest(name=name):
+                self.assertEqual(parse_local("Джарвис, открой "+name).steps,[])
+                with self.assertRaises(ValueError):
+                    validate_plan(Plan(steps=[Step("open_app",name)]))
+        with self.assertRaises(ValueError):
+            validate_plan(Plan(steps=[Step("open_app","C:\\Windows\\System32\\cmd.exe")]))
+        self.assertEqual(parse_local("открой C:\\Windows\\System32\\cmd.exe").steps,[])
+
+    def test_local_planner_defaults_to_actually_bundled_model(self):
+        def requester(url,payload,*args,**kwargs):
+            self.assertEqual(payload["model"],"qwen3-vl:2b-instruct")
+            return {"message":{"content":'{"steps":[]}'}}
+        with mock.patch("agent_core.request_json",side_effect=requester):
+            self.assertFalse(ask_ai_for_plan("что открыто",engine="ollama").steps)
+
     def test_incomplete(self):
         self.assertTrue(parse_local("открой").question)
     def test_vision_routing(self):
