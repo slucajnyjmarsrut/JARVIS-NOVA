@@ -266,7 +266,8 @@ class UpdaterTests(unittest.TestCase):
             trimodal=SimpleNamespace(speaking=False),
             voice=SimpleNamespace(whisper_busy=False),
             entry=SimpleNamespace(get=lambda:""),
-            after=mock.Mock(),status=SimpleNamespace(set=mock.Mock()),
+            after=mock.Mock(),_finish_auto_update=mock.Mock(),
+            status=SimpleNamespace(set=mock.Mock()),
             close=mock.Mock())
         with mock.patch("main.installed_application",
                         return_value=Path("C:/Programs/JarvisNova/JarvisNova.exe")), \
