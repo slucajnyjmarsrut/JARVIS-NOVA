@@ -160,7 +160,7 @@ class Desktop:
         # No cloud screen uploads. Only local Ollama is permitted.
         try:
             resp=request_json("http://127.0.0.1:11434/api/generate",
-                {"model":os.getenv("JARVIS_VISION_MODEL","qwen3-vl:2b"),
+                {"model":os.getenv("JARVIS_VISION_MODEL","qwen3-vl:2b-instruct"),
                  "prompt":"Кратко опиши по-русски, что видно на скриншоте. Не выдумывай невидимых элементов.",
                  "images":[encoded],"stream":False},timeout=80)
             return resp.get("response","Не удалось получить описание.")
