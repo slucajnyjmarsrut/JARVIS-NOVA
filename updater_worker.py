@@ -76,7 +76,8 @@ def apply_update(installer: Path, application: Path, expected_version: str,
     folder=folder.resolve(strict=True)
     installer=Path(installer).resolve(strict=True)
     application=Path(application).resolve(strict=True)
-    version_tuple(expected_version)
+    if version_tuple(expected_version)<=version_tuple(APP_VERSION):
+        raise UpdateError("Установка старой или текущей версии запрещена")
     if (installer.parent!=folder or
             installer.name!=f"candidate-{expected_version}.exe" or
             application.name.casefold()!="jarvisnova.exe" or
