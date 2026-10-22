@@ -94,12 +94,21 @@ def evaluate_final_cut(brief: Brief, profile: AudienceProfile, output: Path,
 def save_review(review: FinalReview, project_dir: Path):
     project_dir=Path(project_dir)
     project_dir.mkdir(parents=True,exist_ok=True)
-    json_file=project_dir/'FINAL_AUDIENCE_REVIEW.json'
-    md_file=project_dir/'FINAL_AUDIENCE_REVIEW_RU.md'
-    # Reassessment may overwrite only the derived report, never a user's clip.
+    # Reports belong to the person who may have edited them since the last
+    # review. Reassessment must publish a new, bounded numbered pair rather
+    # than clobber either the machine report or personal notes.
+    json_file=md_file=None
+    for version in range(1,102):
+        suffix='' if version==1 else f'_V{version}'
+        candidate_json=project_dir/f'FINAL_AUDIENCE_REVIEW{suffix}.json'
+        candidate_md=project_dir/f'FINAL_AUDIENCE_REVIEW_RU{suffix}.md'
+        if not any(p.exists() or p.is_symlink() for p in (candidate_json,candidate_md)):
+            json_file,md_file=candidate_json,candidate_md
+            break
+    if json_file is None:
+        raise ViralStudioError('Достигнут предел версий отчёта. Сохрани новый проект.')
     data=asdict(review)
     data['reviewed_utc']=datetime.now(timezone.utc).isoformat()
-    json_file.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding='utf-8')
     lines=['# Последний этап: оценка готового видео для аудитории',
            f'Индекс соответствия: {review.index}/100 — {review.rating}',
            f'Надёжность оценки по объёму данных: {review.confidence}',
@@ -113,5 +122,22 @@ def save_review(review: FinalReview, project_dir: Path):
     lines += ['','## Советы специалиста по удержанию и продвижению',
               *[f'- {x}' for x in review.suggestions], '', '## Ограничения',
               *[f'- {x}' for x in review.limitations]]
-    md_file.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    # Exclusive creates also protect a user file created after our preflight.
+    # If the second output fails, remove only the first file created here.
+    # Exported MP4 and ALL previous report versions stay exactly as they were.
+    created=[]
+    try:
+        with json_file.open('x',encoding='utf-8') as stream:
+            created.append(json_file)
+            json.dump(data,stream,ensure_ascii=False,indent=2)
+        with md_file.open('x',encoding='utf-8') as stream:
+            created.append(md_file)
+            stream.write('\n'.join(lines)+'\n')
+    except BaseException:
+        for own in reversed(created):
+            try:
+                own.unlink()
+            except OSError:
+                pass
+        raise
     return md_file
