@@ -174,7 +174,7 @@ class UpdaterTests(unittest.TestCase):
                 self.assertEqual(Path(args[0]).resolve(),candidate.resolve())
                 self.assertIn("/VERYSILENT",args)
                 self.assertIn("/NORESTART",args)
-                self.assertIn(f"/DIR={installed}",args)
+                self.assertEqual(Path(args[-1][5:]).resolve(),installed.resolve())
                 order.append("install")
                 (installed/"JARVIS_NOVA_VERSION.txt").write_text(rel.version)
                 return 0
