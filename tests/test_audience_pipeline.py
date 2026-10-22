@@ -60,6 +60,52 @@ class ChannelAudienceTests(unittest.TestCase):
             file=save_profile(orig,pathlib.Path(td))
             self.assertEqual(load_profile(file),orig)
             with self.assertRaises(AudienceDataError):save_profile(orig,pathlib.Path(td))
+    def test_saved_profile_rejects_poisoned_metrics_and_never_changes_source(self):
+        import json
+        from dataclasses import asdict
+        good=asdict(self._profile())
+        mutations=(
+            ("negative_views",lambda d:d['videos'][0].__setitem__('views',-1)),
+            ("string_views",lambda d:d['videos'][0].__setitem__('views',"1000")),
+            ("boolean_views",lambda d:d['videos'][0].__setitem__('views',True)),
+            ("infinite_ctr",lambda d:d['videos'][0].__setitem__('ctr',float('inf'))),
+            ("negative_likes",lambda d:d['videos'][0].__setitem__('likes',-4)),
+            ("wrong_title",lambda d:d['videos'][0].__setitem__('title',[])),
+            ("unknown_field",lambda d:d['videos'][0].__setitem__('unsafe',123)),
+            ("wrong_metric",lambda d:d['videos'].__setitem__(0,None)),
+            ("too_many_videos",lambda d:d.__setitem__('videos',d['videos']*251)),
+            ("invalid_source",lambda d:d.__setitem__('source',[])),
+            ("invalid_video_list",lambda d:d.__setitem__('videos','not metrics')),
+        )
+        for label,change in mutations:
+            with self.subTest(label=label),tempfile.TemporaryDirectory() as td:
+                root=pathlib.Path(td)/'channel_profile.json'
+                data=json.loads(json.dumps(good,ensure_ascii=False))
+                change(data)
+                raw=json.dumps(data,ensure_ascii=False,allow_nan=True)
+                root.write_text(raw,encoding='utf-8')
+                with self.assertRaises(AudienceDataError):
+                    load_profile(root)
+                self.assertEqual(root.read_text('utf-8'),raw)
+
+    def test_saved_profile_rejects_large_files_and_symlinks_before_loading(self):
+        from channel_audience import MAX_PROFILE_BYTES
+        with tempfile.TemporaryDirectory() as td:
+            root=pathlib.Path(td)
+            too_large=root/'huge.json'
+            too_large.write_bytes(b'x'*(MAX_PROFILE_BYTES+1))
+            with self.assertRaises(AudienceDataError):
+                load_profile(too_large)
+            self.assertEqual(too_large.stat().st_size,MAX_PROFILE_BYTES+1)
+            shortcut=root/'linked.json'
+            try:
+                shortcut.symlink_to(too_large)
+            except (OSError,NotImplementedError):
+                return
+            with self.assertRaises(AudienceDataError):
+                load_profile(shortcut)
+            self.assertTrue(shortcut.is_symlink())
+
     def test_profile_save_never_overwrites_file_created_after_preflight(self):
         with tempfile.TemporaryDirectory() as td:
             root=pathlib.Path(td)
