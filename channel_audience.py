@@ -223,12 +223,27 @@ def analyze_audience(videos: tuple[VideoMetric, ...], *, source='экспорт 
 
 
 def save_profile(profile: AudienceProfile, folder: Path):
+    """Save channel data exclusively; never overwrite another imported profile."""
     folder=Path(folder)
     folder.mkdir(parents=True,exist_ok=True)
     destination=folder/'channel_profile.json'
-    if destination.exists():
-        raise AudienceDataError('Профиль существует; удалите его вручную перед новым импортом')
-    destination.write_text(json.dumps(asdict(profile),ensure_ascii=False,indent=2),encoding='utf-8')
+    if destination.exists() or destination.is_symlink():
+        raise AudienceDataError('Профиль уже существует; не перезаписываю')
+    created=False
+    try:
+        with destination.open('x',encoding='utf-8') as stream:
+            created=True
+            json.dump(asdict(profile),stream,ensure_ascii=False,indent=2)
+    except BaseException as exc:
+        # Only this invocation's own incomplete file may be removed.
+        if created:
+            try:
+                destination.unlink()
+            except OSError:
+                pass
+        if isinstance(exc,FileExistsError):
+            raise AudienceDataError('Профиль уже существует; не перезаписываю') from exc
+        raise
     return destination
 
 
