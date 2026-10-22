@@ -385,8 +385,9 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
         raise ViralStudioError(f'Нужно {len(brief.shots)} отдельных кадров, найдено {len(clips)}. '
                                'Сними кадры по плану и назови 01.mp4, 02.mp4 ...')
     clips=clips[:len(brief.shots)]
-    if out_file.exists() or out_file.with_suffix('.srt').exists():
-        raise ViralStudioError('Файл результата или субтитров уже существует; оригиналы не перезаписываю')
+    if (out_file.exists() or out_file.with_suffix('.srt').exists()
+            or out_file.with_name(out_file.stem+'_EDL.json').exists()):
+        raise ViralStudioError('Результат, субтитры или монтажный лист уже существуют; не перезаписываю')
     if out_file.parent==footage_dir or footage_dir in out_file.parents:
         raise ViralStudioError('Результат должен сохраняться вне папки исходных кадров')
     ffmpeg,ffprobe=tools if tools else ffmpeg_tools()
@@ -442,17 +443,36 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             raise ViralStudioError('FFmpeg создал некорректный MP4')
         technical=verify_output_media(temp_final,ffprobe,
                                       sum(part['seconds'] for part in decisions),cancel=cancel)
-        shutil.move(str(temp_final),str(out_file))
-    result={'output':str(out_file),'duration':verified_duration,'size':[width,height],
-            'technical_quality':technical,
-            'segments':decisions,'captions':'экранные вставки, не транскрипция речи',
-            'created_utc':datetime.now(timezone.utc).isoformat()}
-    # Separate, time-aligned caption track for review/editing. The same text
-    # is already visible in the burned-in video; it is NOT a speech transcript.
-    srt=out_file.with_suffix('.srt')
-    with srt.open('x',encoding='utf-8-sig') as out:
-        out.write(caption_subtitles(decisions))
-    result['subtitle_file']=str(srt)
-    (out_file.parent/(out_file.stem+'_EDL.json')).write_text(
-        json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+        # Prepare ALL three output artifacts before committing any of them.
+        # Previous releases moved the MP4 first; a later SRT/EDL failure
+        # left a misleading half-finished export on disk.
+        srt=out_file.with_suffix('.srt')
+        edl=out_file.with_name(out_file.stem+'_EDL.json')
+        result={'output':str(out_file),'duration':verified_duration,'size':[width,height],
+                'technical_quality':technical,
+                'segments':decisions,'captions':'экранные вставки, не транскрипция речи',
+                'created_utc':datetime.now(timezone.utc).isoformat(),
+                'subtitle_file':str(srt)}
+        staged_srt=work/'captions.srt'
+        staged_edl=work/'edit_decisions.json'
+        staged_srt.write_text(caption_subtitles(decisions),encoding='utf-8-sig')
+        staged_edl.write_text(json.dumps(result,ensure_ascii=False,indent=2),
+                              encoding='utf-8')
+        # Use exclusive creates: a concurrently created user file is never
+        # overwritten, even if it appears after the initial preflight check.
+        published=[]
+        try:
+            for src,target in ((staged_srt,srt),(staged_edl,edl),
+                               (temp_final,out_file)):
+                with target.open('xb') as destination:
+                    published.append(target)
+                    with src.open('rb') as source:
+                        shutil.copyfileobj(source,destination,length=1024*1024)
+        except Exception:
+            for path in reversed(published):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+            raise
     return result
