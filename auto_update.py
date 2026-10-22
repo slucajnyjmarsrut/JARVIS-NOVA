@@ -147,7 +147,12 @@ def latest_release(*, requester=None, current=APP_VERSION) -> Release | None:
                 "X-GitHub-Api-Version":"2022-11-28"})
             with opener.open(req,timeout=12) as response:
                 return response.read(MAX_API_BYTES+1)
-    raw=requester()
+    try:
+        raw=requester()
+    except urllib.error.HTTPError as exc:
+        if exc.code==404:
+            return None  # no official published release yet
+        raise UpdateError("Сервис релизов недоступен") from exc
     if not isinstance(raw,bytes) or len(raw)>MAX_API_BYTES:
         raise UpdateError("Недопустимый ответ сервера обновлений")
     try:
@@ -278,19 +283,19 @@ def stage_helper(release: Release, installer: Path, application: Path,
     folder=Path(folder)
     _prepare_cache(folder)
     # The helper must run outside Inno Setup's installation directory.
-    detached=folder/"JARVIS-NOVA-Update-Worker.exe"
-    # Our copy comes ONLY from the installed executable, never from the web.
-    staged=folder/(".worker-"+secrets.token_hex(6)+".tmp")
+    detached=folder/("JARVIS-NOVA-Worker-"+secrets.token_hex(6)+".exe")
+    # Create exclusively and don't replace a possibly-running Windows worker.
+    with helper.open("rb") as source, detached.open("xb") as target:
+        shutil.copyfileobj(source,target,length=BUFFER)
     try:
-        shutil.copyfile(helper,staged)
-        os.replace(staged,detached)
-    finally:
-        staged.unlink(missing_ok=True)
-    flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
-    launcher([str(detached),"--apply",str(installer),"--sha256",release.sha256,
-              "--version",release.version,"--parent-pid",str(os.getpid()),
-              "--application",str(application)],
-             cwd=str(folder),close_fds=True,creationflags=flags)
+        flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
+        launcher([str(detached),"--apply",str(installer),"--sha256",release.sha256,
+                  "--version",release.version,"--parent-pid",str(os.getpid()),
+                  "--application",str(application)],
+                 cwd=str(folder),close_fds=True,creationflags=flags)
+    except Exception:
+        detached.unlink(missing_ok=True)
+        raise
 
 
 def check_and_download(*, requester=None, opener=None,
