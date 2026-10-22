@@ -7,6 +7,8 @@ from typing import Callable
 import json
 import os
 import re
+import ipaddress
+from urllib.parse import urlsplit
 import urllib.request
 from self_improve import BLOCKED, safe_name
 
@@ -122,6 +124,15 @@ def parse_local(text: str) -> Plan:
         pair=re.split(r"\s+и\s+(?:увеличь|приблизь)\s+масштаб",target,maxsplit=1)
         next_zoom = len(pair)==2
         target=pair[0].strip()
+        # The normalized utterance is for matching commands ONLY. Preserve
+        # the original URL path/query case: /SignIn?Token=ABC is not the
+        # same address as /signin?token=abc on many services.
+        if target.startswith(("http://","https://")):
+            original=re.match(
+                r"^\s*(?:открой|запусти|включи|покажи)\s+(?:мне\s+)?(https?://\S+)",
+                strip_wake(text),flags=re.I)
+            if original:
+                target=original.group(1)
         if not target: return Plan(question="Какое приложение открыть?")
         if target in UNSAFE_APPS:
             return Plan(question="Запуск системных оболочек не поддерживается.")
@@ -138,6 +149,40 @@ def parse_local(text: str) -> Plan:
         return Plan(question="Уточни, что именно нужно открыть или нажать.")
     return Plan(question="Не понял команду. Уточни действие или название программы.")
 
+def _safe_https_url(address: str) -> bool:
+    """Validate an external HTTPS browser destination without executing it.
+
+    Reject localhost, private/reserved IPs, credentials, odd ports, embedded
+    backslashes or whitespace, and malformed authorities. Browsers can
+    interpret these differently than Python's URL parser.
+    """
+    if not isinstance(address,str) or not address.startswith("https://"):
+        return False
+    if not 9<len(address)<=1000 or re.search(r"[\\\\\s\x00-\x1f\x7f]",address):
+        return False
+    try:
+        url=urlsplit(address)
+        host=url.hostname
+        if (url.scheme!="https" or not host or url.username is not None
+                or url.password is not None or url.port not in (None,443)
+                or url.fragment.startswith("//")):
+            return False
+        if "%" in url.netloc or "#" in url.netloc or "@" in url.netloc:
+            return False
+        if host in ("localhost","localhost.localdomain") or host.endswith((".localhost",".local",".internal",".test",".invalid")):
+            return False
+        try:
+            ip=ipaddress.ip_address(host)
+        except ValueError:
+            # Require a DNS name with a genuine public-looking suffix.
+            if "." not in host or host.startswith(".") or host.endswith("."):
+                return False
+            return bool(re.fullmatch(r"[a-zA-Z0-9._-]+",host))
+        return ip.is_global
+    except (ValueError,TypeError):
+        return False
+
+
 def validate_step(s: Step) -> None:
     if s.kind not in ALLOWED_KINDS: raise ValueError("Неподдерживаемое действие")
     if len(s.value)>1000: raise ValueError("Слишком длинный аргумент")
@@ -145,8 +190,8 @@ def validate_step(s: Step) -> None:
         raise ValueError("Некорректные координаты")
     if s.kind=="open_app" and not safe_name(s.value):
         raise ValueError("Не разрешён запуск этой программы")
-    if s.kind=="open_url" and not s.value.startswith("https://"):
-        raise ValueError("Разрешён только HTTPS")
+    if s.kind=="open_url" and not _safe_https_url(s.value):
+        raise ValueError("Разрешены только корректные внешние HTTPS-ссылки")
     if s.kind=="hotkey" and s.value not in {"enter","tab","esc","space","ctrl+c","ctrl+v","ctrl+a"}:
         raise ValueError("Недопустимое сочетание клавиш")
 
