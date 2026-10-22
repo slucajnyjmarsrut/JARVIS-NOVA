@@ -48,7 +48,7 @@ class ViralTests(unittest.TestCase):
             'call_to_action':'Подписывайся'}
         def requester(url, payload):
             self.assertEqual(url,'http://127.0.0.1:1234/api/generate')
-            self.assertEqual(payload['model'],'qwen3-vl:2b')
+            self.assertEqual(payload['model'],'qwen3-vl:2b-instruct')
             return {'response':json.dumps(mock_response,ensure_ascii=False)}
         b=create_local_brief('Камеры',model_runtime=runtime,requester=requester)
         self.assertIn('Qwen3',b.generator)
