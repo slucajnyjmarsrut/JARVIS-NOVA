@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
@@ -39,6 +40,8 @@ MAX_INSTALLER_BYTES = 4_000_000_000
 MIN_INSTALLER_BYTES = 100_000
 GITHUB_ASSET_LIMIT = 2 * 1024**3  # release assets must be STRICTLY smaller
 MAX_PARTS = 8
+RETRY_FAILED_AFTER = 24 * 60 * 60
+DISK_RESERVE_BYTES = 700_000_000
 BUFFER = 1024 * 1024
 # GitHub release browser_download_url redirects to its release asset CDN.
 ALLOWED_HOSTS = frozenset({"github.com", "release-assets.githubusercontent.com",
@@ -286,9 +289,18 @@ def download_release(release: Release, folder: Path, *,
     folder=Path(folder)
     _prepare_cache(folder)
     dest=folder/f"candidate-{release.version}.exe"
-    if dest.exists() or dest.is_symlink():
-        _check_download(dest,release)
-        return dest
+    # A damaged cached installer is NOT executed. Download a fresh verified
+    # copy and atomically replace only the updater-owned candidate pathname.
+    if dest.is_symlink():
+        raise UpdateError("В каталоге обновлений обнаружена ссылка вместо EXE")
+    if dest.exists():
+        try:
+            _check_download(dest,release)
+            return dest
+        except UpdateError:
+            pass
+    if shutil.disk_usage(folder).free < release.size + DISK_RESERVE_BYTES:
+        raise UpdateError("Недостаточно свободного места для безопасного обновления")
     temp=folder/f".candidate-{release.version}-{secrets.token_hex(6)}.part"
     try:
         if opener is None:
@@ -324,10 +336,12 @@ def download_release(release: Release, folder: Path, *,
         with temp.open("rb") as f:
             if f.read(2)!=b"MZ":
                 raise UpdateError("Это не EXE")
-        if dest.exists() or dest.is_symlink():
-            _check_download(dest,release)
-        else:
-            os.replace(temp,dest)
+        if dest.is_symlink():
+            raise UpdateError("Недоверенный файл появился во время загрузки")
+        # Replacing a previously corrupted cache is safe only AFTER a complete
+        # independent SHA256 and content verification of the fresh download.
+        os.replace(temp,dest)
+        _check_download(dest,release)
         return dest
     finally:
         temp.unlink(missing_ok=True)
@@ -376,10 +390,29 @@ def stage_helper(release: Release, installer: Path, application: Path,
         raise
 
 
+def _recent_failed_version(folder: Path, version: str, now: float | None=None) -> bool:
+    """Avoid an endless install-fail-restart loop for a broken stable release."""
+    path=Path(folder)/"update-status.json"
+    try:
+        if path.is_symlink() or path.stat().st_size>4096:
+            return False
+        data=json.loads(path.read_text("utf-8"))
+        instant=float(data.get("checked_at",0))
+        instant=time.time() if now is None else now
+        age=instant-float(data.get("checked_at",0))
+        return (data.get("status")=="failed" and data.get("version")==version
+                and 0<=age<RETRY_FAILED_AFTER)
+    except (OSError,TypeError,ValueError,UnicodeError,AttributeError):
+        return False
+
+
 def check_and_download(*, requester=None, opener=None,
                        cancel=None, folder=None) -> tuple[Release,Path] | None:
     release=latest_release(requester=requester)
     if release is None:
         return None
-    file=download_release(release,folder or cache_dir(),opener=opener,cancel=cancel)
+    folder=Path(folder) if folder is not None else cache_dir()
+    if _recent_failed_version(folder,release.version):
+        return None
+    file=download_release(release,folder,opener=opener,cancel=cancel)
     return release,file
