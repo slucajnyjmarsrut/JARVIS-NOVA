@@ -163,6 +163,11 @@ def analyze_and_recut(
         raise ValueError("Повторный монтаж ограничен двумя попытками")
     project_dir=Path(project_dir)
     footage_dir=Path(footage_dir)
+    # Fail before rendering if a previous review exists. Preserve user
+    # reports and avoid orphaned new MP4 variants on a repeated click.
+    if any((project_dir/name).exists() for name in
+           ("POST_MONTAGE_REVIEW.json","POST_MONTAGE_REVIEW_RU.md")):
+        raise MontageReviewError("Отчёт предыдущего монтажа уже существует; создай новый проект")
     render=renderer or render_video
     evaluate=reviewer or evaluate_final_cut
     records: list[EditAttempt] = []
