@@ -63,6 +63,15 @@ class SmartMontageTests(unittest.TestCase):
             choose_highlight_start(Path("clip.mp4"),12.,2.,"ffmpeg",cancel=canceled,
                                   executor=lambda *_a,**_kw: self.fail("called"))
 
+    def test_user_cancel_mid_scan_must_abort_instead_of_rendering(self):
+        event=threading.Event()
+        def interrupted(argv, **kwargs):
+            event.set()
+            raise RuntimeError("Монтаж отменён")
+        with self.assertRaisesRegex(MontageQualityError,"отменён"):
+            choose_highlight_start(Path("clip.mp4"),12.,3.,"ffmpeg",
+                                   cancel=event,executor=interrupted)
+
     def test_technical_output_accepts_only_vertical_h264_and_aac(self):
         with tempfile.TemporaryDirectory() as temp:
             file=Path(temp)/"out.mp4"
