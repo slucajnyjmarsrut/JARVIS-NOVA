@@ -280,8 +280,6 @@ def analyze_and_recut(
     }
     project_dir.mkdir(parents=True,exist_ok=True)
     report_path=project_dir/"POST_MONTAGE_REVIEW.json"
-    with report_path.open("x",encoding="utf-8") as stream:
-        json.dump(report,stream,ensure_ascii=False,indent=2)
     readme=project_dir/"POST_MONTAGE_REVIEW_RU.md"
     lines=[
         "# Проверка ролика и автоматические правки","",
@@ -304,7 +302,23 @@ def analyze_and_recut(
     lines+=["","## Голосовой вывод",speech,"",
             "Ни один результат не публикуется автоматически.",
             "Проверь подбор кадров, авторские права, музыку и субтитры перед публикацией."]
-    with readme.open("x",encoding="utf-8") as stream:
-        stream.write("\n".join(lines)+"\n")
+    # Both reports form one logical result. If either exclusive create or
+    # write fails, remove ONLY files created in this attempt; user-owned
+    # reports and every exported MP4 must remain untouched.
+    created=[]
+    try:
+        with report_path.open("x",encoding="utf-8") as stream:
+            created.append(report_path)
+            json.dump(report,stream,ensure_ascii=False,indent=2)
+        with readme.open("x",encoding="utf-8") as stream:
+            created.append(readme)
+            stream.write("\n".join(lines)+"\n")
+    except BaseException:
+        for new_file in reversed(created):
+            try:
+                new_file.unlink()
+            except OSError:
+                pass
+        raise
     return MontageOutcome(best_path,best_brief,best_render,best_review,
                           tuple(records),readme,speech)
