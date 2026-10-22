@@ -132,7 +132,8 @@ def parse_local(text: str) -> Plan:
                 r"^\s*(?:открой|запусти|включи|покажи)\s+(?:мне\s+)?(https?://\S+)",
                 strip_wake(text),flags=re.I)
             if original:
-                target=original.group(1)
+                raw_url=original.group(1)
+                target=raw_url.split("://",1)[0].lower()+"://"+raw_url.split("://",1)[1]
         if not target: return Plan(question="Какое приложение открыть?")
         if target in UNSAFE_APPS:
             return Plan(question="Запуск системных оболочек не поддерживается.")
