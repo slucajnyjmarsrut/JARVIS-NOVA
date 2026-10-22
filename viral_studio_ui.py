@@ -65,7 +65,7 @@ class ViralStudioWindow(tk.Toplevel):
         second=ttk.Frame(self,padding=(12,0,12,8));second.pack(fill='x')
         self.edit_button=ttk.Button(second,text='3. Монтаж: мои или онлайн-кадры',command=self.montage)
         self.edit_button.pack(side='left',padx=(0,8))
-        self.review_button=ttk.Button(second,text='4. Оценить для аудитории',command=self.review)
+        self.review_button=ttk.Button(second,text='4. Оценка просмотров и правок',command=self.review)
         self.review_button.pack(side='left',padx=(0,8))
         ttk.Button(second,text='Отменить текущую работу',command=self.cancel).pack(side='left')
         auto_row=ttk.Frame(self,padding=(12,0,12,7))
@@ -377,11 +377,11 @@ class ViralStudioWindow(tk.Toplevel):
 
                 self.status.set('Ролик готов: '+str(out)+
                                 (f' | оценка {review.index}/100 (НЕ вероятность вирусности)' if review else
-                                 ' | оценка недоступна'))
+                                 ' | структура проверена; исторические просмотры без CSV недоступны'))
                 self._show('Готово!\n\nФайл: '+data['output']+'\n'
                            'Длительность: '+str(round(data['duration'],1))+' сек.\n'
                            'Соотношение: 9:16\n'
-                           'Лицензии и авторство: '+credits+'\\n'
+                           'Лицензии и авторство: '+credits+'\n'
                            'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n'
                            'Оценка и повторный монтаж: '+str(report)+'\n'
                            'Проверено вариантов: '+str(len(outcome.attempts))+'\n\n'
@@ -391,8 +391,22 @@ class ViralStudioWindow(tk.Toplevel):
         self._spawn(work)
 
     def review(self):
-        if not self.profile or not self.brief or not self.project:
-            messagebox.showwarning('Нет данных','Сначала проанализируй канал и подготовь ролик.',parent=self)
+        if not self.brief or not self.project:
+            messagebox.showwarning('Нет данных','Сначала создай или открой сценарий и смонтируй ролик.',parent=self)
+            return
+        # Always show the independently saved post-montage audit, including
+        # cases without CSV. Do not make up future views.
+        last_report=self.project/'POST_MONTAGE_REVIEW_RU.md'
+        if last_report.is_file():
+            self._show(last_report.read_text('utf-8'))
+            self.status.set('Проверка закончена: результаты прошлых видео НЕ прогноз будущих просмотров.')
+            self._speak('Проверил монтаж и сохранил вывод. Исторические просмотры не гарантируют новые.')
+            return
+        if self.profile is None:
+            messagebox.showinfo('Просмотры',
+                'Добавь CSV статистики канала. Без неё будущие просмотры '
+                'оценить нельзя. После следующего монтажа сохранится структурный отчёт.',
+                parent=self)
             return
         out=self.rendered_video or self.project/'JARVIS_NOVA_VERTICAL.mp4'
         if not out.is_file():
