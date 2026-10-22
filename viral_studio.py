@@ -197,7 +197,9 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
     )
     try:
         endpoint = model_runtime.start()
-        payload = {'model':'qwen3-vl:2b','prompt':prompt,'stream':False,'format':'json',
+        # This must be the same audited tag as BundledRuntimeConfig.model.
+        # The older "qwen3-vl:2b" tag does not exist in the packaged store.
+        payload = {'model':'qwen3-vl:2b-instruct','prompt':prompt,'stream':False,'format':'json',
                    'options':{'temperature':0.5,'num_predict':1500}}
         result = requester(endpoint + '/api/generate', payload)
         if not isinstance(result, dict) or not isinstance(result.get('response'), str):
