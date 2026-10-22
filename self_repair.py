@@ -25,6 +25,7 @@ from self_improve import default_data_file
 
 T = TypeVar("T")
 MAX_BACKUPS = 30
+MAX_REPAIR_BYTES = 512_000  # never copy huge user-owned files automatically
 READ_ONLY_OPERATIONS = frozenset({
     "commons_search", "official_ffmpeg_docs", "ffprobe_read", "model_health_probe",
 })
@@ -80,7 +81,10 @@ def _classify(path: Path, name: str) -> Finding:
     if not path.is_file():
         return Finding(name,"unsafe","Это не обычный файл: не трогаю")
     try:
-        if path.stat().st_size > limit:
+        size=path.stat().st_size
+        if size > MAX_REPAIR_BYTES:
+            return Finding(name,"unsafe","Слишком большой файл: только ручная проверка")
+        if size > limit:
             return Finding(name,"too_large","Файл превышает безопасный предел")
         payload=path.read_bytes()
         doc=json.loads(payload.decode("utf-8"))
@@ -197,9 +201,12 @@ def retry_readonly(operation: str, action: Callable[[], T], *,
         except (TimeoutError,ConnectionError,OSError,urllib.error.URLError) as exc:
             if cancel is not None and cancel.is_set():
                 raise RepairError("Операция отменена") from exc
-            is_transient=(isinstance(exc,(TimeoutError,ConnectionError,
-                           urllib.error.URLError)) or
-                           (type(exc) is OSError and exc.errno in _RETRY_ERRNOS))
+            # A real HTTP 4xx/5xx response is not a connection interruption.
+            # Do not repeat forbidden/invalid requests or rate-limit errors.
+            is_transient=(not isinstance(exc,urllib.error.HTTPError) and
+                (isinstance(exc,(TimeoutError,ConnectionError,
+                                 urllib.error.URLError)) or
+                 (type(exc) is OSError and exc.errno in _RETRY_ERRNOS)))
             if not is_transient or attempt==1:
                 raise
     raise AssertionError("unreachable")
