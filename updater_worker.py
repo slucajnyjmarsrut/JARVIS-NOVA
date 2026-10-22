@@ -15,7 +15,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-from time import monotonic, sleep
+from time import time
 
 from auto_update import (API_URL, APP_VERSION, Release, UpdateError,
                          _check_download, cache_dir, latest_release,
@@ -55,7 +55,8 @@ def wait_for_parent(pid: int, *, timeout=90) -> None:
 
 def record_status(folder: Path, status: str, version: str, reason: str="") -> None:
     # No user texts, voice or file paths in diagnostic status.
-    data={"status":status,"version":version,"reason":reason[:140]}
+    data={"status":status,"version":version,"reason":reason[:140],
+          "checked_at":time()}
     fd,name=tempfile.mkstemp(prefix=".update-",suffix=".json",dir=str(folder))
     try:
         with os.fdopen(fd,"w",encoding="utf-8") as f:
