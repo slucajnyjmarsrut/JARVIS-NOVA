@@ -207,6 +207,10 @@ def download_release(release: Release, folder: Path, *,
     """Download one verified installer. Never execute bytes from an API field."""
     if not isinstance(release,Release) or not _exact_repo_url(release.download_url):
         raise UpdateError("Недоверенный адрес")
+    version_tuple(release.version)
+    if (release.installer_name != f"JARVIS-NOVA-{release.version}-OFFLINE-SETUP.exe"
+            or urlsplit(release.download_url).path.split("/")[-1] != release.installer_name):
+        raise UpdateError("Адрес и имя файла не совпадают с подтверждённым релизом")
     if (not SHA256.fullmatch("sha256:"+release.sha256)
             or type(release.size) is not int
             or not MIN_INSTALLER_BYTES<=release.size<=MAX_INSTALLER_BYTES):
