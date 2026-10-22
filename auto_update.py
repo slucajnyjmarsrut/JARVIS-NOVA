@@ -299,7 +299,10 @@ def download_release(release: Release, folder: Path, *,
             return dest
         except UpdateError:
             pass
-    if shutil.disk_usage(folder).free < release.size + DISK_RESERVE_BYTES:
+    # The cached installer itself may be ~2.6 GiB. Inno also needs space to
+    # stage/unpack the upgraded onedir application. A mere 700 MB spare left
+    # after download can cause an avoidable half-finished Windows install.
+    if shutil.disk_usage(folder).free < 2*release.size + DISK_RESERVE_BYTES:
         raise UpdateError("Недостаточно свободного места для безопасного обновления")
     temp=folder/f".candidate-{release.version}-{secrets.token_hex(6)}.part"
     try:
