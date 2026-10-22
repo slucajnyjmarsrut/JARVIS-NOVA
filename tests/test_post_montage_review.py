@@ -105,6 +105,18 @@ class PostMontageReviewTests(unittest.TestCase):
             self.assertEqual(len(json.loads((root/"POST_MONTAGE_REVIEW.json").
                        read_text("utf-8"))["revision_errors"]),1)
 
+    def test_existing_review_is_not_overwritten_or_left_with_orphan_mp4(self):
+        with TemporaryDirectory() as td:
+            root=Path(td)
+            path=root/"POST_MONTAGE_REVIEW_RU.md"
+            path.write_text("PERSONAL NOTES - DO NOT OVERWRITE",encoding="utf-8")
+            with self.assertRaisesRegex(MontageReviewError,"существует"):
+                analyze_and_recut(slow_brief(),root,root,
+                    renderer=lambda *_a,**_kw:self.fail("Rendered before report check"))
+            self.assertEqual(path.read_text("utf-8"),
+                             "PERSONAL NOTES - DO NOT OVERWRITE")
+            self.assertEqual(tuple(root.glob("*.mp4")),())
+
     def test_cancel_and_invalid_media_never_pretend_to_succeed(self):
         stopped=threading.Event()
         stopped.set()
