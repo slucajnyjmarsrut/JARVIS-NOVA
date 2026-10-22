@@ -60,6 +60,73 @@ class CommonsTests(unittest.TestCase):
         self.assertFalse(search_free_video("priroda", consent=True,
                          transport=lambda *_: result(mime="image/jpeg")))
 
+    def test_invalid_ports_and_corrupt_commons_metadata_fail_closed(self):
+        for url in (
+            "https://upload.wikimedia.org:invalid/wikipedia/commons/a/a.webm",
+            "https://upload.wikimedia.org:999999/wikipedia/commons/a/a.webm",
+            "https://upload.wikimedia.org:0/wikipedia/commons/a/a.webm",
+        ):
+            with self.subTest(url=url):
+                self.assertFalse(_approved_video(url,"video/webm"))
+        for bad_meta in (
+            {"LicenseShortName":"CC BY 4.0"},
+            {"LicenseShortName":{"value":"CC BY 4.0"},"Artist":"not a dict"},
+            {"LicenseShortName":{"value":"CC BY-SA 4.0"}},
+        ):
+            payload=json.loads(result())
+            payload["query"]["pages"]["7"]["imageinfo"][0]["extmetadata"]=bad_meta
+            clips=search_free_video("nature",consent=True,
+                transport=lambda *_: json.dumps(payload).encode())
+            self.assertTrue(isinstance(clips,list))
+            if "LicenseShortName" in bad_meta and isinstance(bad_meta["LicenseShortName"],str):
+                self.assertEqual(clips,[])
+
+    def test_truncated_download_never_leaves_partial_project(self):
+        clip = FreeClip("Example",GOOD,"https://commons.wikimedia.org/wiki/File:Example",
+                        "CC BY 4.0",2048,"video/webm")
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)/"download"
+            with self.assertRaisesRegex(OnlineMediaError,"не полностью"):
+                download_free_video([clip],folder,consent=True,
+                    transport=lambda *_:bytes.fromhex("1a45dfa3")+b"x"*40)
+            self.assertFalse(folder.exists())
+
+    def test_download_second_clip_error_rolls_back_first_and_preserves_other_content(self):
+        clip=FreeClip("Example",GOOD,"https://commons.wikimedia.org/wiki/File:Example",
+                      "CC BY 4.0",2048,"video/webm")
+        webm=bytes.fromhex("1a45dfa3")+b"x"*2044
+        for with_other in (False,True):
+            with tempfile.TemporaryDirectory() as tmp:
+                folder=Path(tmp)/"download"
+                calls=[]
+                def fetch(url,size):
+                    calls.append(url)
+                    if len(calls)==2:
+                        if with_other:
+                            (folder/"someone_else.txt").write_text("keep")
+                        raise OSError("network interrupted")
+                    return webm
+                with self.assertRaisesRegex(OSError,"interrupted"):
+                    download_free_video([clip,clip],folder,consent=True,transport=fetch)
+                self.assertFalse((folder/"01.webm").exists())
+                self.assertFalse((folder/"02.webm").exists())
+                self.assertEqual(folder.exists(),with_other)
+                if with_other:
+                    self.assertEqual((folder/"someone_else.txt").read_text(),"keep")
+
+    def test_cancel_during_download_rolls_back_without_credits(self):
+        clip=FreeClip("Example",GOOD,"https://commons.wikimedia.org/wiki/File:Example",
+                      "CC BY 4.0",2048,"video/webm")
+        stop=threading.Event()
+        def interrupt(url,limit):
+            stop.set()
+            return bytes.fromhex("1a45dfa3")+b"x"*2044
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)/"download"
+            with self.assertRaisesRegex(OnlineMediaError,"отменена"):
+                download_free_video([clip],folder,consent=True,transport=interrupt,cancel=stop)
+            self.assertFalse(folder.exists())
+
     def test_bad_response_is_bounded(self):
         with self.assertRaises(OnlineMediaError):
             search_free_video("test", consent=True, transport=lambda *_: b"x" * 900001)
