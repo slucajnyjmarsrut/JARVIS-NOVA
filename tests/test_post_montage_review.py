@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import threading
 import unittest
+from unittest import mock
 
 from channel_audience import VideoMetric
 from post_montage_review import (analyze_and_recut, revised_brief,
@@ -117,6 +118,43 @@ class PostMontageReviewTests(unittest.TestCase):
             self.assertEqual(path.read_text("utf-8"),
                              "PERSONAL NOTES - DO NOT OVERWRITE")
             self.assertEqual(tuple(root.glob("*.mp4")),())
+
+    def test_json_report_is_rolled_back_if_markdown_creation_fails(self):
+        with TemporaryDirectory() as td:
+            root=Path(td)
+            original_open=Path.open
+            def block_markdown(path,mode="r",*args,**kwargs):
+                if path.name=="POST_MONTAGE_REVIEW_RU.md" and mode=="x":
+                    raise PermissionError("markdown folder is read-only")
+                return original_open(path,mode,*args,**kwargs)
+            with mock.patch("pathlib.Path.open",new=block_markdown):
+                with self.assertRaisesRegex(PermissionError,"read-only"):
+                    analyze_and_recut(template_brief("Лес"),root,root,
+                        renderer=renderer_factory([]))
+            self.assertTrue((root/"JARVIS_NOVA_AUTO_VERTICAL.mp4").exists(),
+                            "Rendered MP4 must never be removed on report failure")
+            self.assertFalse((root/"POST_MONTAGE_REVIEW.json").exists(),
+                             "Partial JSON report must be rolled back")
+            self.assertFalse((root/"POST_MONTAGE_REVIEW_RU.md").exists())
+
+    def test_late_appearing_user_markdown_remains_untouched_on_report_conflict(self):
+        with TemporaryDirectory() as td:
+            root=Path(td)
+            original_open=Path.open
+            marker="PERSONAL PRIVATE NOTES"
+            def inject_user_report(path,mode="r",*args,**kwargs):
+                if path.name=="POST_MONTAGE_REVIEW_RU.md" and mode=="x":
+                    # A different process created a report after preflight.
+                    path.write_text(marker,encoding="utf-8")
+                    return original_open(path,mode,*args,**kwargs)
+                return original_open(path,mode,*args,**kwargs)
+            with mock.patch("pathlib.Path.open",new=inject_user_report):
+                with self.assertRaises(FileExistsError):
+                    analyze_and_recut(template_brief("Лес"),root,root,
+                        renderer=renderer_factory([]))
+            self.assertEqual((root/"POST_MONTAGE_REVIEW_RU.md").read_text("utf-8"),marker)
+            self.assertFalse((root/"POST_MONTAGE_REVIEW.json").exists())
+            self.assertTrue((root/"JARVIS_NOVA_AUTO_VERTICAL.mp4").exists())
 
     def test_media_audit_penalizes_problematic_clip_and_speaks_about_it(self):
         calls=[]
