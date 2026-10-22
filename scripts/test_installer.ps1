@@ -19,6 +19,15 @@ try {
     if ($install.ExitCode -ne 0) { throw "Setup failed: $($install.ExitCode)" }
     $Exe=Join-Path $Target 'JarvisNova.exe'
     if (!(Test-Path $Exe)) { throw 'Installed JarvisNova.exe missing' }
+    $Updater=Join-Path $Target 'JarvisNovaUpdater.exe'
+    if (!(Test-Path $Updater)) { throw 'Installed standalone auto-updater missing' }
+    $VersionMarker=Join-Path $Target 'JARVIS_NOVA_VERSION.txt'
+    if (!(Test-Path $VersionMarker)) { throw 'Installed update version marker missing' }
+    if ((Get-Content $VersionMarker -Raw).Trim() -ne '0.5.18') {
+        throw 'Incorrect installed updater version marker'
+    }
+    $UpdaterSmoke=Start-Process -FilePath $Updater -ArgumentList '--help' -Wait -PassThru -WindowStyle Hidden
+    if ($UpdaterSmoke.ExitCode -ne 0) { throw "Independent updater failed to start: $($UpdaterSmoke.ExitCode)" }
     foreach ($Mode in @('--self-test','--video-self-test','--chat-self-test','--real-e2e')) {
         $Run=Start-Process -FilePath $Exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden
         if ($Run.ExitCode -ne 0) { throw "Installed EXE failed ${Mode}: $($Run.ExitCode)" }
