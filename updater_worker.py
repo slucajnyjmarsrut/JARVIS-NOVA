@@ -83,17 +83,19 @@ def apply_update(installer: Path, application: Path, expected_version: str,
             application.name.casefold()!="jarvisnova.exe" or
             expected_hash!=expected_hash.lower() or len(expected_hash)!=64):
         raise UpdateError("Недоверенные пути или параметры обновления")
-    release=(release_lookup or latest_release)()
-    if (release is None or release.version!=expected_version
-            or release.sha256!=expected_hash
-            or release.size<100_000):
-        raise UpdateError("Официальный релиз изменился; установка запрещена")
-    _check_download(installer,release)
+    # Once the owner has closed, ANY verification failure must restore the
+    # existing app if it remains intact. Rechecking the API before this try
+    # block previously stranded the user with JARVIS closed on network loss.
     (wait or wait_for_parent)(parent_pid)
-    _check_download(installer,release)  # no last-second tampering
-    args=[str(installer),"/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART",
-          "/SP-","/CLOSEAPPLICATIONS",f"/DIR={application.parent}"]
     try:
+        release=(release_lookup or latest_release)()
+        if (release is None or release.version!=expected_version
+                or release.sha256!=expected_hash
+                or release.size<100_000):
+            raise UpdateError("Официальный релиз изменился; установка запрещена")
+        _check_download(installer,release)
+        args=[str(installer),"/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART",
+              "/SP-","/CLOSEAPPLICATIONS",f"/DIR={application.parent}"]
         if installer_run is None:
             def installer_run(args):
                 flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
