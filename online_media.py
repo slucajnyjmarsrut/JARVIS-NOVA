@@ -51,16 +51,20 @@ def _fetch(url: str, size_limit: int) -> bytes:
 
 
 def _approved_video(url: str, mime: str) -> bool:
+    # urlsplit is not enough: accessing .port can raise ValueError for malformed
+    # userinfo/ports. Treat every malformed API URL as untrusted, not a crash.
+    if not isinstance(url, str) or mime not in MIMES:
+        return False
     try:
         u = urlsplit(url)
-    except ValueError:
+        return (u.scheme == "https" and u.hostname == "upload.wikimedia.org"
+                and not (u.username or u.password or u.port or u.query or u.fragment)
+                and u.path.startswith("/wikipedia/commons/")
+                and not any(p in ("..", ".") for p in u.path.split("/"))
+                and "%2e" not in u.path.casefold() and "%2f" not in u.path.casefold()
+                and u.path.lower().endswith(MIMES[mime]))
+    except (ValueError, TypeError):
         return False
-    return (u.scheme == "https" and u.hostname == "upload.wikimedia.org"
-            and not (u.username or u.password or u.port or u.query or u.fragment)
-            and u.path.startswith("/wikipedia/commons/")
-            and not any(p in ("..", ".") for p in u.path.split("/"))
-            and "%2e" not in u.path.casefold() and "%2f" not in u.path.casefold()
-            and u.path.lower().endswith(MIMES.get(mime, "INVALID")))
 
 
 def _licence(text: str) -> str | None:
@@ -108,7 +112,10 @@ def search_free_video(topic: str, *, consent=False, transport=None, limit=40) ->
         meta = info.get("extmetadata") or {}
         if mime not in MIMES or not _approved_video(url, mime) or not isinstance(meta, dict):
             continue
-        licence = _licence((meta.get("LicenseShortName") or {}).get("value", ""))
+        licence_info = meta.get("LicenseShortName") or {}
+        if not isinstance(licence_info, dict):
+            continue
+        licence = _licence(licence_info.get("value", ""))
         try:
             size = int(info.get("size", 0))
         except (ValueError, TypeError):
@@ -117,6 +124,8 @@ def search_free_video(topic: str, *, consent=False, transport=None, limit=40) ->
             continue
         title = str(page["title"])[:220]
         credit = meta.get("Attribution") or meta.get("Artist") or {}
+        if not isinstance(credit, dict):
+            credit = {}
         author = unescape(re.sub(r"<[^>]*>", " ", str(credit.get("value", ""))))
         author = " ".join(author.split())[:160] or "Укажи автора со страницы источника"
         source = "https://commons.wikimedia.org/wiki/" + quote(title.replace(" ", "_"), safe=":")
@@ -126,46 +135,76 @@ def search_free_video(topic: str, *, consent=False, transport=None, limit=40) ->
 
 def download_free_video(clips: list[FreeClip], folder: Path, *, consent=False,
                         transport=None, cancel=None) -> Path:
-    """Download clips without overwriting files; store attribution manifest."""
+    """Bounded all-or-nothing download, never deleting somebody else's files.
+
+    The caller grants access to Wikimedia only. A malformed, truncated or
+    interrupted download leaves no partial source collection or bogus credits.
+    """
     if not consent:
         raise PermissionError("Загрузка видео из интернета требует согласия")
-    if not 1 <= len(clips) <= 10:
+    if not isinstance(clips,(list,tuple)) or not 1 <= len(clips) <= 10:
         raise OnlineMediaError("Нужно от 1 до 10 проверенных видео")
+    # Validate ALL metadata before touching the disk, including later clips.
+    for clip in clips:
+        if (not isinstance(clip,FreeClip) or clip.mime not in MIMES
+                or not _approved_video(clip.url,clip.mime)
+                or not isinstance(clip.size,int) or not 1024 <= clip.size <= MAX_CLIP
+                or not (_licence(clip.license) or clip.license == "Public domain / CC0")):
+            raise OnlineMediaError("Недоверенные видео, лицензия или размер")
     folder = Path(folder)
     if folder.exists():
         raise OnlineMediaError("Папка загрузки уже существует; файлы не заменяются")
-    folder.mkdir(parents=True, exist_ok=False)
+    folder.mkdir(parents=True,exist_ok=False)
+    owned = []
     manifest = []
-    for i, clip in enumerate(clips, 1):
+    try:
+        for i,clip in enumerate(clips,1):
+            if cancel is not None and cancel.is_set():
+                raise OnlineMediaError("Загрузка отменена")
+            payload = (transport or _fetch)(clip.url, min(MAX_CLIP, clip.size + 2048))
+            if cancel is not None and cancel.is_set():
+                raise OnlineMediaError("Загрузка отменена")
+            if not isinstance(payload,bytes) or len(payload) != clip.size:
+                raise OnlineMediaError("Видеофайл загружен не полностью или размер изменился")
+            if clip.mime == "video/webm" and not payload.startswith(b"\x1a\x45\xdf\xa3"):
+                raise OnlineMediaError("Неверный заголовок WebM")
+            if clip.mime == "video/mp4" and payload[4:8] != b"ftyp":
+                raise OnlineMediaError("Неверный заголовок MP4")
+            if clip.mime == "video/ogg" and not payload.startswith(b"OggS"):
+                raise OnlineMediaError("Неверный заголовок Ogg")
+            name = f"{i:02d}" + MIMES[clip.mime]
+            path = folder / name
+            with path.open("xb") as stream:
+                owned.append(path)
+                stream.write(payload)
+            manifest.append({**asdict(clip),"local_file":name})
         if cancel is not None and cancel.is_set():
             raise OnlineMediaError("Загрузка отменена")
-        if not isinstance(clip, FreeClip) or clip.mime not in MIMES or not _approved_video(clip.url, clip.mime):
-            raise OnlineMediaError("Недоверенный адрес видео")
-        if not 1024 <= clip.size <= MAX_CLIP or not _licence(clip.license):
-            # Normalized CC0/PD output also accepted, CC BY validated below.
-            if clip.license != "Public domain / CC0" or not 1024 <= clip.size <= MAX_CLIP:
-                raise OnlineMediaError("Лицензия или размер клипа не подтверждены")
-        payload = (transport or _fetch)(clip.url, min(MAX_CLIP, clip.size + 2048))
-        if not isinstance(payload, bytes) or len(payload) > MAX_CLIP or not payload:
-            raise OnlineMediaError("Некорректные данные видео")
-        if clip.mime == "video/webm" and not payload.startswith(b"\x1a\x45\xdf\xa3"):
-            raise OnlineMediaError("Неверный заголовок WebM")
-        if clip.mime == "video/mp4" and payload[4:8] != b"ftyp":
-            raise OnlineMediaError("Неверный заголовок MP4")
-        if clip.mime == "video/ogg" and not payload.startswith(b"OggS"):
-            raise OnlineMediaError("Неверный заголовок Ogg")
-        name = f"{i:02d}" + MIMES[clip.mime]
-        path = folder / name
-        with path.open("xb") as file:
-            file.write(payload)
-        manifest.append({**asdict(clip), "local_file": name})
-    (folder / "SOURCES_AND_LICENSES.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    notes = ["# Источники материалов для монтажа", "",
-             "Проверь страницы авторов и условия лицензий перед публикацией.",
-             "CC BY требует указания автора, лицензии и внесённых изменений.", ""]
-    for entry in manifest:
-        notes.append(f"- {entry['local_file']}: {entry['title']} — {entry['license']} — "
-                     f"{entry['author']} — {entry['page']}")
-    (folder / "CREDITS_RU.md").write_text("\n".join(notes) + "\n", encoding="utf-8")
-    return folder
+        notes = ["# Источники материалов для монтажа", "",
+                 "Проверь страницы авторов и условия лицензий перед публикацией.",
+                 "CC BY требует указания автора, лицензии и внесённых изменений.", ""]
+        for entry in manifest:
+            notes.append(f"- {entry['local_file']}: {entry['title']} — {entry['license']} — "
+                         f"{entry['author']} — {entry['page']}")
+        for name,text in (
+            ("SOURCES_AND_LICENSES.json",json.dumps(manifest,ensure_ascii=False,indent=2)),
+            ("CREDITS_RU.md","\n".join(notes)+"\n"),
+        ):
+            path=folder/name
+            with path.open("x",encoding="utf-8") as stream:
+                owned.append(path)
+                stream.write(text)
+        return folder
+    except Exception:
+        # Only delete files created during this attempt. If something else was
+        # added concurrently, rmdir fails safely instead of deleting its data.
+        for item in reversed(owned):
+            try:
+                item.unlink()
+            except OSError:
+                pass
+        try:
+            folder.rmdir()
+        except OSError:
+            pass
+        raise
