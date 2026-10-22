@@ -95,8 +95,11 @@ def apply_update(installer: Path, application: Path, expected_version: str,
                 or release.size<100_000):
             raise UpdateError("Официальный релиз изменился; установка запрещена")
         _check_download(installer,release)
+        # Never forcibly close a second JARVIS instance with unsaved work.
+        # Inno AppMutex prevents updating occupied files; a failed upgrade
+        # will reopen the existing app and retry later.
         args=[str(installer),"/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART",
-              "/SP-","/CLOSEAPPLICATIONS",f"/DIR={application.parent}"]
+              "/SP-","/NOCLOSEAPPLICATIONS",f"/DIR={application.parent}"]
         if installer_run is None:
             def installer_run(args):
                 flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
@@ -111,6 +114,13 @@ def apply_update(installer: Path, application: Path, expected_version: str,
         if not application.is_file():
             raise UpdateError("Установщик не создал JarvisNova.exe")
         record_status(folder,"installed",expected_version)
+        # Never accumulate multi-gigabyte installers after a successful
+        # upgrade. This file was owned by the update cache and is no longer
+        # needed once Inno Setup has returned and the version was verified.
+        try:
+            installer.unlink()
+        except OSError:
+            pass  # Windows antivirus or an open handle may delay cleanup.
         if relaunch is None:
             def relaunch(exe):
                 flags=getattr(subprocess,"DETACHED_PROCESS",0)|getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)
