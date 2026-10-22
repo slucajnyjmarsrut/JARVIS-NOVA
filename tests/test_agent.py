@@ -51,6 +51,51 @@ class PlanTests(unittest.TestCase):
     def test_url_scheme(self):
         with self.assertRaises(ValueError):
             validate_plan(Plan(steps=[Step("open_url","http://example.org")]))
+    def test_spoken_url_keeps_case_sensitive_path_and_query(self):
+        address="https://Example.COM/CaseSensitive/SignIn?Token=AbC123&Mode=Fast"
+        plan=parse_local("Джарвис, открой "+address)
+        self.assertEqual(plan.steps,[Step("open_url",address)])
+        validate_plan(plan)
+        d=Desktop()
+        with mock.patch("desktop.webbrowser.open",return_value=True) as browser:
+            d.run(plan.steps[0])
+        browser.assert_called_once_with(address)
+
+    def test_reject_malformed_local_or_credentialed_https(self):
+        blocked=(
+            "https://", "https://localhost/admin", "https://localhost.localdomain/",
+            "https://intranet.local/config", "https://device.internal/",
+            "https://192.168.0.1/", "https://127.0.0.1:443/",
+            "https://[::1]/", "https://10.0.0.2/path",
+            "https://user:password@example.org/",
+            "https://example.org:4443/", "https://example.org:bad/",
+            "https://evil.example.com@localhost/admin", "https://bad%2Fexample.org/",
+            "https://example.org\evil", "https://example.org/a b",
+            "https://example.org/a\ninjected", "https://example.org/\tinjected",
+            "https:///no-host", "https://example.org:65536/",
+            "https://[::1", "https://server.invalid/",
+            "https://example.org\\@internal.invalid/",
+            "http://example.org/",
+        )
+        for value in blocked:
+            with self.subTest(value=repr(value)):
+                with self.assertRaises(ValueError):
+                    validate_plan(Plan(steps=[Step("open_url",value)]))
+                d=Desktop()
+                with mock.patch("desktop.webbrowser.open") as browser:
+                    with self.assertRaises(ValueError):
+                        d.run(Step("open_url",value))
+                    browser.assert_not_called()
+
+    def test_public_links_remain_usable(self):
+        for address in (
+            "https://example.org/", "https://commons.wikimedia.org/wiki/File:Example",
+            "https://www.youtube.com/watch?v=AbCdE_99",
+            "https://1.1.1.1/dns-query", "https://example.com:443/path#fragment",
+        ):
+            with self.subTest(address=address):
+                validate_plan(Plan(steps=[Step("open_url",address)]))
+
     def test_reject_ai_shell(self):
         with self.assertRaises(ValueError):
             validate_plan(Plan(steps=[Step("run_shell","rm -rf /")]))
