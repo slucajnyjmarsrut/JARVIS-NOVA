@@ -11,6 +11,7 @@ on:
       - 'tests/test_self_improve.py'
       - 'self_repair.py'
       - 'auto_update.py'
+      - 'scripts/split_release_installer.py'
       - 'updater_worker.py'
       - 'updater_launcher.py'
       - 'tests/test_auto_update.py'
