@@ -350,6 +350,48 @@ class UpdaterTests(unittest.TestCase):
             self.assertFalse(candidate.exists(), "Successful update must remove large cached EXE")
             self.assertEqual(json.loads((folder/"update-status.json").read_text())["status"],"installed")
 
+    def test_failed_update_restarts_old_app_even_if_status_log_disk_full(self):
+        blob=b"MZ"+b"x"*120_000
+        rel=parse_release(release_data(blob=blob))
+        with tempfile.TemporaryDirectory() as td:
+            folder=Path(td)/"Updates"
+            installed=Path(td)/"Installed";installed.mkdir()
+            app=installed/"JarvisNova.exe";app.write_bytes(b"MZoriginal")
+            candidate=download_release(rel,folder,opener=FakeOpener(blob))
+            calls=[]
+            with mock.patch("updater_worker.record_status",
+                            side_effect=OSError("disk full")):
+                with self.assertRaisesRegex(UpdateError,"код 7"):
+                    apply_update(candidate,app,rel.version,rel.sha256,123,
+                        release_lookup=lambda:rel,wait=lambda pid:None,
+                        installer_run=lambda argv:7,
+                        relaunch=lambda exe:calls.append(exe),folder=folder)
+            self.assertEqual(len(calls),1)
+            self.assertEqual(calls[0].resolve(),app.resolve())
+            self.assertTrue(candidate.is_file())
+            self.assertEqual(app.read_bytes(),b"MZoriginal")
+
+    def test_successful_upgrade_still_relaunches_if_status_log_is_locked(self):
+        blob=b"MZ"+b"x"*120_000
+        rel=parse_release(release_data(blob=blob))
+        with tempfile.TemporaryDirectory() as td:
+            folder=Path(td)/"Updates"
+            installed=Path(td)/"Installed";installed.mkdir()
+            app=installed/"JarvisNova.exe";app.write_bytes(b"MZold")
+            candidate=download_release(rel,folder,opener=FakeOpener(blob))
+            calls=[]
+            def install(args):
+                (installed/"JARVIS_NOVA_VERSION.txt").write_text(rel.version)
+                return 0
+            with mock.patch("updater_worker.record_status",
+                            side_effect=OSError("file locked")):
+                self.assertTrue(apply_update(candidate,app,rel.version,rel.sha256,123,
+                    release_lookup=lambda:rel,wait=lambda pid:None,
+                    installer_run=install,relaunch=lambda exe:calls.append(exe),
+                    folder=folder))
+            self.assertEqual(len(calls),1)
+            self.assertFalse(candidate.exists())
+
     def test_worker_fails_closed_for_version_change_bad_hash_or_exit_timeout(self):
         blob=b"MZ"+b"x"*120_000
         rel=parse_release(release_data(blob=blob))
