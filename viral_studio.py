@@ -427,7 +427,10 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             if has_audio:
                 # Keep mixed source recordings at a broadly consistent loudness.
                 # Do not normalize synthetic silent filler.
-                argv.extend(['-af','loudnorm=I=-16:TP=-1.5:LRA=11'])
+                # Some real clips have only a brief audio stream although video
+                # continues. Pad missing audio with silence so -shortest
+                # cannot truncate a perfectly valid video segment.
+                argv.extend(['-af','loudnorm=I=-16:TP=-1.5:LRA=11,apad'])
             argv.extend(['-shortest',str(segment)])
             _execute(argv,timeout=900,cancel=cancel)
             segments.append(segment)
