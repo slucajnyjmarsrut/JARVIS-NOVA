@@ -21,7 +21,7 @@ import threading
 from typing import Callable, TypeVar
 import urllib.error
 
-from self_improve import default_data_file
+from self_improve import default_data_file, safe_name, MAX_ALIASES
 
 T = TypeVar("T")
 MAX_BACKUPS = 30
@@ -63,8 +63,10 @@ class RepairReport:
         damaged=sum(x.status in {"corrupt","too_large"} for x in self.found)
         repaired=len(self.repaired)
         if repaired:
+            ending=(" Некоторые настройки требуют ручной проверки и не изменены."
+                    if self.manual else "")
             return (f"Проверил конфигурацию. Безопасно восстановил {repaired} "
-                    "файлов. Оригиналы сохранены в резервных копиях.")
+                    "файлов. Оригиналы сохранены в резервных копиях."+ending)
         if damaged:
             return "Обнаружены повреждённые настройки. Автоматический ремонт не завершён; оригиналы сохранены."
         if self.manual:
@@ -97,7 +99,25 @@ def _classify(path: Path, name: str) -> Finding:
     for field in fields:
         if field in doc and not isinstance(doc[field],dict):
             return Finding(name,"corrupt","Повреждена структура настроек")
-    return Finding(name,"healthy","Формат настроек корректен")
+    if name=="learning-v1.json":
+        aliases=doc.get("aliases",{})
+        # A syntactically valid JSON object can still carry shell names that
+        # LearningStore would silently reject. Such personal data is never
+        # automatically reset; the owner must inspect or explicitly remove it.
+        if len(aliases)>MAX_ALIASES or any(
+                not safe_name(key) or not safe_name(value)
+                for key,value in aliases.items()):
+            return Finding(name,"unsafe","Небезопасные названия программ: ручная проверка")
+    elif name=="modes-v1.json":
+        from work_modes import MODES
+        apps=doc.get("apps",{})
+        if any(mode not in MODES for mode in apps):
+            return Finding(name,"unsupported","Неизвестный режим: не перезаписываю")
+        if any(type(items) is not list or not 1<=len(items)<=3 or
+               any(not safe_name(app) for app in items)
+               for items in apps.values()):
+            return Finding(name,"unsafe","Некорректный список приложений: ручная проверка")
+    return Finding(name,"healthy","Формат и разрешённые значения настроек корректны")
 
 
 def inspect_configs(folder: Path | None = None) -> tuple[Finding, ...]:
