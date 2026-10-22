@@ -17,6 +17,7 @@ from editing_knowledge import read_ffmpeg_guide
 from channel_audience import read_channel_csv, analyze_audience, AudienceDataError
 from creator_experts import recommend_topic, expert_report
 from video_forecast import evaluate_final_cut, save_review
+from post_montage_review import analyze_and_recut
 
 
 def _home():
@@ -301,10 +302,13 @@ class ViralStudioWindow(tk.Toplevel):
             download_free_video(candidates[:len(brief.shots)],source,
                                 consent=True,cancel=self.stop_event)
             if self.stop_event.is_set():return
-            out=project/'JARVIS_NOVA_AUTO_VERTICAL.mp4'
-            result=render_video(brief,source,out,cancel=self.stop_event)
+            outcome=analyze_and_recut(
+                brief,source,project,profile=self.profile,
+                filename='JARVIS_NOVA_AUTO_VERTICAL.mp4',cancel=self.stop_event)
+            out=outcome.output
+            result=outcome.rendered
             def done():
-                self.brief=brief
+                self.brief=outcome.brief
                 self.project=project
                 self.rendered_video=out
                 self._show(
@@ -313,13 +317,15 @@ class ViralStudioWindow(tk.Toplevel):
                     'Видео: '+str(out)+'\n'
                     'Длительность: '+str(round(result['duration'],1))+' сек.\n'
                     'Техническая проверка: '+str(result.get('technical_quality',{}))+'\n'
+                    'Проверено вариантов: '+str(len(outcome.attempts))+'\n'
+                    'Отчёт о просмотрах и правках: '+str(outcome.report)+'\n'
                     'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n'
                     'Исходники и авторство: '+str(source/'CREDITS_RU.md')+'\n\n'
                     +note+'\n'
                     'Проверь сюжет, права, музыку, качество и соответствие теме перед публикацией.'
                 )
-                self.status.set('Автомонтаж готов. Публикации и автозагрузки нет.')
-                self._speak('Ролик готов. Проверь результат и подписи к источникам.')
+                self.status.set('Автомонтаж и повторная оценка закончены. Публикации нет.')
+                self._speak(outcome.speech)
             self._notify(done)
         self._spawn(work)
 
@@ -358,17 +364,16 @@ class ViralStudioWindow(tk.Toplevel):
                                     consent=True,cancel=self.stop_event)
                 credits=str(source/'CREDITS_RU.md')
             if self.stop_event.is_set():return
-            data=render_video(brief,source,out,cancel=self.stop_event)
-            review=None; report=None
-            if self.profile is not None and not self.stop_event.is_set():
-                try:
-                    review=evaluate_final_cut(brief,self.profile,out,rendered=data)
-                    report=save_review(review,project)
-                except Exception as exc:
-                    # Do not claim a successful audience review when ffprobe fails.
-                    report='Итоговая оценка не получена: '+str(exc)[:150]
+            outcome=analyze_and_recut(
+                brief,source,project,profile=self.profile,
+                filename='JARVIS_NOVA_VERTICAL.mp4',cancel=self.stop_event)
+            out=outcome.output
+            data=outcome.rendered
+            review=outcome.review
+            report=outcome.report
             def done():
                 self.rendered_video=out
+                self.brief=outcome.brief
 
                 self.status.set('Ролик готов: '+str(out)+
                                 (f' | оценка {review.index}/100 (НЕ вероятность вирусности)' if review else
@@ -378,9 +383,10 @@ class ViralStudioWindow(tk.Toplevel):
                            'Соотношение: 9:16\n'
                            'Лицензии и авторство: '+credits+'\\n'
                            'Монтажный лист: '+str(out.with_name(out.stem+'_EDL.json'))+'\n'
-                           'Аудитория и потенциал: '+str(report)+'\n\n'
+                           'Оценка и повторный монтаж: '+str(report)+'\n'
+                           'Проверено вариантов: '+str(len(outcome.attempts))+'\n\n'
                            'Проверь результат перед публикацией. JARVIS ничего не публикует автоматически.')
-                self._speak('Монтаж закончен. Ролик находится в папке проекта.')
+                self._speak(outcome.speech)
             self._notify(done)
         self._spawn(work)
 
