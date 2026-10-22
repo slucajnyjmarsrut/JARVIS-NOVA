@@ -653,11 +653,17 @@ class Jarvis(tk.Tk):
 
         Full source changes or installing software are deliberately excluded.
         """
-        problems=[f for f in inspect_configs()
-                  if f.status in ("corrupt","too_large")]
+        findings=inspect_configs()
+        problems=[f for f in findings if f.status in ("corrupt","too_large")]
+        manual=[f for f in findings if f.status in ("unsafe","unsupported")]
         if not problems:
-            self.reply("Самодиагностика: повреждённых настроек не найдено. "
-                       "Исправление программного кода выполняется отдельно, через тесты.")
+            if manual:
+                names=", ".join(f.name for f in manual)
+                self.reply("Самодиагностика обнаружила настройки, требующие ручной "
+                           "проверки: "+names+". Файлы не изменены.")
+            else:
+                self.reply("Самодиагностика: повреждённых настроек не найдено. "
+                           "Исправление программного кода выполняется отдельно, через тесты.")
             return
         names=", ".join(item.name for item in problems)
         if not messagebox.askyesno(
