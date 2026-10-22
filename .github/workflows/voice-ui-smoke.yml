@@ -31,6 +31,8 @@ on:
       - 'tests/test_video_quality_modules.py'
       - 'video_forecast.py'
       - 'tests/test_audience_review_files.py'
+      - 'channel_audience.py'
+      - 'tests/test_audience_pipeline.py'
       - 'tests/test_post_montage_review.py'
       - 'tests/test_online_media.py'
       - 'tests/test_editing_knowledge.py'
@@ -190,6 +192,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Post-montage analysis/regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_audience_review_files.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Non-destructive audience reports regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Safe channel CSV/profile regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_video_quality_modules.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Frame/audio quality gate failed in pass '+$pass }
             Write-Host "ALL TEST GROUPS PASSED: $pass / 3"
