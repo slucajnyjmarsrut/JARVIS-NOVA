@@ -1,11 +1,13 @@
-name: JARVIS NOVA 0.5.18 full system regression candidate
+name: JARVIS NOVA 0.5.18 safe recovery triple candidate
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, fix/video-studio-quality-regressions-2026-10, feat/post-montage-review-recut-2026-10, feat/visual-audio-quality-audit-2026-10, fix/full-system-regressions-2026-10]
+    branches: [fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, fix/video-studio-quality-regressions-2026-10, feat/post-montage-review-recut-2026-10, feat/visual-audio-quality-audit-2026-10, fix/full-system-regressions-2026-10, feat/safe-self-repair-windows-triple-2026-10]
     paths:
       - '.github/workflows/windows-offline.yml'
       - 'tests/test_self_improve.py'
+      - 'self_repair.py'
+      - 'tests/test_self_repair.py'
       - 'silero_engine.py'
       - 'tests/test_real_model_adapters.py'
       - 'offline_e2e_test.py'
@@ -218,6 +220,7 @@ jobs:
                                  'test_game_video_modes.py','test_smart_montage.py',
                                  'test_post_montage_review.py',
                                  'test_video_quality_modules.py',
+                                 'test_self_repair.py',
                                  'test_autonomous_montage.py')) {
               python -m unittest discover -s tests -p $suite -v
               if ($LASTEXITCODE -ne 0) { throw "Video suite $suite failed in pass $pass" }
@@ -289,7 +292,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.18-FULL-REGRESSION-DEV-UNVERIFIED-INSTALLER
+          name: JARVIS-NOVA-0.5.18-SAFE-RECOVERY-DEV-UNVERIFIED-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
