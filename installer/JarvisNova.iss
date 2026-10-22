@@ -5,6 +5,12 @@
 #if !FileExists("..\dist\JarvisNova\JarvisNova.exe")
   #error "No complete PyInstaller onedir. Refusing to build empty installer."
 #endif
+#if !FileExists("..\dist\updater\JarvisNovaUpdater.exe")
+  #error "Missing independently packaged, trusted local updater executable."
+#endif
+#if !FileExists("..\assets\APP_RELEASE_VERSION.txt")
+  #error "Missing release version marker."
+#endif
 #if !FileExists("..\assets\installer_banner.bmp")
   #error "Missing original NOVA dark wizard art. Run scripts/generate_installer_art.py"
 #endif
@@ -54,6 +60,8 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "..\dist\JarvisNova\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dist\updater\JarvisNovaUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\APP_RELEASE_VERSION.txt"; DestDir: "{app}"; DestName: "JARVIS_NOVA_VERSION.txt"; Flags: ignoreversion
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
