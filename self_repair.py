@@ -136,7 +136,15 @@ def _backup_exclusive(source: Path) -> Path:
             with backup.open("xb") as stream:
                 try:
                     with source.open("rb") as original:
-                        shutil.copyfileobj(original,stream,length=64*1024)
+                        size=os.fstat(original.fileno()).st_size
+                        if size>MAX_REPAIR_BYTES:
+                            raise RepairError("Настройки изменились: файл слишком велик")
+                        # Bounded copy even if another process grows the
+                        # settings file during backup; never fill the disk.
+                        data=original.read(MAX_REPAIR_BYTES+1)
+                        if len(data)>MAX_REPAIR_BYTES or len(data)!=size:
+                            raise RepairError("Настройки изменились при копировании")
+                        stream.write(data)
                     stream.flush()
                     os.fsync(stream.fileno())
                 except Exception:
@@ -147,6 +155,21 @@ def _backup_exclusive(source: Path) -> Path:
         except FileExistsError:
             continue
     raise RepairError("Лимит резервных копий достигнут")
+
+
+def _backup_still_matches(source: Path, backup: Path) -> bool:
+    """Fail closed if another process repaired/changed the live config."""
+    try:
+        if source.is_symlink() or not source.is_file():
+            return False
+        if source.stat().st_size>MAX_REPAIR_BYTES:
+            return False
+        with source.open("rb") as current, backup.open("rb") as saved:
+            live=current.read(MAX_REPAIR_BYTES+1)
+            copy=saved.read(MAX_REPAIR_BYTES+1)
+        return len(live)<=MAX_REPAIR_BYTES and live==copy
+    except OSError:
+        return False
 
 
 def _reset_atomic(target: Path) -> None:
@@ -193,6 +216,11 @@ def repair_configs(*, consent: bool = False, folder: Path | None = None) -> Repa
         try:
             backup=_backup_exclusive(target)
             backups.append(backup.name)
+            # Recheck after backup: another instance may have replaced its
+            # corrupt settings with a valid profile during this very copy.
+            if not _backup_still_matches(target,backup):
+                manual.append(entry.name)
+                continue
             _reset_atomic(target)
             if _classify(target,entry.name).status!="healthy":
                 raise RepairError("Повторная проверка исправленного файла не прошла")
