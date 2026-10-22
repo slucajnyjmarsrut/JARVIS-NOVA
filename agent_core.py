@@ -177,10 +177,18 @@ def _safe_https_url(address: str) -> bool:
         try:
             ip=ipaddress.ip_address(host)
         except ValueError:
-            # Require a DNS name with a genuine public-looking suffix.
-            if "." not in host or host.startswith(".") or host.endswith("."):
+            # Require valid DNS labels, but allow internationalized public
+            # domains after normalizing them to their ASCII IDNA form.
+            try:
+                ascii_host=host.encode("idna").decode("ascii").lower()
+            except UnicodeError:
                 return False
-            return bool(re.fullmatch(r"[a-zA-Z0-9._-]+",host))
+            labels=ascii_host.split(".")
+            if (len(ascii_host)>253 or len(labels)<2 or
+                    any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",part)
+                        for part in labels)):
+                return False
+            return len(labels[-1])>=2 and any(ch.isalpha() for ch in labels[-1])
         return ip.is_global
     except (ValueError,TypeError):
         return False
