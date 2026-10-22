@@ -218,18 +218,37 @@ def save_brief(brief: Brief, project_dir: Path) -> Path:
     project_dir = Path(project_dir)
     project_dir.mkdir(parents=True, exist_ok=True)
     path = project_dir / 'brief.json'
-    if path.exists():
+    notes = project_dir / 'WHAT_TO_FILM_RU.md'
+    if path.exists() or path.is_symlink():
         raise ViralStudioError('Не перезаписываю предыдущий сценарий')
+    if notes.exists() or notes.is_symlink():
+        raise ViralStudioError('Не перезаписываю существующие заметки о съёмке')
     contents = asdict(brief)
     contents['created_utc'] = datetime.now(timezone.utc).isoformat()
-    path.write_text(json.dumps(contents, ensure_ascii=False, indent=2), encoding='utf-8')
     text = [f'# {brief.title}', '', '## Сценарий', brief.script, '', '## Что снять']
     for i, shot in enumerate(brief.shots, 1):
         text.append(f'{i:02d}. {shot.film} — {shot.seconds:g} сек. Текст: «{shot.caption}»')
     text.extend(['', f'Финал: {brief.call_to_action}', '',
                  'Кадры назови 01.mp4, 02.mp4 ... по порядку. Исходники останутся нетронутыми.',
                  f'Метод подготовки: {brief.generator}. Тренды поиска не гарантируют просмотры.'])
-    (project_dir/'WHAT_TO_FILM_RU.md').write_text('\n'.join(text)+'\n',encoding='utf-8')
+    # Both files are one logical save operation. Exclusive file creation
+    # prevents overwriting private notes even if another process races the
+    # preflight. Roll back only files created by this attempt on any failure.
+    created = []
+    try:
+        with path.open('x',encoding='utf-8') as stream:
+            created.append(path)
+            json.dump(contents,stream,ensure_ascii=False,indent=2)
+        with notes.open('x',encoding='utf-8') as stream:
+            created.append(notes)
+            stream.write('\n'.join(text)+'\n')
+    except BaseException:
+        for candidate in reversed(created):
+            try:
+                candidate.unlink()
+            except OSError:
+                pass
+        raise
     return path
 
 
