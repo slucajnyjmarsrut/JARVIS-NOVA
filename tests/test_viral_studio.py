@@ -138,6 +138,40 @@ class ViralTests(unittest.TestCase):
             self.assertEqual(meta['technical_quality']['video_codec'],'h264')
             self.assertEqual(meta['technical_quality']['audio_codec'],'aac')
             self.assertTrue((raw/'01.mp4').exists())
+    def test_reviewer_really_renders_and_checks_both_versions_with_ffmpeg(self):
+        """End-to-end recut of two actual H264 clips, not mocked rendering."""
+        try:
+            ffmpeg,ffprobe=ffmpeg_tools()
+        except ViralStudioError:
+            self.skipTest('FFmpeg not installed on this runner')
+        from post_montage_review import analyze_and_recut
+        with tempfile.TemporaryDirectory() as temp:
+            root=pathlib.Path(temp)
+            raw=root/'raw';raw.mkdir()
+            for i,color in enumerate(('red','blue'),1):
+                subprocess.run([ffmpeg,'-hide_banner','-loglevel','error','-y',
+                    '-f','lavfi','-i',f'color=c={color}:s=180x320:r=12:d=8',
+                    '-c:v','libx264','-pix_fmt','yuv420p',
+                    str(raw/f'{i:02}.mp4')],check=True,capture_output=True)
+            b=Brief('Тест','Кино','Завязка','Тест темпа монтажа.',
+                    (Shot(7.,'Первый кадр','Слишком долгое вступление'),
+                     Shot(7.,'Второй кадр','После этого результат')),
+                    'Готово','шаблон')
+            project=root/'rendered';project.mkdir()
+            def render(brief,clips,out,*,cancel=None):
+                return render_video(brief,clips,out,size=(180,320),
+                                    tools=(ffmpeg,ffprobe),cancel=cancel)
+            result=analyze_and_recut(b,raw,project,renderer=render)
+            self.assertEqual(len(result.attempts),2)
+            self.assertEqual(result.output.name,'JARVIS_NOVA_AUTO_VERTICAL_V2.mp4')
+            self.assertLess(result.rendered['duration'],14)
+            self.assertTrue(result.rendered['technical_quality']['quality_checked'])
+            self.assertTrue((project/'JARVIS_NOVA_AUTO_VERTICAL.mp4').exists())
+            self.assertTrue((project/'JARVIS_NOVA_AUTO_VERTICAL_V2.srt').exists())
+            self.assertTrue((project/'POST_MONTAGE_REVIEW_RU.md').exists())
+            self.assertTrue((raw/'01.mp4').exists())
+            self.assertTrue((raw/'02.mp4').exists())
+
     def test_cancel_preempts_render(self):
         with tempfile.TemporaryDirectory() as temp:
             clips=pathlib.Path(temp)/'raw';clips.mkdir()
