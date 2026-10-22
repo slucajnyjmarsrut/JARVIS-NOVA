@@ -180,7 +180,7 @@ class UpdaterTests(unittest.TestCase):
                 return 0
             def relaunch(exe):
                 self.assertEqual(order,["wait","install"])
-                self.assertEqual(exe,app)
+                self.assertEqual(exe.resolve(),app.resolve())
                 order.append("launch")
             self.assertTrue(apply_update(candidate,app,rel.version,rel.sha256,32142,
                 release_lookup=lambda:rel,wait=wait,installer_run=install,
