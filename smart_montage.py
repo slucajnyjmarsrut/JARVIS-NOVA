@@ -89,8 +89,13 @@ def choose_highlight_start(clip: Path, duration: float, seconds: float,
         score = _frame_scores(raw)
         start = best_start(score,min(sampled,duration),seconds)
         return min(start,max(0.,duration-seconds-.07))
-    except (OSError,ValueError,MontageQualityError,RuntimeError):
-        # Corrupt footage fails later through the ordinary strict render probe.
+    except (OSError,ValueError,MontageQualityError,RuntimeError) as exc:
+        # A canceled FFmpeg scan is not an optional quality failure: it must
+        # abort the montage rather than silently start rendering anyway.
+        if cancel is not None and cancel.is_set():
+            raise MontageQualityError("Монтаж отменён") from exc
+        # Unreadable preview frames may fall back; real clip validation
+        # still happens through the strict probe during rendering.
         return .15 if duration>seconds+.3 else 0.
 
 
