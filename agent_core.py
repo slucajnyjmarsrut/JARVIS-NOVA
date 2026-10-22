@@ -8,6 +8,7 @@ import json
 import os
 import re
 import urllib.request
+from self_improve import BLOCKED, safe_name
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,9 @@ ALLOWED_KINDS = {"open_app", "open_url", "minimize", "maximize", "restore",
 RISKY = {"close_window", "click", "type", "hotkey", "move"}
 AI_ALLOWED = {"open_app","minimize","maximize","restore","zoom_in","zoom_out",
               "volume_up","volume_down","window_status","screen_describe"}
-UNSAFE_APPS = {"powershell", "cmd", "regedit", "terminal", "taskkill", "wscript", "cscript"}
+# Keep voice/AI execution policy aligned with the confirmed-alias learning store.
+# Otherwise e.g. "cmd.exe" and "pwsh" could bypass the small spoken denylist.
+UNSAFE_APPS = BLOCKED
 ALIASES = {"хром": "Google Chrome", "храм": "Google Chrome",
            "браузер": "Google Chrome", "гугл хром": "Google Chrome",
            "стим": "Steam", "дискорд": "Discord", "телеграм": "Telegram",
@@ -67,7 +70,8 @@ def parse_local(text: str) -> Plan:
     compound = re.match(r"(?:открой|запусти|включи)\s+(.+?)\s+и\s+(?:увеличь|приблизь)\s+масштаб$",s)
     if compound:
         target=compound[1].strip()
-        if target in UNSAFE_APPS:return Plan(question="Запуск системных оболочек не поддерживается.")
+        if not safe_name(ALIASES.get(target,target)):
+            return Plan(question="Запуск системных оболочек и небезопасных программ не поддерживается.")
         return Plan(steps=[Step("open_app",ALIASES.get(target,target)),Step("zoom_in")])
     if s in {"стоп", "отмена", "прекрати"}: return Plan(answer="Остановлено.")
     if s in {"спасибо", "благодарю"}: return Plan(answer="Пожалуйста.")
@@ -124,7 +128,10 @@ def parse_local(text: str) -> Plan:
         if target.startswith(("http://","https://")):
             st=Step("open_url",target)
         else:
-            st=Step("open_app",ALIASES.get(target,target))
+            application=ALIASES.get(target,target)
+            if not safe_name(application):
+                return Plan(question="Запуск этой системной оболочки или небезопасного пути не поддерживается.")
+            st=Step("open_app",application)
         steps=[st]+([Step("zoom_in")] if next_zoom else [])
         return Plan(steps=steps)
     if s in {"открой", "запусти", "включи", "нажми"}:
@@ -136,7 +143,7 @@ def validate_step(s: Step) -> None:
     if len(s.value)>1000: raise ValueError("Слишком длинный аргумент")
     if s.kind in {"click","move"} and not (0<=s.x<=16384 and 0<=s.y<=16384):
         raise ValueError("Некорректные координаты")
-    if s.kind=="open_app" and (not s.value or normalize(s.value) in UNSAFE_APPS):
+    if s.kind=="open_app" and not safe_name(s.value):
         raise ValueError("Не разрешён запуск этой программы")
     if s.kind=="open_url" and not s.value.startswith("https://"):
         raise ValueError("Разрешён только HTTPS")
@@ -178,7 +185,7 @@ def ask_ai_for_plan(text: str, engine: str="none", model: str="") -> Plan:
     try:
         if engine == "ollama":
             result=request_json("http://127.0.0.1:11434/api/chat",
-              {"model":model or "qwen3-vl:2b","stream":False,"format":"json",
+              {"model":model or "qwen3-vl:2b-instruct","stream":False,"format":"json",
                "messages":[{"role":"system","content":system},{"role":"user","content":text}]})
             raw=result.get("message",{}).get("content","{}")
         elif engine == "openai":
