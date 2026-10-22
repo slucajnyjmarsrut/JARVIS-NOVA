@@ -60,12 +60,30 @@ def analyze_pcm16(raw: bytes) -> AudioAudit:
                       round(quiet,4),round(clipped,4),tuple(warnings))
 
 
-def inspect_audio(file: Path, ffmpeg: str, *, executor=None, cancel=None) -> AudioAudit:
+def inspect_audio(file: Path, ffmpeg: str, *, ffprobe=None,
+                  executor=None, cancel=None) -> AudioAudit:
+    """Measure audio, with an explicit warning for genuine video-only exports.
+
+    FFmpeg does not produce PCM for a file without an audio stream, even when
+    '-map 0:a:0?' is used. Detect that condition with FFprobe instead of
+    masking real decoder errors or losing the entire visual audit.
+    """
     if cancel is not None and cancel.is_set():
         raise AudioAuditError("Проверка звука отменена")
     if executor is None:
         from viral_studio import _execute
         executor = _execute
+    if ffprobe is not None:
+        probe=[str(ffprobe),"-v","error","-select_streams","a:0",
+               "-show_entries","stream=index","-of","csv=p=0",str(Path(file))]
+        streams=executor(probe,timeout=20,cancel=cancel)
+        if cancel is not None and cancel.is_set():
+            raise AudioAuditError("Проверка звука отменена")
+        if not isinstance(streams,bytes):
+            raise AudioAuditError("FFprobe вернул некорректные данные")
+        if not streams.strip():
+            return AudioAudit(0.,-96.,-96.,1.,0.,
+                              ("В готовом MP4 отсутствует звуковая дорожка",))
     cmd=[ffmpeg,"-v","error","-nostdin","-t",str(MAX_SECONDS),"-i",str(Path(file)),
          "-vn","-map","0:a:0","-ac","1","-ar",str(SAMPLE_RATE),
          "-f","s16le","-acodec","pcm_s16le","-"]
