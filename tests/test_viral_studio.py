@@ -40,6 +40,31 @@ class ViralTests(unittest.TestCase):
             self.assertEqual(load_brief(filename),b)
             self.assertIn('Что снять',(pathlib.Path(temp)/'WHAT_TO_FILM_RU.md').read_text('utf-8'))
             with self.assertRaises(ViralStudioError):save_brief(b,pathlib.Path(temp))
+    def test_scenario_export_never_overwrites_preexisting_private_shoot_notes(self):
+        with tempfile.TemporaryDirectory() as td:
+            project=pathlib.Path(td)
+            notes=project/"WHAT_TO_FILM_RU.md"
+            notes.write_text("PRIVATE USER NOTES: do not overwrite",encoding="utf-8")
+            with self.assertRaisesRegex(ViralStudioError,"заметки"):
+                save_brief(template_brief("Кофе"),project)
+            self.assertEqual(notes.read_text("utf-8"),
+                             "PRIVATE USER NOTES: do not overwrite")
+            self.assertFalse((project/"brief.json").exists())
+
+    def test_scenario_export_rolls_back_json_when_markdown_creation_fails(self):
+        with tempfile.TemporaryDirectory() as td:
+            project=pathlib.Path(td)
+            open_original=pathlib.Path.open
+            def error_on_notes(path,mode="r",*args,**kwargs):
+                if path.name=="WHAT_TO_FILM_RU.md" and mode=="x":
+                    raise PermissionError("cannot save notes")
+                return open_original(path,mode,*args,**kwargs)
+            with patch("pathlib.Path.open",new=error_on_notes):
+                with self.assertRaisesRegex(PermissionError,"cannot save notes"):
+                    save_brief(template_brief("Лес"),project)
+            self.assertFalse((project/"brief.json").exists())
+            self.assertFalse((project/"WHAT_TO_FILM_RU.md").exists())
+
     def test_ai_json_and_child_shutdown(self):
         runtime=Mock();runtime.start.return_value='http://127.0.0.1:1234'
         mock_response={'title':'Тест','hook':'Смотри!','script':'Сегодня показываю новый трюк.',
