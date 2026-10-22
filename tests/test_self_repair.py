@@ -93,6 +93,48 @@ class SelfRepairTests(unittest.TestCase):
         self.assertEqual(enormous.stat().st_size,600_000)
         self.assertFalse(list(self.folder.glob("*.bak")))
 
+    def test_valid_json_with_shell_alias_cannot_be_falsely_called_healthy(self):
+        cfg=self.folder/"learning-v1.json"
+        content=json.dumps({"version":1,"aliases":{"игра":"cmd.exe"},"stats":{}},
+                           ensure_ascii=False)
+        cfg.write_text(content,encoding="utf-8")
+        self.assertEqual(inspect_configs(self.folder)[0].status,"unsafe")
+        report=repair_configs(consent=True,folder=self.folder)
+        self.assertEqual(report.repaired,())
+        self.assertIn(cfg.name,report.manual)
+        self.assertEqual(cfg.read_text("utf-8"),content)
+        self.assertFalse(list(self.folder.glob("*.bak")))
+
+    def test_invalid_mode_overrides_or_future_modes_get_manual_review(self):
+        modes=self.folder/"modes-v1.json"
+        for value,status in (({"apps":{"gaming":["cmd.exe"]}},"unsafe"),
+                             ({"apps":{"study":["Notepad","cmd.exe"]}},"unsafe"),
+                             ({"apps":{"gaming":[]}},"unsafe"),
+                             ({"apps":{"new_future_mode":["Notepad"]}},"unsupported")):
+            with self.subTest(value=value):
+                content=json.dumps({"version":1,**value})
+                modes.write_text(content,encoding="utf-8")
+                self.assertEqual(inspect_configs(self.folder)[1].status,status)
+                report=repair_configs(consent=True,folder=self.folder)
+                self.assertEqual(report.repaired,())
+                self.assertIn(modes.name,report.manual)
+                self.assertEqual(modes.read_text("utf-8"),content)
+                self.assertFalse(list(self.folder.glob("*.bak")))
+
+    def test_voice_diagnostic_reports_manual_attention_instead_of_no_damage(self):
+        from main import Jarvis
+        app=type("Stub",(),{})()
+        app.reply=mock.Mock()
+        with mock.patch("main.inspect_configs",return_value=[
+             type("Finding",(),{"status":"unsafe","name":"learning-v1.json"})()]), \
+             mock.patch("main.repair_configs") as fixing, \
+             mock.patch("main.messagebox.askyesno") as confirm:
+            Jarvis.self_repair_now(app)
+            fixing.assert_not_called()
+            confirm.assert_not_called()
+        self.assertIn("ручной",app.reply.call_args.args[0])
+        self.assertIn("не изменены",app.reply.call_args.args[0])
+
     def test_http_permission_errors_are_not_retried(self):
         import urllib.error
         calls=[]
