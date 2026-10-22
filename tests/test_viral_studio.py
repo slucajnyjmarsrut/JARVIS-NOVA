@@ -128,14 +128,18 @@ class ViralTests(unittest.TestCase):
                  '-pix_fmt','yuv420p','-c:a','aac','-t','3',
                  str(raw/'01.mp4')]
             subprocess.run(cmd,check=True,capture_output=True)
+            # The real studio contract requires 2–10 shots. Each source has
+            # longer VIDEO than AUDIO; both must survive full-length export.
+            shutil.copyfile(raw/'01.mp4',raw/'02.mp4')
             brief=Brief('Проба','Звук','Вступление','Проверяем длину',
-                        (Shot(2.,'Зелёный фон','Аудио короче видео'),),
+                        (Shot(2.,'Зелёный фон','Аудио короче видео'),
+                         Shot(2.,'Зелёный фон','Второй кадр после окончания звука')),
                         'Готово','шаблон')
             output=root/'edited'/'result.mp4'
             data=render_video(brief,raw,output,size=(180,320),tools=(ffmpeg,ffprobe))
             self.assertTrue(data['technical_quality']['quality_checked'])
-            self.assertGreater(data['duration'],1.5)
-            self.assertLess(data['duration'],2.4)
+            self.assertGreater(data['duration'],3.3)
+            self.assertLess(data['duration'],4.5)
             self.assertTrue(output.exists())
             self.assertTrue((raw/'01.mp4').exists())
 
