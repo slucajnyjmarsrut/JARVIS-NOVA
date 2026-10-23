@@ -78,6 +78,30 @@ class QuietCaptureTests(unittest.TestCase):
         self.assertEqual(gate.observe(310),"idle")
         self.assertEqual(gate.observe(310),"start")
 
+    def test_short_quiet_word_between_long_pauses_is_amplified(self):
+        # 220 ms soft speech in 2.2 s audio: the former 85th percentile
+        # was effectively zero and skipped the gain entirely.
+        signal=np.zeros(16000*22//10,dtype="<i2")
+        short=np.frombuffer(quiet_sine(12,.22),dtype="<i2")
+        onset=int(.8*16000)
+        signal[onset:onset+len(short)]=short
+        adjusted=prepare_whisper_audio(signal.tobytes())
+        before=signal[onset:onset+len(short)].astype(np.float32)/32768.0
+        after=adjusted[onset:onset+len(short)]
+        energy=lambda x:float(np.sqrt(np.mean(x*x)))
+        self.assertGreater(energy(after),energy(before)*5.0)
+        self.assertLessEqual(float(np.max(np.abs(adjusted))),.921)
+        self.assertTrue(np.isfinite(adjusted).all())
+
+    def test_silence_and_isolated_click_are_not_boosted_into_voice(self):
+        silence=bytes(16000*2*2)
+        self.assertEqual(float(np.max(np.abs(
+            prepare_whisper_audio(silence)))),0.0)
+        click=np.zeros(16000*2,dtype="<i2")
+        click[11000]=12000
+        result=prepare_whisper_audio(click.tobytes())
+        self.assertLessEqual(float(np.max(np.abs(result))),.921)
+
     def test_whisper_gain_increases_soft_voice_without_clipping(self):
         original=quiet_sine(12)
         amplified=prepare_whisper_audio(original)

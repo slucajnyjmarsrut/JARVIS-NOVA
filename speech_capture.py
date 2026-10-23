@@ -84,7 +84,10 @@ def prepare_whisper_audio(pcm: bytes) -> np.ndarray:
     if not frames.size:
         return filtered
     levels=np.sqrt(np.mean(frames*frames,axis=1))
-    high=float(np.percentile(levels,85))
+    # The 85th percentile falls to near zero when a short quiet word is
+    # surrounded by >85% pre-roll/trailing silence. Use the upper 5% of
+    # frame energies and still require multiple speech-like frames below.
+    high=float(np.percentile(levels,95))
     if high<0.00010:
         return filtered  # silence/hiss below usable speech
     active=levels[levels>=max(0.00010,high*.30)]
