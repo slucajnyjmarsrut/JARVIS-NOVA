@@ -30,6 +30,8 @@ class RecognitionQualityTests(unittest.TestCase):
             recognition("джавис открой блокнот",logprob=-1.2)))
         self.assertTrue(suspicious_wake_prefix(
             recognition("эй джайвис что делаешь",logprob=-1.0)))
+        self.assertTrue(suspicious_wake_prefix(
+            recognition("привет, джавис открой блокнот",logprob=-1.0)))
         self.assertFalse(suspicious_wake_prefix(
             recognition("джавис открой блокнот",logprob=-.1)))
         self.assertFalse(suspicious_wake_prefix({"text":"джавис открой блокнот"}))

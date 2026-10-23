@@ -56,7 +56,15 @@ ALIASES = {"хром": "Google Chrome", "храм": "Google Chrome",
            "визуал студио код": "Visual Studio Code",
            "вс код": "Visual Studio Code", "фотошоп": "Adobe Photoshop",
            "вотсап": "WhatsApp", "вацап": "WhatsApp"}
-WAKE = re.compile(r"^\s*(?:эй|окей|слушай|ну)?\s*(?:джарвис|жарвис|джервис|гарвис)\b[\s,.:;!?-]*", re.I)
+# Match explicit direct address at the START of speech, including natural pauses:
+# "Эй, Джарвис", "Слушай — Джарвис", "Привет, Джарвис".
+# Require a boundary after both words: mentions in the middle and "джарвисов"
+# must never activate desktop commands. No fuzzy authorization here.
+WAKE = re.compile(
+    r"^\\s*(?:(?:эй|окей|слушай|ну|привет)\\b[\\s,.:;!?—–-]+)?"
+    r"(?:джарвис|жарвис|джервис|гарвис)\\b[\\s,.:;!?—–-]*",
+    re.I,
+)
 NEGATE = re.compile(r"\b(?:не\s+(?:открывай|закрывай|нажимай|пиши|трогай|запускай|сворачивай)|отмена)\b", re.I)
 
 def normalize(text: str) -> str:

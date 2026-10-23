@@ -95,7 +95,7 @@ def suspicious_wake_prefix(result):
     if not words:
         return False
     # Optional colloquial address; never fuzzy-match arbitrary later words.
-    first=words[1] if words[0] in ("эй","окей","слушай","ну") and len(words)>1 else words[0]
+    first=words[1] if words[0] in ("эй","окей","слушай","ну","привет") and len(words)>1 else words[0]
     if not 5<=len(first)<=9 or not first.startswith(("дж","ж","д")):
         return False
     return max(SequenceMatcher(None,first,real).ratio()
