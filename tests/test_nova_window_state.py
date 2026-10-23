@@ -48,7 +48,7 @@ class LayoutStorageTests(unittest.TestCase):
     def test_one_hundred_thousand_screen_geometry_cases(self):
         # Deterministic property stress, not 100k distinct human voice trials.
         import re
-        pattern=re.compile(r"^(\\d+)x(\\d+)\\+(\\d+)\\+(\\d+)$")
+        pattern=re.compile(r"^(\d+)x(\d+)\+(\d+)\+(\d+)$")
         for case in range(100_000):
             width=1+(case*977)%3840
             height=1+(case*613)%2160
