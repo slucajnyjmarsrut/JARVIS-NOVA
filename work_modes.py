@@ -188,7 +188,7 @@ class ModeManager:
         payload=json.dumps({'version':1,'apps':candidate},ensure_ascii=False,indent=2)
         fd,name=tempfile.mkstemp(prefix='.modes-',suffix='.tmp',dir=str(self.path.parent))
         try:
-            with os.fdopen(fd,'w',encoding='utf-8') as out:
+            with os.fdopen(fd,'w',encoding='utf-8',newline='\n') as out:
                 out.write(payload)
                 out.flush();os.fsync(out.fileno())
             self._check_unchanged()
