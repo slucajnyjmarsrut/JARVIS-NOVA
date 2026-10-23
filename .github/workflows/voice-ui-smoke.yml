@@ -155,6 +155,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_nova_compact_ui.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Compact NOVA UI failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_nova_compact_boot.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Real compact app startup failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_nova_window_state.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Compact window layout failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v

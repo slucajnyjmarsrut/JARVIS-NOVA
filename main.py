@@ -15,7 +15,7 @@ from voice_engine import Voice as RC4Voice
 from local_chat import LocalChat
 from nova_compact_ui import build_interface, compact_geometry
 from nova_window_state import load_layout, save_layout, safe_window_geometry
-from nova_overlay import NovaOverlay
+from nova_overlay import NovaOverlay, dock_geometry
 from overlay_commands import overlay_intent, preview_line
 from whisper_mode import normalize_style
 
@@ -76,9 +76,11 @@ class Jarvis(tk.Tk):
         # Keep the assistant active when the main window is minimized/hidden.
         # The small overlay is another local Tk window, not a second app.
         self.overlay=NovaOverlay(self)
+        # A withdrawn Toplevel may report 1x1 before its first Map event:
+        # use a validated pure default instead of querying Tk's pending size.
+        mini_default=dock_geometry(self.winfo_screenwidth(),self.winfo_screenheight())
         miniature=safe_window_geometry(
-            self._ui_layout.get("mini"),
-            self.overlay.geometry(),
+            self._ui_layout.get("mini"),mini_default,
             self.winfo_screenwidth(),self.winfo_screenheight(),fixed=True)
         if self._ui_layout.get("mini"):
             self.overlay.geometry(miniature)
