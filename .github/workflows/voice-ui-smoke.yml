@@ -189,6 +189,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_asr_benchmark.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Russian ASR benchmark regressions failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_microphone_quality_check.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Microphone quality diagnostics failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_dark_ui_fast_replies.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_russian_small.py' -v

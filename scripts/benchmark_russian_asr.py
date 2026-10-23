@@ -4,8 +4,8 @@
 Run against consented, locally held WAV recordings. No uploads, model
 downloads, retained audio, or transcription logs; reports are aggregate-only.
 Examples:
-  python scripts/benchmark_russian_asr.py --manifest my_phrases.csv --model-path assets/base.pt
-  python scripts/benchmark_russian_asr.py --manifest my_phrases.csv --model-path assets/small.pt
+  python -m scripts.benchmark_russian_asr --manifest my_phrases.csv --model-path assets/base.pt
+  python -m scripts.benchmark_russian_asr --manifest my_phrases.csv --model-path assets/small.pt
 
 The manifest is a UTF-8 CSV with headers: audio,reference.
 Audio paths are relative to the CSV. Record the SAME phrases, microphone
