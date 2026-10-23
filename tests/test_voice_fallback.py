@@ -12,6 +12,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from voice_engine import Voice
+from agent_core import WAKE, strip_wake
 
 
 class WhisperFallbackTests(unittest.TestCase):
