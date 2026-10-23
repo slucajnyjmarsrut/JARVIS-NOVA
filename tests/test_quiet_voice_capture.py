@@ -78,6 +78,24 @@ class QuietCaptureTests(unittest.TestCase):
         self.assertEqual(gate.observe(310),"idle")
         self.assertEqual(gate.observe(310),"start")
 
+    def test_isolated_loud_click_does_not_suppress_quiet_word_gain(self):
+        # The previous absolute-peak limiter forced gain close to 1x after
+        # one click, even when 300ms of speech was barely audible.
+        signal=np.zeros(16000*2,dtype="<i2")
+        quiet=np.frombuffer(quiet_sine(16,.3),dtype="<i2")
+        start=16000//2
+        signal[start:start+len(quiet)]=quiet
+        signal[start+1400]=28000  # isolated handling noise
+        processed=prepare_whisper_audio(signal.tobytes())
+        before=quiet.astype(np.float32)/32768.0
+        # Compare a quiet section away from the click's filter ringing.
+        plain=before[200:800]
+        after=processed[start+200:start+800]
+        rms=lambda x:float(np.sqrt(np.mean(x*x)))
+        self.assertGreater(rms(after),rms(plain)*5)
+        self.assertLessEqual(float(np.max(np.abs(processed))),.921)
+        self.assertTrue(np.isfinite(processed).all())
+
     def test_short_quiet_word_between_long_pauses_is_amplified(self):
         # 220 ms soft speech in 2.2 s audio: the former 85th percentile
         # was effectively zero and skipped the gain entirely.

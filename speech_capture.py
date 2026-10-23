@@ -96,7 +96,11 @@ def prepare_whisper_audio(pcm: bytes) -> np.ndarray:
     typical=float(np.median(active))
     # Target ~3.5% FS RMS, with at most 16x digital amplification.
     gain=min(16.0,max(1.0,0.035/max(typical,0.0001)))
-    peak=float(np.max(np.abs(filtered)))
-    if peak>0:
-        gain=min(gain,0.92/peak)
+    # A single click can be much louder than the spoken phrase. Limiting
+    # gain by the absolute peak makes the entire quiet command inaudible.
+    # Use a robust peak instead; only sparse impulses get clipped, while
+    # sustained loud speech remains protected against distortion.
+    robust_peak=float(np.percentile(np.abs(filtered),99.5))
+    if robust_peak>0:
+        gain=min(gain,0.92/robust_peak)
     return np.clip(filtered*gain,-.92,.92).astype(np.float32)
