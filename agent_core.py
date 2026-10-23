@@ -61,8 +61,8 @@ ALIASES = {"хром": "Google Chrome", "храм": "Google Chrome",
 # Require a boundary after both words: mentions in the middle and "джарвисов"
 # must never activate desktop commands. No fuzzy authorization here.
 WAKE = re.compile(
-    r"^\\s*(?:(?:эй|окей|слушай|ну|привет)\\b[\\s,.:;!?—–-]+)?"
-    r"(?:джарвис|жарвис|джервис|гарвис)\\b[\\s,.:;!?—–-]*",
+    r"^\s*(?:(?:эй|окей|слушай|ну|привет)\b[\s,.:;!?—–-]+)?"
+    r"(?:джарвис|жарвис|джервис|гарвис)\b[\s,.:;!?—–-]*",
     re.I,
 )
 NEGATE = re.compile(r"\b(?:не\s+(?:открывай|закрывай|нажимай|пиши|трогай|запускай|сворачивай)|отмена)\b", re.I)
