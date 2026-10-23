@@ -61,6 +61,59 @@ class SelfImprovementTests(unittest.TestCase):
         restored = LearningStore(self.path)
         self.assertEqual(restored.aliases, {})
 
+    def test_corrupted_learning_file_is_never_implicitly_overwritten(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        original=b"{corrupted data"
+        self.path.write_bytes(original)
+        other=LearningStore(self.path)
+        self.assertEqual(other.aliases,{})
+        other.feedback("open_app",True)  # optional feedback must not crash
+        with self.assertRaisesRegex(RuntimeError,"ручная проверка"):
+            other.learn("программа","Notepad",verified=True)
+        with self.assertRaisesRegex(RuntimeError,"ручная проверка"):
+            other.reset()
+        self.assertEqual(self.path.read_bytes(),original)
+        self.assertEqual(other.aliases,{})
+        self.assertIn("запись отключена",other.summary())
+        self.assertEqual(list(self.path.parent.glob("*.tmp")),[])
+
+    def test_future_version_and_oversize_learning_are_read_only(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        originals=[
+            json.dumps({"version":99,"aliases":{"x":"Notepad"}}).encode(),
+            b"x"*41_000,
+        ]
+        for payload in originals:
+            with self.subTest(length=len(payload)):
+                self.path.write_bytes(payload)
+                store=LearningStore(self.path)
+                store.feedback("open_app",True)
+                with self.assertRaises(RuntimeError):
+                    store.learn("приложение","Notepad",verified=True)
+                self.assertEqual(self.path.read_bytes(),payload)
+
+    def test_competing_jarvis_cannot_erase_another_instances_learned_alias(self):
+        self.learning.learn("магазин","Steam",verified=True)
+        second=LearningStore(self.path)
+        self.learning.learn("редактор","Notepad",verified=True)
+        expected=self.path.read_bytes()
+        with self.assertRaisesRegex(RuntimeError,"другим процессом"):
+            second.learn("браузер","Google Chrome",verified=True)
+        self.assertEqual(self.path.read_bytes(),expected)
+        self.assertIsNone(second.resolve("браузер"))
+        self.assertEqual(LearningStore(self.path).resolve("редактор"),"Notepad")
+        second.feedback("open_app",True)  # shouldn't throw, shouldn't overwrite
+        self.assertEqual(self.path.read_bytes(),expected)
+
+    def test_learning_reset_cannot_erase_file_modified_externally(self):
+        self.learning.learn("стимм","Steam",verified=True)
+        external=b'{"version":1,"aliases":{"вручную":"Notepad"},"stats":{}}'
+        self.path.write_bytes(external)
+        with self.assertRaisesRegex(RuntimeError,"другим процессом"):
+            self.learning.reset()
+        self.assertEqual(self.path.read_bytes(),external)
+        self.assertEqual(self.learning.resolve("стимм"),"Steam")
+
     def test_user_can_rollback_learning(self):
         self.learning.learn('стимм', 'Steam', verified=True)
         self.assertTrue(self.learning.unlearn('стимм'))
