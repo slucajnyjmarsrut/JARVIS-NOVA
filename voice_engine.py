@@ -37,7 +37,7 @@ class Voice:
         self.pending=""
         self.whisper_model=None
         self.small_model=None
-        self.recognition_mode="accurate"  # default best Russian; switch to fast on slow CPUs
+        self.recognition_mode="balanced"  # fast base first; reserve small for uncertain speech
         self._small_init_lock=threading.Lock()
         self.whisper_busy=False
         self.whisper_queue=deque(maxlen=2)  # keep short follow-up utterances in RAM
@@ -54,16 +54,18 @@ class Voice:
 
     def set_recognition_mode(self, mode: str):
         """Real CPU/memory tradeoff; switch without opening another microphone."""
-        if mode not in ("accurate","fast"):
-            raise ValueError("Режим должен быть accurate или fast")
+        if mode not in ("balanced","accurate","fast"):
+            raise ValueError("Режим должен быть balanced, accurate или fast")
         with self.lock:
             self.recognition_mode=mode
             generation=self._generation
-        if mode=="accurate" and self.running and not self.stopping:
+        if self.running and not self.stopping:
             self._prewarm_whisper(generation)
-        self.on_status("Распознавание: "+(
-            "точное русское (Whisper small)" if mode=="accurate"
-            else "ускоренное (Whisper base)"))
+        self.on_status("Распознавание: "+{
+            "balanced":"сбалансированное (Whisper base → small для сложных фраз)",
+            "accurate":"точное русское (Whisper small)",
+            "fast":"ускоренное (Whisper base)",
+        }[mode])
 
     def _get_small_model(self, path):
         """Load verified bundled multilingual small once for better Russian ASR."""
@@ -317,18 +319,20 @@ class Voice:
                 # verify locally with small rather than discarding a genuine
                 # Russian command. Fuzzy similarity NEVER grants permission.
                 recover_wake=(not authorized and not quality and
-                              self.recognition_mode=="accurate" and
+                              self.recognition_mode in ("balanced","accurate") and
                               (root/"small.pt").is_file() and
                               suspicious_wake_prefix(first))
                 # Tiny Russian phrases sometimes become a confident but false
                 # single word (e.g. "джайдес" instead of "что делаешь").
                 # Spend one extra local decode only in the accurate, already
                 # activated mode, and only for short recorded utterances.
-                short_retry=(quality and active and len(pcm)<=16000*2*4 and
+                short_retry=(self.recognition_mode in ("balanced","accurate") and active and
+                             len(pcm)<=16000*2*4 and
                              should_refine_short_phrase(first,authorized))
                 result=first
                 if (should_refine(first,authorized) or recover_wake or short_retry or
-                        (not quality and self.recognition_mode=="accurate" and
+                        (not quality and not active and
+                         self.recognition_mode in ("balanced","accurate") and
                          (root/"small.pt").is_file() and
                          bool(WAKE.match(fast_text)))):
                     with self.lock:
@@ -340,7 +344,8 @@ class Voice:
                     try:
                         # When base heard a wake word, ask the stronger small
                         # model once; otherwise refine the same model with beam5.
-                        quality_retry=(not quality and self.recognition_mode=="accurate"
+                        quality_retry=(not quality and
+                                       self.recognition_mode in ("balanced","accurate")
                                        and (root/"small.pt").is_file())
                         selected=(self._get_small_model(root/"small.pt")
                                   if quality_retry else model)
@@ -352,7 +357,7 @@ class Voice:
                         # Give accurate-mode Whisper a small offline Russian
                         # app-name vocabulary only for a justified second pass.
                         # Do NOT bias passive listening or the fast/base mode.
-                        if active and self.recognition_mode=="accurate" and (quality or quality_retry):
+                        if active and self.recognition_mode in ("balanced","accurate") and (quality or quality_retry):
                             vocabulary=russian_app_vocabulary(first)
                             if vocabulary:
                                 retry_options["initial_prompt"]=vocabulary
@@ -548,7 +553,12 @@ class Voice:
                                 if self.running and generation==self._generation:
                                     try:self.on_audio_level(min(1.0,rms/32768.0))
                                     except Exception:pass  # UI errors cannot stop speech
-                            state=gate.observe(rms,sensitivity=getattr(self,"sensitivity",1.0))
+                            # A confirmed wake/F9 has already authorized capture: finish
+                            # after 0.7s quiet instead of passive 0.9s.
+                            # Passive capture keeps the longer tail for hesitant speech.
+                            state=gate.observe(
+                                rms,sensitivity=getattr(self,"sensitivity",1.0),
+                                hangover_frames=7 if stamp<self.until else 9)
                             if state=="start":
                                 segment.extend(b"".join(pre_roll))
                                 pre_roll.clear()

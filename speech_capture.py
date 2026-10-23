@@ -12,7 +12,7 @@ import numpy as np
 
 @dataclass
 class AdaptiveSpeechGate:
-    """Track a quiet microphone noise floor, two-frame onset and 900ms hangover.
+    """Track a quiet microphone noise floor, two-frame onset and adaptive hangover.
 
     The previous hard-coded 24/32768 PCM RMS minimum missed quiet speech.
     Do not continuously train the noise baseline while a phrase is in progress.
@@ -33,7 +33,8 @@ class AdaptiveSpeechGate:
     def onset_threshold(self) -> float:
         return max(7.0,min(1200.0,self.noise_floor*1.8+3.0))
 
-    def observe(self,rms: float,sensitivity: float = 1.0) -> str:
+    def observe(self,rms: float,sensitivity: float = 1.0,
+                hangover_frames: int = 9) -> str:
         """Per 100ms packet. Calibrate noise on *raw* RMS, not boosted RMS."""
         rms=max(0.0,float(rms))
         sensitivity=max(0.75,min(2.0,float(sensitivity)))
@@ -43,7 +44,7 @@ class AdaptiveSpeechGate:
                 self.speech_frames+=1
             else:
                 self.silence+=1
-            if self.silence>=9:
+            if self.silence>=max(6,min(12,int(hangover_frames))):
                 self.reset()
                 return "end"
             return "speech"

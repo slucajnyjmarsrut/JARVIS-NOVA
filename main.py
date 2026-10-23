@@ -104,8 +104,9 @@ class Jarvis(tk.Tk):
         modes_menu.add_command(label='Остановить таймер',command=self.stop_focus_timer)
         menu.add_cascade(label='Режимы',menu=modes_menu)
         recognition_menu=tk.Menu(menu,tearoff=False)
-        self._recognition_mode=tk.StringVar(value="accurate")
+        self._recognition_mode=tk.StringVar(value="balanced")
         for label,mode in (
+            ("Сбалансировано · быстро, уточнять сложные слова", "balanced"),
             ("Точнее русский · Whisper small", "accurate"),
             ("Быстрее · Whisper base", "fast"),
         ):

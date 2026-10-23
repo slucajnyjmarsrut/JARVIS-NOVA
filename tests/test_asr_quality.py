@@ -132,6 +132,7 @@ class RecognitionQualityTests(unittest.TestCase):
                 if len(calls)==2:done.set()
                 return result
             voice=Voice(delivered.append,lambda _:None,lambda:False)
+            voice.recognition_mode="accurate"
             voice._get_small_model=lambda _:types.SimpleNamespace(transcribe=transcribe)
             voice.until=time.monotonic()+8
             with mock.patch("voice_engine.assets",return_value=root):
@@ -214,6 +215,7 @@ class RecognitionQualityTests(unittest.TestCase):
                 finished.set()
                 return recognition("джарвис открой телеграм",logprob=-.11)
             v=Voice(heard.append,lambda _:None,lambda:False)
+            v.recognition_mode="accurate"
             v._get_small_model=lambda _:types.SimpleNamespace(transcribe=transcribe)
             v.until=time.monotonic()+8
             with mock.patch("voice_engine.assets",return_value=root):

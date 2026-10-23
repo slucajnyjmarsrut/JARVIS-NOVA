@@ -24,9 +24,11 @@ def pcm():
 class RussianAccuracyTests(unittest.TestCase):
     def test_default_mode_and_safe_switch(self):
         voice=Voice(lambda _:None,lambda _:None,lambda:False)
-        self.assertEqual(voice.recognition_mode,"accurate")
+        self.assertEqual(voice.recognition_mode,"balanced")
         voice.set_recognition_mode("fast")
         self.assertEqual(voice.recognition_mode,"fast")
+        voice.set_recognition_mode("balanced")
+        self.assertEqual(voice.recognition_mode,"balanced")
         voice.set_recognition_mode("accurate")
         for candidate in ("", "turbo", "remote"):
             with self.assertRaises(ValueError):
@@ -63,6 +65,7 @@ class RussianAccuracyTests(unittest.TestCase):
                     return {"text":"джарвис открой бронз"}
             voice=Voice(lambda value:(heard.append(value),event.set()),
                         lambda _:None,lambda:False)
+            voice.recognition_mode="accurate"
             voice._get_small_model=lambda path:Model("small")
             voice._get_whisper_model=lambda path:Model("base")
             voice.until=time.monotonic()+8
@@ -124,6 +127,7 @@ class RussianAccuracyTests(unittest.TestCase):
                 entered.set()
                 resume.wait(3)
                 return {"text":"джарвис открой блокнот"}
+            voice.recognition_mode="accurate"
             voice._get_small_model=lambda _:types.SimpleNamespace(transcribe=transcribe)
             with mock.patch("voice_engine.assets",return_value=root):
                 voice._try_whisper(pcm(),False)

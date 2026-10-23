@@ -20,6 +20,23 @@ def quiet_sine(pcm_level=12,seconds=1.0):
 
 
 class QuietCaptureTests(unittest.TestCase):
+    def test_activated_short_command_finishes_after_seven_quiet_frames(self):
+        gate=AdaptiveSpeechGate()
+        gate.observe(16)
+        self.assertEqual(gate.observe(16),"start")
+        for i in range(6):
+            self.assertEqual(gate.observe(1,hangover_frames=7),"speech")
+        self.assertEqual(gate.observe(1,hangover_frames=7),"end")
+        self.assertFalse(gate.active)
+
+    def test_passive_capture_retains_nine_quiet_frames(self):
+        gate=AdaptiveSpeechGate()
+        gate.observe(16)
+        self.assertEqual(gate.observe(16),"start")
+        for i in range(8):
+            self.assertEqual(gate.observe(1),"speech")
+        self.assertEqual(gate.observe(1),"end")
+
     def test_soft_pcm_starts_speech_below_old_hardcoded_24_rms_threshold(self):
         gate=AdaptiveSpeechGate()
         for _ in range(4):

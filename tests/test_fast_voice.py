@@ -15,6 +15,53 @@ from voice_engine import Voice
 
 
 class QuickVoiceTests(unittest.TestCase):
+    def test_balanced_mode_uses_fast_base_for_clear_activated_russian(self):
+        heard=[];calls=[];done=threading.Event()
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"mock")
+            (root/"small.pt").write_bytes(b"mock")
+            voice=Voice(lambda value:(heard.append(value),done.set()),lambda _:None,lambda:False)
+            voice.until=time.monotonic()+8
+            voice._get_whisper_model=lambda _:types.SimpleNamespace(
+                transcribe=lambda *a,**kw:(calls.append("base"),
+                    {"text":"джарвис открой блокнот","segments":[
+                        {"avg_logprob":-.18,"compression_ratio":1,"no_speech_prob":.03}]})[-1])
+            voice._get_small_model=lambda _:self.fail("Unnecessary slow model")
+            with patch("voice_engine.assets",return_value=root):
+                voice._try_whisper((np.ones(16000,dtype="<i2")*140).tobytes(),True)
+                self.assertTrue(done.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
+        self.assertEqual(heard,["открой блокнот"])
+        self.assertEqual(calls,["base"])
+
+    def test_balanced_mode_escalates_weak_activated_phrase_to_small(self):
+        heard=[];calls=[];done=threading.Event()
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"mock")
+            (root/"small.pt").write_bytes(b"mock")
+            voice=Voice(lambda value:(heard.append(value),done.set()),lambda _:None,lambda:False)
+            voice.until=time.monotonic()+8
+            def base(*args,**kwargs):
+                calls.append(("base",kwargs["beam_size"]))
+                return {"text":"джарвис открой бронз","segments":[
+                    {"avg_logprob":-1.2,"compression_ratio":1,"no_speech_prob":.01}]}
+            def small(*args,**kwargs):
+                calls.append(("small",kwargs["beam_size"]))
+                return {"text":"джарвис открой браузер","segments":[
+                    {"avg_logprob":-.15,"compression_ratio":1,"no_speech_prob":.01}]}
+            voice._get_whisper_model=lambda _:types.SimpleNamespace(transcribe=base)
+            voice._get_small_model=lambda _:types.SimpleNamespace(transcribe=small)
+            with patch("voice_engine.assets",return_value=root):
+                voice._try_whisper((np.ones(16000,dtype="<i2")*140).tobytes(),True)
+                self.assertTrue(done.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
+        self.assertEqual(heard,["открой браузер"])
+        self.assertEqual(calls,[("base",2),("small",2)])
+
     def test_sensitivity_is_bounded_and_stored(self):
         voice=Voice(lambda _:None,lambda _:None,lambda:False)
         voice.set_sensitivity(1.8)

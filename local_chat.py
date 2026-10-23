@@ -113,7 +113,7 @@ class LocalChat:
                 *self._conversation,
                 {"role": "user", "content": question},
             ],
-            "options": {"num_predict": 72, "num_ctx": 1536,
+            "options": {"num_predict": 56, "num_ctx": 1536,
                         "temperature": 0.3},
         }
         result = self._requester(endpoint, payload)
