@@ -107,7 +107,7 @@ class SelfImprovementTests(unittest.TestCase):
 
     def test_learning_reset_cannot_erase_file_modified_externally(self):
         self.learning.learn("стимм","Steam",verified=True)
-        external=b'{"version":1,"aliases":{"вручную":"Notepad"},"stats":{}}'
+        external='{"version":1,"aliases":{"вручную":"Notepad"},"stats":{}}'.encode("utf-8")
         self.path.write_bytes(external)
         with self.assertRaisesRegex(RuntimeError,"другим процессом"):
             self.learning.reset()
