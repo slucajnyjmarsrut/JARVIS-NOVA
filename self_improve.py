@@ -166,30 +166,59 @@ class LearningStore:
             k = canonicalize(spoken)
             if k not in self.aliases and len(self.aliases) >= MAX_ALIASES:
                 raise ValueError("Слишком много выученных названий")
-            self.aliases[k] = official.strip()
-            self._save()
+            previous=self.aliases.get(k)
+            self.aliases[k]=official.strip()
+            try:
+                self._save()
+            except Exception:
+                if previous is None:
+                    self.aliases.pop(k,None)
+                else:
+                    self.aliases[k]=previous
+                raise
 
     def unlearn(self, spoken: str):
         with self.lock:
-            if self.aliases.pop(canonicalize(spoken), None) is not None:
+            k=canonicalize(spoken)
+            previous=self.aliases.pop(k,None)
+            if previous is None:
+                return False
+            try:
                 self._save()
-                return True
-            return False
+            except Exception:
+                self.aliases[k]=previous
+                raise
+            return True
 
     def feedback(self, action_kind: str, success: bool):
         # Aggregate only action types, never texts/screenshots/URLs or arguments.
         if not re.fullmatch(r"[a-z_]{2,24}", action_kind):
             return
         with self.lock:
-            score = self.stats.setdefault(action_kind, {"ok": 0, "fail": 0})
-            key = "ok" if success else "fail"
-            score[key] = min(MAX_COUNT, score.get(key, 0) + 1)
-            self._save()
+            # Statistical feedback is optional. An inaccessible or damaged
+            # local state must not crash a voice command that already worked.
+            if self._read_only:
+                return
+            previous=self.stats.get(action_kind)
+            score=dict(previous) if previous is not None else {"ok":0,"fail":0}
+            key="ok" if success else "fail"
+            score[key]=min(MAX_COUNT,score.get(key,0)+1)
+            self.stats[action_kind]=score
+            try:
+                self._save()
+            except (OSError,RuntimeError):
+                if previous is None:
+                    self.stats.pop(action_kind,None)
+                else:
+                    self.stats[action_kind]=previous
+                return
 
     def summary(self) -> str:
         with self.lock:
             entries = sorted(self.stats.items(), key=lambda item: -item[1].get("fail", 0))
             lines = [f"Выучено названий программ: {len(self.aliases)}"]
+            if self._read_only:
+                lines.append("Файл обучения требует ручной проверки; запись отключена для защиты данных.")
             for label, values in entries[:10]:
                 lines.append(f"{label}: успешно {values.get('ok', 0)}, ошибки {values.get('fail', 0)}")
             lines.append("Изменения применяются только к названиям программ после подтверждения.")
@@ -198,9 +227,16 @@ class LearningStore:
 
     def reset(self):
         with self.lock:
+            old_aliases=self.aliases.copy()
+            old_stats={k:v.copy() for k,v in self.stats.items()}
             self.aliases.clear()
             self.stats.clear()
-            self._save()
+            try:
+                self._save()
+            except Exception:
+                self.aliases=old_aliases
+                self.stats=old_stats
+                raise
 
 
 def propose_installed_name(query: str, installed: list[str]) -> str | None:
