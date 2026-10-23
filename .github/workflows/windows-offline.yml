@@ -2,24 +2,14 @@ name: JARVIS NOVA offline Windows build - REAL models, fail closed
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [dev/trimodal-integration-2026-10]
+    branches: [jarvis, dev/trimodal-integration-2026-10]
     paths:
+      - '**/*.py'
+      - '**/*.ps1'
+      - '**/*.iss'
+      - '*.spec'
+      - 'requirements-windows.txt'
       - '.github/workflows/windows-offline.yml'
-      - 'tests/test_self_improve.py'
-      - 'silero_engine.py'
-      - 'tests/test_real_model_adapters.py'
-      - 'offline_e2e_test.py'
-      - 'vision_engine.py'
-      - 'tests/test_vision_chat_protocol.py'
-      - 'bundled_vision_runtime.py'
-      - 'scripts/prepare_ollama.ps1'
-      - 'jarvis_nova.spec'
-      - 'tests/test_trimodal_integration.py'
-      - 'tests/test_bootstrap.py'
-      - 'bootstrap.py'
-      - 'installer/JarvisNova.iss'
-      - 'scripts/verify_installer_payload.py'
-      - 'scripts/test_installer.ps1'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
