@@ -72,10 +72,13 @@ def russian_app_vocabulary(result):
     if not isinstance(result,dict):
         return None
     phrase=strip_wake(str(result.get("text","") or "")).casefold().strip()
-    if not re.match(r"^(?:открой|запусти|включи)\b",phrase):
+    if not re.match(r"^(?:открой|запусти|включи|закрой|переключись на)\b",phrase):
         return None
+    # Only app NAMES. Never inject an action or a wake word; the correct
+    # application must still be heard and independently authorized.
     return ("Телеграм, Telegram, Дискорд, Discord, Стим, Steam, "
-            "Гугл Хром, Google Chrome, Блокнот, Проводник, Калькулятор.")
+            "Гугл Хром, Google Chrome, Яндекс Браузер, Firefox, Edge, "
+            "Блокнот, Проводник, Калькулятор, Paint, VS Code, Word, Excel.")
 
 
 
