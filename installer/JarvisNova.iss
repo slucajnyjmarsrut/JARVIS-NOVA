@@ -1,9 +1,21 @@
 ; ONE offline Inno Setup EXE; refuse compilation if onedir missing.
-#define AppVersion "0.4.1-dev"
+#define AppVersion "0.5.18-dev"
 #define AppName "JARVIS NOVA"
 #define AppExecutable "JarvisNova.exe"
 #if !FileExists("..\dist\JarvisNova\JarvisNova.exe")
   #error "No complete PyInstaller onedir. Refusing to build empty installer."
+#endif
+#if !FileExists("..\dist\updater\JarvisNovaUpdater.exe")
+  #error "Missing independently packaged, trusted local updater executable."
+#endif
+#if !FileExists("..\assets\APP_RELEASE_VERSION.txt")
+  #error "Missing release version marker."
+#endif
+#if !FileExists("..\assets\installer_banner.bmp")
+  #error "Missing original NOVA dark wizard art. Run scripts/generate_installer_art.py"
+#endif
+#if !FileExists("..\assets\installer_badge.bmp")
+  #error "Missing NOVA badge. Run scripts/generate_installer_art.py"
 #endif
 
 [Setup]
@@ -16,7 +28,7 @@ DefaultDirName={localappdata}\Programs\JarvisNova
 DefaultGroupName=JARVIS NOVA
 DisableProgramGroupPage=yes
 OutputDir=..\dist\installer
-OutputBaseFilename=JARVIS-NOVA-OFFLINE-SETUP-DEV
+OutputBaseFilename=JARVIS-NOVA-0.5.18-OFFLINE-SETUP-DEV
 SetupIconFile=..\assets\jarvis.ico
 UninstallDisplayIcon={app}\{#AppExecutable}
 Compression=lzma2/ultra64
@@ -26,7 +38,9 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-WizardStyle=modern
+WizardStyle=modern dark
+WizardImageFile=..\assets\installer_banner.bmp
+WizardSmallImageFile=..\assets\installer_badge.bmp
 WizardSizePercent=110
 DisableWelcomePage=no
 CloseApplications=yes
@@ -36,9 +50,9 @@ AllowNoIcons=yes
 UsePreviousAppDir=yes
 ChangesEnvironment=no
 ChangesAssociations=no
-VersionInfoDescription=JARVIS NOVA Offline Installer (development)
+VersionInfoDescription=JARVIS NOVA Dark Offline Installer (development)
 VersionInfoProductName=JARVIS NOVA
-VersionInfoVersion=0.4.1.0
+VersionInfoVersion=0.5.18.0
 
 [Languages]
 Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -46,6 +60,8 @@ Name: "en"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "..\dist\JarvisNova\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dist\updater\JarvisNovaUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\APP_RELEASE_VERSION.txt"; DestDir: "{app}"; DestName: "JARVIS_NOVA_VERSION.txt"; Flags: ignoreversion
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

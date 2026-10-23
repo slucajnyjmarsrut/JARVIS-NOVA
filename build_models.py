@@ -35,6 +35,23 @@ def download_whisper():
     return path
 
 
+def download_whisper_small():
+    """Verified official multilingual small checkpoint for accurate Russian speech."""
+    import whisper
+    from verify_models import hash_file, get_small_whisper_digest
+    path=models/"small.pt"
+    expected=get_small_whisper_digest(whisper)
+    # Whisper's own download implementation verifies embedded official SHA256,
+    # including when reusing a cached file. Never accept stale/incomplete PCM.
+    if not path.is_file() or hash_file(path)!=expected:
+        whisper.load_model("small",device="cpu",download_root=str(models))
+    if not path.is_file() or path.stat().st_size<100_000_000:
+        raise RuntimeError("Whisper small quality model missing or incomplete")
+    if hash_file(path)!=expected:
+        raise RuntimeError("Whisper small SHA256 mismatch")
+    return path
+
+
 VOSK_RU_URL = "https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip"
 # Independent published SHA256 of this official Vosk small Russian archive.
 VOSK_RU_SHA256 = "961d5ff98a17f4aa6de69864d0aa71fa5bac682301d2b5d17a3f24c5c99a46d4"
@@ -77,7 +94,7 @@ def download_vosk():
 
 def main():
     download_vosk()
-    for path in [download_silero(), download_whisper()]:
+    for path in [download_silero(), download_whisper(), download_whisper_small()]:
         digest=hashlib.sha256(path.read_bytes()).hexdigest()
         print(path.name,path.stat().st_size,"SHA256:",digest)
     required=["am/final.mdl","graph/Gr.fst","graph/HCLr.fst",

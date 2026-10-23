@@ -9,7 +9,7 @@ from PyInstaller.utils.hooks import collect_all
 project=Path(SPECPATH)
 assets=project/'assets'
 critical=[assets/'models'/'vosk'/'am'/'final.mdl',
-          assets/'models'/'base.pt',assets/'models'/'v5_ru.pt',
+          assets/'models'/'base.pt',assets/'models'/'small.pt',assets/'models'/'v5_ru.pt',
           assets/'ollama'/'ollama.exe',
           assets/'models'/'ollama'/'manifests'/'registry.ollama.ai'/'library'/'qwen3-vl'/'2b-instruct']
 for item in critical:
@@ -20,9 +20,9 @@ binaries=[]
 datas=[(str(assets),'assets')]
 hiddenimports=['win32com.client','pythoncom','pywintypes','PIL.ImageGrab',
                'sounddevice','_sounddevice_data','tiktoken_ext.openai_public',
-               'pyautogui','pygetwindow','cv2']
+               'pyautogui','pygetwindow']
 for library in ('vosk','whisper','torch','sounddevice','_sounddevice_data',
-                'PIL','cv2','scipy','pyttsx3'):
+                'PIL','scipy','pyttsx3'):
     try:
         d,b,h=collect_all(library)
     except Exception:
@@ -40,7 +40,7 @@ for library in ('vosk','whisper','torch','sounddevice','_sounddevice_data',
 
 analysis=Analysis(['bootstrap.py'],pathex=[str(project)],binaries=binaries,
     datas=datas,hiddenimports=hiddenimports,hookspath=[],hooksconfig={},
-    runtime_hooks=[],excludes=['torch.testing','pytest','matplotlib','IPython',
+    runtime_hooks=[],excludes=['cv2','torch.testing','pytest','matplotlib','IPython',
     'tensorflow','jupyter','notebook'],noarchive=False)
 pyz=PYZ(analysis.pure)
 exe=EXE(pyz,analysis.scripts,[],exclude_binaries=True,

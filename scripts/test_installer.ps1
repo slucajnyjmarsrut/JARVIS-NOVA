@@ -19,10 +19,33 @@ try {
     if ($install.ExitCode -ne 0) { throw "Setup failed: $($install.ExitCode)" }
     $Exe=Join-Path $Target 'JarvisNova.exe'
     if (!(Test-Path $Exe)) { throw 'Installed JarvisNova.exe missing' }
-    foreach ($Mode in @('--self-test','--real-e2e')) {
-        $Run=Start-Process -FilePath $Exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden
-        if ($Run.ExitCode -ne 0) { throw "Installed EXE failed $Mode: $($Run.ExitCode)" }
+    $Updater=Join-Path $Target 'JarvisNovaUpdater.exe'
+    if (!(Test-Path $Updater)) { throw 'Installed standalone auto-updater missing' }
+    $VersionMarker=Join-Path $Target 'JARVIS_NOVA_VERSION.txt'
+    if (!(Test-Path $VersionMarker)) { throw 'Installed update version marker missing' }
+    if ((Get-Content $VersionMarker -Raw).Trim() -ne '0.5.18') {
+        throw 'Incorrect installed updater version marker'
     }
+    $UpdaterSmoke=Start-Process -FilePath $Updater -ArgumentList '--help' -Wait -PassThru -WindowStyle Hidden
+    if ($UpdaterSmoke.ExitCode -ne 0) { throw "Independent updater failed to start: $($UpdaterSmoke.ExitCode)" }
+    foreach ($Mode in @('--self-test','--video-self-test','--chat-self-test','--real-e2e')) {
+        $Run=Start-Process -FilePath $Exe -ArgumentList $Mode -Wait -PassThru -WindowStyle Hidden
+        if ($Run.ExitCode -ne 0) { throw "Installed EXE failed ${Mode}: $($Run.ExitCode)" }
+    }
+    # Prove the same Inno Setup can silently replace an existing installation
+    # IN PLACE, without uninstalling or deleting user learning files.
+    $Reinstall=Start-Process -FilePath $Setup.FullName -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    if ($Reinstall.ExitCode -ne 0) { throw "Silent in-place upgrade failed: $($Reinstall.ExitCode)" }
+    if (!(Test-Path $Exe) -or !(Test-Path $Updater)) {
+        throw 'In-place reinstall removed JARVIS or its updater'
+    }
+    if ((Get-Content -LiteralPath $VersionMarker -Raw).Trim() -ne '0.5.18') {
+        throw 'In-place upgrade has wrong version marker'
+    }
+    if ((Get-Content -LiteralPath $Sentinel -Raw).Trim() -ne $Marker) {
+        throw 'In-place upgrade overwrote user learning data'
+    }
+    Write-Host 'Silent in-place upgrade retained JARVIS updater and user data'
     $Uninstall=Join-Path $Target 'unins000.exe'
     if (!(Test-Path $Uninstall)) { throw 'No uninstaller' }
     $remove=Start-Process -FilePath $Uninstall -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru -WindowStyle Hidden

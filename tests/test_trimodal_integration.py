@@ -31,12 +31,10 @@ class TrimodalPipelineTests(unittest.TestCase):
         self.silero=Mock(ready=True)
         self.silero.play.side_effect=lambda text: self.events.append('silero')
         self.mic=Mock(side_effect=lambda seconds: self.events.append('mic') or np.ones(16_000,dtype=np.float32))
-        self.camera=Mock()
-        self.camera.capture_jpeg.side_effect=lambda: self.events.append('camera') or JPEG
         self.screen=Mock()
         self.screen.capture_jpeg.side_effect=lambda: self.events.append('screen') or JPEG
         self.pipeline=TriModalPipeline(recognizer=self.rec,vision=self.vision,synthesizer=self.silero,
-                                       microphone=self.mic,camera=self.camera,screen=self.screen)
+                                       microphone=self.mic,screen=self.screen)
 
     def test_screen_no_permission_no_access(self):
         with self.assertRaises(PermissionError):
@@ -48,15 +46,15 @@ class TrimodalPipelineTests(unittest.TestCase):
         samples=np.ones(16000,dtype=np.float32)
         result=self.pipeline.run_once(source='screen',screen_consent=True,audio_samples=samples)
         self.assertEqual(result.source,'screen')
-        self.assertFalse(result.camera_used)
         self.assertEqual(self.events,['whisper','screen','vision','silero'])
-        self.camera.capture_jpeg.assert_not_called()
         self.mic.assert_not_called()
 
-    def test_camera_microphone_whisper_vision_silero(self):
-        result=self.pipeline.run_once(source='camera',camera_consent=True)
-        self.assertTrue(result.camera_used)
-        self.assertEqual(self.events,['mic','whisper','camera','vision','silero'])
+    def test_webcam_source_rejected_even_with_screen_permission(self):
+        with self.assertRaisesRegex(ValueError,'Webcam disabled'):
+            self.pipeline.run_once(source='camera',screen_consent=True)
+        self.assertEqual(self.events,[])
+        self.mic.assert_not_called()
+        self.screen.capture_jpeg.assert_not_called()
 
     def test_reject_same_time_without_access(self):
         self.pipeline._guard.acquire()
@@ -134,7 +132,7 @@ class VoiceIntegrationTests(unittest.TestCase):
     def test_vision_source_cannot_imply_consent(self):
         v=Voice(lambda _:None,lambda _:None,lambda:False)
         self.assertEqual(v.vision_source('Джарвис, что ты видишь?'),'screen')
-        self.assertEqual(v.vision_source('Джарвис, что перед камерой?'),'camera')
+        self.assertIsNone(v.vision_source('Джарвис, что перед камерой?'))
         self.assertIsNone(v.vision_source('Джарвис, открой Chrome'))
 
 

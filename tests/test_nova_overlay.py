@@ -1,0 +1,195 @@
+"""Real Tk overlay lifecycle with no microphone/audio model."""
+import sys
+import time
+import tkinter as tk
+import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+from nova_overlay import NovaOverlay, clamp_drag_position, dock_geometry
+from main import Jarvis
+
+
+class GeometryTests(unittest.TestCase):
+    def test_docks_to_left_and_clamps_small_displays(self):
+        self.assertEqual(dock_geometry(1920,1080),"344x328+20+250")
+        self.assertEqual(dock_geometry(300,140),"300x140+0+0")
+        self.assertEqual(dock_geometry(900,600),"344x328+20+90")
+
+
+class OverlayTests(unittest.TestCase):
+    def setUp(self):
+        try:
+            self.app=tk.Tk()
+        except tk.TclError as exc:
+            if sys.platform=="win32":self.fail("Windows needs a real Tk display: "+str(exc))
+            self.skipTest("Headless: "+str(exc))
+        self.app.withdraw()
+        self.app._closing=False
+        self.app.voice_enabled=False
+        self.app.executing=False
+        self.app.mic_state=tk.StringVar(master=self.app,value="Микрофон: выключен")
+        self.app.status=tk.StringVar(master=self.app,value="Выключено")
+        self.app.speaker=SimpleNamespace(busy=False)
+        self.app.trimodal=SimpleNamespace(speaking=False)
+        self.app.voice=SimpleNamespace(until=0)
+        self.app.modes=SimpleNamespace(mode="work")
+        self.app.hud_level_at=0
+        self.app.hud_level_value=0
+        self.app.toggle_voice=Mock()
+        self.app.f9=Mock()
+        self.app.revoke=Mock()
+        self.app.control_allowed=False
+        self.app.overlay_show_text=False
+        self.app.overlay_last_user=""
+        self.app.overlay_last_answer=""
+        self.app._focus_deadline=None
+        self.app.set_overlay_preview=lambda enabled: self._preview(enabled)
+        self.app.vision_allowed=False
+        self.app.show_main=lambda:Jarvis.show_main(self.app)
+        self.app.overlay=NovaOverlay(self.app)
+        self.app._show_overlay_if_hidden=lambda:Jarvis._show_overlay_if_hidden(self.app)
+
+    def _preview(self,enabled):
+        self.app.overlay_show_text=bool(enabled)
+        if not enabled:
+            self.app.overlay_last_user=""
+            self.app.overlay_last_answer=""
+
+    def tearDown(self):
+        if hasattr(self,"app"):
+            self.app._closing=True
+            if self.app.overlay.winfo_exists():
+                self.app.overlay.shutdown()
+            self.app.destroy()
+
+    def test_drag_clamps_to_screen_and_dock_resets_position(self):
+        self.assertEqual(clamp_drag_position(-400,9999,1920,1080),(0,752))
+        self.assertEqual(clamp_drag_position(9999,-4,1920,1080),(1576,0))
+        self.app.overlay.show()
+        panel=self.app.overlay
+        panel.update()
+        panel.start_drag(SimpleNamespace(x_root=panel.winfo_x()+12,
+                                        y_root=panel.winfo_y()+10))
+        panel.drag(SimpleNamespace(x_root=-500,y_root=9999))
+        panel.update_idletasks()  # Windows applies geometry asynchronously
+        self.assertEqual(panel.winfo_x(),0)
+        panel.dock_btn.invoke()
+        panel.update()
+        self.assertFalse(panel._manual_position)
+        self.assertEqual(panel.winfo_x(),20)
+
+    def test_privacy_and_whisper_queue_are_displayed(self):
+        self.app.voice_enabled=True
+        self.app.voice.whisper_busy=True
+        self.app.voice.whisper_queue=[b"one",b"two"]
+        self.app.control_allowed=True
+        self.app.vision_allowed=True
+        self.app.overlay.show()
+        self.app.update()
+        self.assertIn("ОЧЕРЕДЬ 2/2",self.app.overlay.listen_detail.cget("text"))
+        self.assertIn("УПРАВЛЕНИЕ: ДОСТУП",self.app.overlay.privacy.cget("text"))
+        self.assertIn("ЗРЕНИЕ*: ДОСТУП",self.app.overlay.privacy.cget("text"))
+        self.assertIsNotNone(self.app.overlay.bind("<Control-Shift-M>"))
+        self.assertIsNotNone(self.app.overlay.bind("<Control-Shift-R>"))
+
+    def test_hide_root_shows_overlay_on_left_and_restores(self):
+        self.app.deiconify()
+        self.app.update()
+        Jarvis.hide_main(self.app)
+        self.app.update()
+        self.assertEqual(self.app.state(),"withdrawn")
+        self.assertEqual(self.app.overlay.state(),"normal")
+        self.assertEqual(self.app.overlay.winfo_x(),20)
+        self.app.overlay.mic_button.invoke()
+        self.app.toggle_voice.assert_called_once()
+        self.app.overlay.restore_btn.invoke()
+        self.app.update()
+        self.assertEqual(self.app.state(),"normal")
+        self.assertEqual(self.app.overlay.state(),"withdrawn")
+
+    def test_root_unmap_shows_overlay_automatically(self):
+        self.app.deiconify()
+        self.app.update()
+        self.app.bind("<Unmap>",lambda ev:Jarvis._main_unmapped(self.app,ev),add="+")
+        self.app.withdraw()
+        self.app.update()
+        time.sleep(.08)
+        self.app.update()
+        self.assertEqual(self.app.overlay.state(),"normal")
+
+    def test_windows_minimize_triggers_the_left_side_overlay(self):
+        self.app.deiconify()
+        self.app.update()
+        self.app.bind("<Unmap>",lambda ev:Jarvis._main_unmapped(self.app,ev),add="+")
+        self.app.iconify()
+        self.app.update()
+        time.sleep(.08)
+        self.app.update()
+        self.assertEqual(self.app.state(),"iconic")
+        self.assertEqual(self.app.overlay.state(),"normal")
+        self.app.show_main()
+        self.app.update()
+        self.assertEqual(self.app.state(),"normal")
+        self.assertEqual(self.app.overlay.state(),"withdrawn")
+
+    def test_overlay_has_live_state_and_one_update_timer(self):
+        self.app.overlay.show()
+        self.app.overlay.show()
+        self.app.update()
+        timer=self.app.overlay._timer_id
+        self.assertIsNotNone(timer)
+        self.assertIn("ВЫКЛ.",self.app.overlay.status_label.cget("text"))
+        self.app.overlay.listen_button.invoke()
+        self.app.f9.assert_called_once()
+        self.app.voice_enabled=True
+        self.app.mic_state.set("Микрофон: включён")
+        self.app.voice.until=time.monotonic()+3
+        self.app.hud_level_at=time.monotonic()
+        self.app.hud_level_value=.06
+        time.sleep(.2)
+        self.app.update()
+        self.assertIn("СЛУШАЮ",self.app.overlay.status_label.cget("text"))
+        self.assertIn("dBFS",self.app.overlay.level.cget("text"))
+        self.app.overlay.hide()
+        self.assertIsNone(self.app.overlay._timer_id)
+        self.assertEqual(self.app.overlay.state(),"withdrawn")
+
+    def test_overlay_preview_is_explicitly_opt_in_and_cleared_on_disable(self):
+        self.app.overlay.show()
+        panel=self.app.overlay
+        self.app.overlay_last_user="Вы: скрытая команда"
+        self.app.overlay_last_answer="NOVA: скрытый ответ"
+        panel.refresh()
+        self.assertNotIn("скрытая команда",panel.last_turn.cget("text"))
+        self.assertFalse(self.app.overlay_show_text)
+        panel.preview_button.invoke()
+        self.assertTrue(self.app.overlay_show_text)
+        self.assertIn("скрытая команда",panel.last_turn.cget("text"))
+        self.assertIn("скрытый ответ",panel.last_turn.cget("text"))
+        panel.preview_button.invoke()
+        self.assertFalse(self.app.overlay_show_text)
+        self.assertFalse(self.app.overlay_last_user)
+        self.assertFalse(self.app.overlay_last_answer)
+        self.assertNotIn("скрытая команда",panel.last_turn.cget("text"))
+
+    def test_focus_timer_appears_without_granting_permissions(self):
+        self.app.modes.mode="study"
+        self.app._focus_deadline=time.monotonic()+121
+        self.app.overlay.show()
+        panel=self.app.overlay
+        self.assertIn("УЧЁБА",panel.context.cget("text"))
+        self.assertIn("ФОКУС",panel.context.cget("text"))
+        self.assertIn("ЗАПРЕТ",panel.privacy.cget("text"))
+
+    def test_overlay_close_restores_main_instead_of_terminating(self):
+        Jarvis.hide_main(self.app)
+        self.app.update()
+        self.app.overlay.restore_main()
+        self.app.update()
+        self.assertFalse(self.app._closing)
+        self.assertEqual(self.app.state(),"normal")
+
+
+if __name__=="__main__":
+    unittest.main()

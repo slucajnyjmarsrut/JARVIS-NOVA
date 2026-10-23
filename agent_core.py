@@ -7,7 +7,10 @@ from typing import Callable
 import json
 import os
 import re
+import ipaddress
+from urllib.parse import urlsplit
 import urllib.request
+from self_improve import BLOCKED, safe_name
 
 
 @dataclass(frozen=True)
@@ -34,11 +37,25 @@ ALLOWED_KINDS = {"open_app", "open_url", "minimize", "maximize", "restore",
 RISKY = {"close_window", "click", "type", "hotkey", "move"}
 AI_ALLOWED = {"open_app","minimize","maximize","restore","zoom_in","zoom_out",
               "volume_up","volume_down","window_status","screen_describe"}
-UNSAFE_APPS = {"powershell", "cmd", "regedit", "terminal", "taskkill", "wscript", "cscript"}
+# Keep voice/AI execution policy aligned with the confirmed-alias learning store.
+# Otherwise e.g. "cmd.exe" and "pwsh" could bypass the small spoken denylist.
+UNSAFE_APPS = BLOCKED
 ALIASES = {"хром": "Google Chrome", "храм": "Google Chrome",
            "браузер": "Google Chrome", "гугл хром": "Google Chrome",
            "стим": "Steam", "дискорд": "Discord", "телеграм": "Telegram",
-           "блокнот": "Notepad", "проводник": "Explorer", "калькулятор": "Calculator"}
+           "блокнот": "Notepad", "проводник": "Explorer", "калькулятор": "Calculator",
+           "файрфокс": "Mozilla Firefox", "мозила": "Mozilla Firefox",
+           "эдж": "Microsoft Edge", "майкрософт эдж": "Microsoft Edge",
+           "пейнт": "Paint", "рисовалка": "Paint",
+           "ворд": "Word", "майкрософт ворд": "Word",
+           "эксель": "Excel", "майкрософт эксель": "Excel",
+           "пауэрпоинт": "PowerPoint", "презентации": "PowerPoint",
+           "влс": "VLC media player", "влц": "VLC media player",
+           "обс": "OBS Studio", "обс студио": "OBS Studio",
+           "спотифай": "Spotify", "зум": "Zoom",
+           "визуал студио код": "Visual Studio Code",
+           "вс код": "Visual Studio Code", "фотошоп": "Adobe Photoshop",
+           "вотсап": "WhatsApp", "вацап": "WhatsApp"}
 WAKE = re.compile(r"^\s*(?:эй|окей|слушай|ну)?\s*(?:джарвис|жарвис|джервис|гарвис)\b[\s,.:;!?-]*", re.I)
 NEGATE = re.compile(r"\b(?:не\s+(?:открывай|закрывай|нажимай|пиши|трогай|запускай|сворачивай)|отмена)\b", re.I)
 
@@ -55,7 +72,8 @@ def parse_local(text: str) -> Plan:
     compound = re.match(r"(?:открой|запусти|включи)\s+(.+?)\s+и\s+(?:увеличь|приблизь)\s+масштаб$",s)
     if compound:
         target=compound[1].strip()
-        if target in UNSAFE_APPS:return Plan(question="Запуск системных оболочек не поддерживается.")
+        if not safe_name(ALIASES.get(target,target)):
+            return Plan(question="Запуск системных оболочек и небезопасных программ не поддерживается.")
         return Plan(steps=[Step("open_app",ALIASES.get(target,target)),Step("zoom_in")])
     if s in {"стоп", "отмена", "прекрати"}: return Plan(answer="Остановлено.")
     if s in {"спасибо", "благодарю"}: return Plan(answer="Пожалуйста.")
@@ -106,28 +124,85 @@ def parse_local(text: str) -> Plan:
         pair=re.split(r"\s+и\s+(?:увеличь|приблизь)\s+масштаб",target,maxsplit=1)
         next_zoom = len(pair)==2
         target=pair[0].strip()
+        # The normalized utterance is for matching commands ONLY. Preserve
+        # the original URL path/query case: /SignIn?Token=ABC is not the
+        # same address as /signin?token=abc on many services.
+        if target.startswith(("http://","https://")):
+            original=re.match(
+                r"^\s*(?:открой|запусти|включи|покажи)\s+(?:мне\s+)?(https?://\S+)",
+                strip_wake(text),flags=re.I)
+            if original:
+                raw_url=original.group(1)
+                target=raw_url.split("://",1)[0].lower()+"://"+raw_url.split("://",1)[1]
         if not target: return Plan(question="Какое приложение открыть?")
         if target in UNSAFE_APPS:
             return Plan(question="Запуск системных оболочек не поддерживается.")
         if target.startswith(("http://","https://")):
+            if not _safe_https_url(target):
+                return Plan(question="Можно открыть только корректную внешнюю HTTPS-ссылку.")
             st=Step("open_url",target)
         else:
-            st=Step("open_app",ALIASES.get(target,target))
+            application=ALIASES.get(target,target)
+            if not safe_name(application):
+                return Plan(question="Запуск этой системной оболочки или небезопасного пути не поддерживается.")
+            st=Step("open_app",application)
         steps=[st]+([Step("zoom_in")] if next_zoom else [])
         return Plan(steps=steps)
     if s in {"открой", "запусти", "включи", "нажми"}:
         return Plan(question="Уточни, что именно нужно открыть или нажать.")
     return Plan(question="Не понял команду. Уточни действие или название программы.")
 
+def _safe_https_url(address: str) -> bool:
+    """Validate an external HTTPS browser destination without executing it.
+
+    Reject localhost, private/reserved IPs, credentials, odd ports, embedded
+    backslashes or whitespace, and malformed authorities. Browsers can
+    interpret these differently than Python's URL parser.
+    """
+    if not isinstance(address,str) or not address.startswith("https://"):
+        return False
+    if not 9<len(address)<=1000 or re.search(r"[\\\\\s\x00-\x1f\x7f]",address):
+        return False
+    try:
+        url=urlsplit(address)
+        host=url.hostname
+        if (url.scheme!="https" or not host or url.username is not None
+                or url.password is not None or url.port not in (None,443)
+                or url.fragment.startswith("//")):
+            return False
+        if "%" in url.netloc or "#" in url.netloc or "@" in url.netloc:
+            return False
+        if host in ("localhost","localhost.localdomain") or host.endswith((".localhost",".local",".internal",".test",".invalid")):
+            return False
+        try:
+            ip=ipaddress.ip_address(host)
+        except ValueError:
+            # Require valid DNS labels, but allow internationalized public
+            # domains after normalizing them to their ASCII IDNA form.
+            try:
+                ascii_host=host.encode("idna").decode("ascii").lower()
+            except UnicodeError:
+                return False
+            labels=ascii_host.split(".")
+            if (len(ascii_host)>253 or len(labels)<2 or
+                    any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",part)
+                        for part in labels)):
+                return False
+            return len(labels[-1])>=2 and any(ch.isalpha() for ch in labels[-1])
+        return ip.is_global
+    except (ValueError,TypeError):
+        return False
+
+
 def validate_step(s: Step) -> None:
     if s.kind not in ALLOWED_KINDS: raise ValueError("Неподдерживаемое действие")
     if len(s.value)>1000: raise ValueError("Слишком длинный аргумент")
     if s.kind in {"click","move"} and not (0<=s.x<=16384 and 0<=s.y<=16384):
         raise ValueError("Некорректные координаты")
-    if s.kind=="open_app" and (not s.value or normalize(s.value) in UNSAFE_APPS):
+    if s.kind=="open_app" and not safe_name(s.value):
         raise ValueError("Не разрешён запуск этой программы")
-    if s.kind=="open_url" and not s.value.startswith("https://"):
-        raise ValueError("Разрешён только HTTPS")
+    if s.kind=="open_url" and not _safe_https_url(s.value):
+        raise ValueError("Разрешены только корректные внешние HTTPS-ссылки")
     if s.kind=="hotkey" and s.value not in {"enter","tab","esc","space","ctrl+c","ctrl+v","ctrl+a"}:
         raise ValueError("Недопустимое сочетание клавиш")
 
@@ -166,7 +241,7 @@ def ask_ai_for_plan(text: str, engine: str="none", model: str="") -> Plan:
     try:
         if engine == "ollama":
             result=request_json("http://127.0.0.1:11434/api/chat",
-              {"model":model or "qwen3-vl:2b","stream":False,"format":"json",
+              {"model":model or "qwen3-vl:2b-instruct","stream":False,"format":"json",
                "messages":[{"role":"system","content":system},{"role":"user","content":text}]})
             raw=result.get("message",{}).get("content","{}")
         elif engine == "openai":

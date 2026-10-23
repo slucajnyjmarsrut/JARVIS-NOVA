@@ -40,6 +40,16 @@ class InstallerContractTests(unittest.TestCase):
         self.assertNotIn('download',files.lower())
         self.assertNotIn('\n[UninstallDelete]\n',text)
 
+    def test_update_version_agrees_with_installer_and_windows_metadata(self):
+        from auto_update import APP_VERSION
+        iss=(ROOT/'installer/JarvisNova.iss').read_text(encoding='utf-8')
+        packaged=(ROOT/'assets/APP_RELEASE_VERSION.txt').read_text('ascii').strip()
+        self.assertEqual(APP_VERSION,packaged)
+        self.assertIn(f'#define AppVersion "{APP_VERSION}-dev"',iss)
+        self.assertIn(f'OutputBaseFilename=JARVIS-NOVA-{APP_VERSION}-OFFLINE-SETUP-DEV',iss)
+        self.assertIn(f'VersionInfoVersion={APP_VERSION}.0',iss)
+        self.assertIn('JarvisNovaUpdater.exe',iss)
+
     def test_real_exe_and_installer_gates_are_not_mocked(self):
         workflow=(ROOT/'.github/workflows/windows-offline.yml').read_text(encoding='utf-8')
         self.assertIn('verify_installer_payload.py',workflow)

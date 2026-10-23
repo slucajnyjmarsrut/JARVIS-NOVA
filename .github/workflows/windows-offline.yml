@@ -1,8 +1,8 @@
-name: JARVIS NOVA offline Windows build - REAL models, fail closed
+name: JARVIS NOVA 0.5.18 learning safety candidate
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [jarvis, dev/trimodal-integration-2026-10]
+    branches: [jarvis, fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, fix/video-studio-quality-regressions-2026-10, feat/post-montage-review-recut-2026-10, feat/visual-audio-quality-audit-2026-10, fix/full-system-regressions-2026-10, feat/safe-self-repair-windows-triple-2026-10, feat/verified-unattended-self-update-2026-10, fix/auto-update-endtoend-bughunt-2026-10, fix/media-probe-silent-video-2026-10, fix/audience-review-file-safety-2026-10, fix/audience-profile-validation-recovery-2026-10, fix/url-command-and-recovery-2026-10, fix/learning-data-preservation-2026-10]
     paths:
       - '**/*.py'
       - '**/*.ps1'
@@ -10,6 +10,128 @@ on:
       - '*.spec'
       - 'requirements-windows.txt'
       - '.github/workflows/windows-offline.yml'
+      - 'self_improve.py'
+      - 'tests/test_self_improve.py'
+      - 'self_repair.py'
+      - 'auto_update.py'
+      - 'scripts/split_release_installer.py'
+      - 'updater_worker.py'
+      - 'updater_launcher.py'
+      - 'tests/test_auto_update.py'
+      - 'assets/APP_RELEASE_VERSION.txt'
+      - 'tests/test_self_repair.py'
+      - 'silero_engine.py'
+      - 'tests/test_real_model_adapters.py'
+      - 'offline_e2e_test.py'
+      - 'vision_engine.py'
+      - 'tests/test_vision_chat_protocol.py'
+      - 'bundled_vision_runtime.py'
+      - 'scripts/prepare_ollama.ps1'
+      - 'jarvis_nova.spec'
+      - 'tests/test_trimodal_integration.py'
+      - 'tests/test_bootstrap.py'
+      - 'bootstrap.py'
+      - 'voice_engine.py'
+      - 'agent_core.py'
+      - 'tests/test_agent.py'
+      - 'tests/test_self_improve.py'
+      - 'tests/test_installer_contract.py'
+      - 'tests/test_vision_chat_protocol.py'
+      - 'online_media.py'
+      - 'editing_knowledge.py'
+      - 'viral_studio_ui.py'
+      - 'post_montage_review.py'
+      - 'video_frame_audit.py'
+      - 'video_audio_audit.py'
+      - 'video_quality_gate.py'
+      - 'tests/test_video_quality_modules.py'
+      - 'video_forecast.py'
+      - 'tests/test_audience_review_files.py'
+      - 'tests/test_post_montage_review.py'
+      - 'tests/test_online_media.py'
+      - 'tests/test_editing_knowledge.py'
+      - 'tests/test_faster_app_routes.py'
+      - 'smart_montage.py'
+      - 'tests/test_smart_montage.py'
+      - 'tests/test_autonomous_montage.py'
+      - 'viral_studio.py'
+      - 'main.py'
+      - 'build_models.py'
+      - 'verify_models.py'
+      - 'tests/test_russian_small.py'
+      - 'asr_quality.py'
+      - 'tests/test_asr_quality.py'
+      - 'tests/test_dark_ui_fast_replies.py'
+      - 'docs/NOVA_RUSSIAN_ASR_0_5_15_RU.md'
+      - 'speech_capture.py'
+      - 'tests/test_quiet_voice_capture.py'
+      - 'tests/test_fast_voice.py'
+      - 'scripts/generate_installer_art.py'
+      - 'tests/test_installer_appearance.py'
+      - 'docs/NOVA_LEFT_FAST_VOICE_0_5_14_RU.md'
+      - 'docs/NOVA_QUIET_VOICE_0_5_13_RU.md'
+      - 'whisper_mode.py'
+      - 'speaker.py'
+      - 'speech_output.py'
+      - 'tests/test_natural_voice.py'
+      - 'tests/test_shutdown.py'
+      - 'tests/test_no_camera.py'
+      - 'camera_capture.py'
+      - 'trimodal_service.py'
+      - 'trimodal_pipeline.py'
+      - 'requirements-windows.txt'
+      - 'jarvis_nova.spec'
+      - 'docs/NOVA_NO_WEBCAM_0_5_12_RU.md'
+      - 'docs/NOVA_NATURAL_VOICE_0_5_11_RU.md'
+      - 'tests/test_whisper_mode.py'
+      - 'docs/NOVA_WHISPER_REPLIES_0_5_10_RU.md'
+      - 'tests/test_microphone_recovery.py'
+      - 'tests/test_microphone_ui_reconnect.py'
+      - 'docs/NOVA_MIC_RECOVERY_0_5_9_RU.md'
+      - 'local_chat.py'
+      - 'tests/test_voice_fallback.py'
+      - 'tests/test_voice_routing.py'
+      - 'tests/test_conversation_followup.py'
+      - 'docs/VOICE_STABILITY_0_5_2_RU.md'
+      - 'tests/test_local_chat.py'
+      - 'installer/JarvisNova.iss'
+      - 'scripts/verify_installer_payload.py'
+      - 'scripts/test_installer.ps1'
+      - 'work_modes.py'
+      - 'game_catalog.py'
+      - 'main.py'
+      - 'nova_ui.py'
+      - 'nova_overlay.py'
+      - 'overlay_commands.py'
+      - 'tests/test_overlay_commands.py'
+      - 'tests/test_voice_ready.py'
+      - 'docs/NOVA_VOICE_OVERLAY_0_5_8_RU.md'
+      - 'tests/test_nova_overlay.py'
+      - 'tests/test_whisper_queue.py'
+      - 'tests/test_voice_queue_polish.py'
+      - 'docs/NOVA_OVERLAY_POLISH_0_5_6_RU.md'
+      - 'docs/NOVA_OVERLAY_VOICE_0_5_5_RU.md'
+      - 'tests/test_nova_ui.py'
+      - 'tests/test_voice_telemetry.py'
+      - 'docs/NOVA_HUD_LIVE_0_5_4_RU.md'
+      - 'docs/NOVA_FUTURISTIC_UI_0_5_3_RU.md'
+      - 'viral_studio.py'
+      - 'viral_studio_ui.py'
+      - 'video_forecast.py'
+      - 'creator_experts.py'
+      - 'channel_audience.py'
+      - 'tests/test_game_video_modes.py'
+      - 'tests/test_audience_pipeline.py'
+      - 'tests/test_viral_studio.py'
+      - 'tests/test_viral_integration.py'
+      - 'tests/test_work_modes.py'
+      - 'tests/test_audience_first.py'
+      - 'creator_experts.py'
+      - 'video_forecast.py'
+      - 'scripts/verify_offline_distribution.ps1'
+      - 'docs/MODES_VIDEO_GAMES_RU.md'
+      - 'docs/AUDIENCE_FIRST_RU.md'
+      - 'scripts/prepare_ffmpeg.ps1'
   workflow_dispatch:
     inputs:
       ollama_release_tag:
@@ -50,34 +172,104 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Torch installation failed' }
           python -m pip install -r requirements-windows.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows app dependency installation failed' }
-      - name: Run unit suite (NOT inference)
-        run: python -m unittest discover -s tests -v
+      - name: Gate online-license security, offline documentation, fast local routes
+        run: python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
+      - name: Three complete offline unit suite passes, including HUD and video quality
+        shell: pwsh
+        timeout-minutes: 45
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "FULL OFFLINE UNIT SUITE $pass / 3"
+            python -m unittest discover -s tests -v
+            if ($LASTEXITCODE -ne 0) { throw "Offline tests failed on pass $pass" }
+          }
       - name: Obtain and check Vosk, Whisper and Silero before packaging
         timeout-minutes: 40
         run: python build_models.py
-      - name: Real Whisper, Vosk and Silero checkpoint verification
-        timeout-minutes: 30
-        run: python verify_models.py
+      - name: Three real Whisper, Vosk and Silero checkpoint verification passes
+        shell: pwsh
+        timeout-minutes: 70
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "REAL OFFLINE MODEL VERIFICATION $pass / 3"
+            python verify_models.py
+            if ($LASTEXITCODE -ne 0) { throw "Real model check failed pass $pass" }
+          }
       - name: Download official portable Ollama and full Qwen Vision weights
         timeout-minutes: 75
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/prepare_ollama.ps1 -Tag "${{ inputs.ollama_release_tag || 'latest' }}"
-      - name: Real Whisper-to-Vision-to-Silero synthetic E2E (no mocks)
-        timeout-minutes: 35
-        run: python offline_e2e_test.py
+      - name: Three real Whisper-to-Vision-to-Silero E2E passes (no mocks)
+        shell: pwsh
+        timeout-minutes: 75
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "REAL WHISPER-VISION-SILERO E2E $pass / 3"
+            python offline_e2e_test.py
+            if ($LASTEXITCODE -ne 0) { throw "Actual model inference failed on pass $pass" }
+          }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
+      - name: Generate original dark NOVA installer wizard graphics
+        run: python scripts/generate_installer_art.py
+      - name: Include audited FFmpeg + FFprobe in OFFLINE installer for Video Studio
+        timeout-minutes: 30
+        shell: pwsh
+        run: |
+          ./scripts/prepare_ffmpeg.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Offline FFmpeg download or SHA256 audit failed' }
+          foreach ($name in @('ffmpeg.exe','ffprobe.exe')) {
+            if (!(Test-Path (Join-Path 'assets/bin' $name))) { throw "Video module missing $name" }
+          }
+      - name: Three real FFmpeg montage and audience regression passes on Windows
+        timeout-minutes: 45
+        shell: pwsh
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "REAL FFMPEG MONTAGE PASS $pass / 3"
+            foreach ($suite in @('test_viral*.py','test_audience_pipeline.py',
+                                 'test_game_video_modes.py','test_smart_montage.py',
+                                 'test_post_montage_review.py',
+                                 'test_audience_review_files.py',
+                                 'test_video_quality_modules.py',
+                                 'test_self_repair.py',
+                                 'test_work_modes.py',
+                                 'test_self_improve.py',
+                                 'test_auto_update.py',
+                                 'test_autonomous_montage.py')) {
+              python -m unittest discover -s tests -p $suite -v
+              if ($LASTEXITCODE -ne 0) { throw "Video suite $suite failed in pass $pass" }
+            }
+          }
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
-      - name: Execute packaged EXE self-test and actual model E2E
-        timeout-minutes: 45
+      - name: Build standalone verified updater worker EXE
         shell: pwsh
-        run: ./scripts/verify_offline_distribution.ps1
+        timeout-minutes: 25
+        run: |
+          python -m PyInstaller --onefile --clean --noconfirm --name JarvisNovaUpdater --distpath dist/updater updater_launcher.py
+          if ($LASTEXITCODE -ne 0) { throw 'Updater helper build failed' }
+          if (!(Test-Path dist/updater/JarvisNovaUpdater.exe)) { throw 'No verified updater helper binary' }
+          foreach ($pass in 1..3) {
+            & dist/updater/JarvisNovaUpdater.exe --help | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Updater process smoke check failed $pass" }
+          }
+      - name: Three packaged EXE self-test, video render and actual model E2E passes
+        timeout-minutes: 90
+        shell: pwsh
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "PACKAGED EXE + REAL MODELS $pass / 3"
+            ./scripts/verify_offline_distribution.ps1
+            if (!$?) { throw "Packaged test failed in pass $pass" }
+          }
       - name: Verify packaged AMD64 app and all THREE offline model stores with blob digests
         timeout-minutes: 15
         run: python scripts/verify_installer_payload.py --dir dist/JarvisNova
-      - name: Install official Inno Setup via Chocolatey
+      - name: Install official Inno Setup 6.6+ (dark mode) via Chocolatey
         timeout-minutes: 15
         shell: pwsh
         run: |
@@ -89,16 +281,24 @@ jobs:
         run: |
           $compiler='C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
           if (!(Test-Path $compiler)) { throw 'No Inno Setup compiler' }
+          # ISCC.exe FileVersion can report 0.0.0.0 on Chocolatey, although
+          # Chocolatey installed Inno Setup 6.7.1. Let the actual compiler
+          # parse WizardStyle=modern dark and fail if unsupported.
           & $compiler 'installer\JarvisNova.iss'
           if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
           $setups=@(Get-ChildItem 'dist/installer/*.exe')
           if ($setups.Count -ne 1) { throw 'Expected exactly one installer EXE' }
           Write-Host "Real Windows installer bytes: $($setups[0].Length)"
           Get-FileHash $setups[0].FullName -Algorithm SHA256 | Format-List
-      - name: Test single EXE installer, real installed E2E, uninstall and user-data retention
+      - name: Three real Windows install, model E2E, uninstall and data-retention passes
         shell: pwsh
-        timeout-minutes: 50
-        run: ./scripts/test_installer.ps1
+        timeout-minutes: 120
+        run: |
+          for ($pass=1; $pass -le 3; $pass++) {
+            Write-Host "FULL WINDOWS INSTALLER + UNINSTALL $pass / 3"
+            ./scripts/test_installer.ps1
+            if (!$?) { throw "Real installation test failed pass $pass" }
+          }
       - name: Validate model store (FULL checksums at build-time)
         shell: pwsh
         run: |
@@ -114,13 +314,13 @@ jobs:
         shell: pwsh
         run: |
           @'
-          This CI build exercises genuine Whisper, Silero and local multimodal Vision on synthetic inputs inside a PyInstaller Windows EXE.
-          CI does NOT prove real microphone, camera, Bluetooth, audio output, foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
+          This CI runs the unit suites, bundled models, FFmpeg montage, packaged executable, and real installation/uninstall verifications THREE times on hosted Windows. Content quality, source relevance, actual Commons availability, screen appearance, real microphone and user-experience tests still require hardware/manual verification.
+          CI exercises Tk widgets and HUD callbacks but does NOT prove real microphone, camera, Bluetooth, audio output, a user-visible foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-DEV-UNVERIFIED-WINDOWS-INSTALLER
+          name: JARVIS-NOVA-0.5.18-LEARNING-SAFE-DEV-UNVERIFIED-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt

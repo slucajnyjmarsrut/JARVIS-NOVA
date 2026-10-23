@@ -7,6 +7,7 @@ text, credentials or file paths are persisted. Aliases can be removed or reset.
 from __future__ import annotations
 
 from difflib import SequenceMatcher
+import hashlib
 from pathlib import Path
 import json
 import os
@@ -61,47 +62,92 @@ class LearningStore:
         self.lock = threading.RLock()
         self.aliases: dict[str, str] = {}
         self.stats: dict[str, dict[str, int]] = {}
+        self._loaded_digest: str | None = None
+        self._read_only = False
         self._load()
 
     def _load(self):
+        if self.path.is_symlink():
+            self._read_only=True
+            return
         if not self.path.exists():
             return
         try:
-            if self.path.stat().st_size > 40_000:
+            if not self.path.is_file() or not 0 < self.path.stat().st_size <= 40_000:
+                self._read_only=True
                 return
-            doc = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(doc, dict) or doc.get("version") != 1:
+            payload=self.path.read_bytes()
+            if len(payload)>40_000:
+                self._read_only=True
                 return
-            aliases = doc.get("aliases", {})
-            if isinstance(aliases, dict):
-                for k, v in list(aliases.items())[:MAX_ALIASES]:
-                    if safe_name(k) and safe_name(v):
-                        self.aliases[canonicalize(k)] = v.strip()
-            stats = doc.get("stats", {})
-            if isinstance(stats, dict):
-                for k, v in stats.items():
-                    if not isinstance(k, str) or not re.fullmatch(r"[a-z_]{2,24}", k):
-                        continue
-                    if isinstance(v, dict):
-                        self.stats[k] = {}
-                        for label in ("ok", "fail"):
-                            n = v.get(label, 0)
-                            self.stats[k][label] = max(0, min(n, MAX_COUNT)) if type(n) is int else 0
-        except (ValueError, UnicodeError, OSError, TypeError):
-            # Ignore corrupted state; never let a user data file block startup.
+            doc=json.loads(payload.decode("utf-8"))
+            if not isinstance(doc,dict) or type(doc.get("version")) is not int or doc["version"]!=1:
+                self._read_only=True
+                return
+            aliases=doc.get("aliases",{})
+            stats=doc.get("stats",{})
+            if not isinstance(aliases,dict) or not isinstance(stats,dict):
+                self._read_only=True
+                return
+            self._loaded_digest=hashlib.sha256(payload).hexdigest()
+            if len(aliases)>MAX_ALIASES:
+                self._read_only=True
+            for key,value in list(aliases.items())[:MAX_ALIASES]:
+                if safe_name(key) and safe_name(value):
+                    self.aliases[canonicalize(key)]=value.strip()
+                else:
+                    self._read_only=True
+            for key,values in stats.items():
+                if not isinstance(key,str) or not re.fullmatch(r"[a-z_]{2,24}",key):
+                    self._read_only=True
+                    continue
+                if not isinstance(values,dict):
+                    self._read_only=True
+                    continue
+                self.stats[key]={}
+                for label in ("ok","fail"):
+                    n=values.get(label,0)
+                    if type(n) is not int or not 0<=n<=MAX_COUNT:
+                        self._read_only=True
+                    self.stats[key][label]=max(0,min(n,MAX_COUNT)) if type(n) is int else 0
+        except (ValueError,UnicodeError,OSError,TypeError):
+            # Starting safely is fine, but silently writing an empty replacement
+            # after startup would destroy the owner's damaged learning file.
+            self._read_only=True
             return
 
+    def _check_unchanged(self):
+        if self._read_only or self.path.is_symlink():
+            raise RuntimeError("Настройки обучения повреждены или небезопасны; нужна ручная проверка")
+        if self.path.exists():
+            if self._loaded_digest is None or not self.path.is_file():
+                raise RuntimeError("Файл обучения изменён другим процессом")
+            if self.path.stat().st_size>40_000:
+                raise RuntimeError("Файл обучения превышает безопасный предел")
+            data=self.path.read_bytes()
+            if hashlib.sha256(data).hexdigest()!=self._loaded_digest:
+                raise RuntimeError("Файл обучения изменён другим процессом")
+        elif self._loaded_digest is not None:
+            raise RuntimeError("Файл обучения был удалён другим процессом")
+
     def _save(self):
-        doc = {"version": 1, "aliases": self.aliases, "stats": self.stats}
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, filename = tempfile.mkstemp(prefix=".jarvis-learning-", suffix=".tmp",
-                                       dir=str(self.path.parent))
+        self._check_unchanged()
+        doc={"version":1,"aliases":self.aliases,"stats":self.stats}
+        payload=json.dumps(doc,ensure_ascii=False,indent=2,sort_keys=True)
+        digest=hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        self.path.parent.mkdir(parents=True,exist_ok=True)
+        fd,filename=tempfile.mkstemp(prefix=".jarvis-learning-",suffix=".tmp",
+                                      dir=str(self.path.parent))
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump(doc, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            with os.fdopen(fd,"w",encoding="utf-8",newline="\n") as stream:
+                stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(filename, self.path)
+            # Recheck AFTER the temp write too; do not replace a file another
+            # JARVIS instance updated while the temp file was being written.
+            self._check_unchanged()
+            os.replace(filename,self.path)
+            self._loaded_digest=digest
         finally:
             if os.path.exists(filename):
                 os.unlink(filename)
@@ -120,30 +166,59 @@ class LearningStore:
             k = canonicalize(spoken)
             if k not in self.aliases and len(self.aliases) >= MAX_ALIASES:
                 raise ValueError("Слишком много выученных названий")
-            self.aliases[k] = official.strip()
-            self._save()
+            previous=self.aliases.get(k)
+            self.aliases[k]=official.strip()
+            try:
+                self._save()
+            except Exception:
+                if previous is None:
+                    self.aliases.pop(k,None)
+                else:
+                    self.aliases[k]=previous
+                raise
 
     def unlearn(self, spoken: str):
         with self.lock:
-            if self.aliases.pop(canonicalize(spoken), None) is not None:
+            k=canonicalize(spoken)
+            previous=self.aliases.pop(k,None)
+            if previous is None:
+                return False
+            try:
                 self._save()
-                return True
-            return False
+            except Exception:
+                self.aliases[k]=previous
+                raise
+            return True
 
     def feedback(self, action_kind: str, success: bool):
         # Aggregate only action types, never texts/screenshots/URLs or arguments.
         if not re.fullmatch(r"[a-z_]{2,24}", action_kind):
             return
         with self.lock:
-            score = self.stats.setdefault(action_kind, {"ok": 0, "fail": 0})
-            key = "ok" if success else "fail"
-            score[key] = min(MAX_COUNT, score.get(key, 0) + 1)
-            self._save()
+            # Statistical feedback is optional. An inaccessible or damaged
+            # local state must not crash a voice command that already worked.
+            if self._read_only:
+                return
+            previous=self.stats.get(action_kind)
+            score=dict(previous) if previous is not None else {"ok":0,"fail":0}
+            key="ok" if success else "fail"
+            score[key]=min(MAX_COUNT,score.get(key,0)+1)
+            self.stats[action_kind]=score
+            try:
+                self._save()
+            except (OSError,RuntimeError):
+                if previous is None:
+                    self.stats.pop(action_kind,None)
+                else:
+                    self.stats[action_kind]=previous
+                return
 
     def summary(self) -> str:
         with self.lock:
             entries = sorted(self.stats.items(), key=lambda item: -item[1].get("fail", 0))
             lines = [f"Выучено названий программ: {len(self.aliases)}"]
+            if self._read_only:
+                lines.append("Файл обучения требует ручной проверки; запись отключена для защиты данных.")
             for label, values in entries[:10]:
                 lines.append(f"{label}: успешно {values.get('ok', 0)}, ошибки {values.get('fail', 0)}")
             lines.append("Изменения применяются только к названиям программ после подтверждения.")
@@ -152,9 +227,16 @@ class LearningStore:
 
     def reset(self):
         with self.lock:
+            old_aliases=self.aliases.copy()
+            old_stats={k:v.copy() for k,v in self.stats.items()}
             self.aliases.clear()
             self.stats.clear()
-            self._save()
+            try:
+                self._save()
+            except Exception:
+                self.aliases=old_aliases
+                self.stats=old_stats
+                raise
 
 
 def propose_installed_name(query: str, installed: list[str]) -> str | None:
