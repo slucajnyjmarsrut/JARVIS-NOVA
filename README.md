@@ -1,7 +1,7 @@
 # JARVIS NOVA — автономный голосовой помощник Windows
 
-**Актуальная линия разработки: 0.5.17-dev**, Windows 10/11 x64, русский язык.
-Это активная **feature-ветка**; проверить опубликованные версии в default-ветке отдельно.
+**Актуальная линия разработки: 0.5.18-dev** в рабочей ветке `jarvis`, Windows 10/11 x64, русский язык.
+Код версии 0.5.18 перенесён из `fix/learning-data-preservation-2026-10` с сохранением истории. Ветка `main` остаётся на более старой версии.
 
 > **Передача проекта в новый чат / новую GitHub-ветку:**
 > [Полная инструкция на русском — текущее состояние, архитектура, права, запреты и план работ](docs/START_NEW_CHAT_JARVIS_NOVA_RU.md).
@@ -18,11 +18,12 @@
 
 ## Установка Windows (не нужен Python на ПК пользователя)
 
-Полный **офлайн-установщик 0.5.17-dev успешно собран и проверен в GitHub Actions**:
+**Версия 0.5.18 успешно прошла полный CI на исходной ветке до переноса в `jarvis`**:
 
-- [Настоящий Windows установщик 0.5.17 — GitHub Actions run SUCCESS](https://github.com/slucajnyjmarsrut/JARVIS-NOVA/actions/runs/39411345988)
-- Артефакт: `JARVIS-NOVA-0.5.17-DEV-UNVERIFIED-WINDOWS-INSTALLER`, ZIP ≈2,65 ГБ. Открыть run → **Artifacts** → скачать ZIP → извлечь EXE → запустить.
-- [144 Windows voice/UI теста — SUCCESS](https://github.com/slucajnyjmarsrut/JARVIS-NOVA/actions/runs/39411316007)
+- [Полная сборка 0.5.18 с Windows-установщиком — SUCCESS](https://github.com/slucajnyjmarsrut/JARVIS-NOVA/actions/runs/39876497861).
+- Артефакт: `JARVIS-NOVA-0.5.18-LEARNING-SAFE-DEV-UNVERIFIED-INSTALLER`, ZIP 2 663 829 579 байт (срок хранения до 30 октября 2026 г.). Открыть run → **Artifacts** → скачать ZIP → извлечь EXE. Это тестовая, не публичная версия.
+- [Быстрые Windows тесты 0.5.18 — SUCCESS](https://github.com/slucajnyjmarsrut/JARVIS-NOVA/actions/runs/39876497821).
+- В ветке `jarvis` добавлен ранний синтаксический анализ всех PowerShell-скриптов перед долгой сборкой. Новые результаты CI `jarvis` проверять отдельно: [Actions](https://github.com/slucajnyjmarsrut/JARVIS-NOVA/actions?query=branch%3Ajarvis).
 - [GitHub Releases](https://github.com/slucajnyjmarsrut/JARVIS-NOVA/releases) — пока **нет опубликованных выпусков**.
 
 В `.github/workflows/windows-offline.yml` проверяются реальные офлайн-модели, PyInstaller, полная установленная программа, видеостудия, uninstall и контрольные суммы файлов. **Ни CI, ни тестовые синтетические аудиофайлы не гарантируют качество речи на реальном микрофоне пользователя.**
