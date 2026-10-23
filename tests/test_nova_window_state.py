@@ -45,6 +45,25 @@ class LayoutStorageTests(unittest.TestCase):
             "junk","468x810+1434+135",1920,1080),
             "468x810+1434+135")
 
+    def test_one_hundred_thousand_screen_geometry_cases(self):
+        # Deterministic property stress, not 100k distinct human voice trials.
+        import re
+        pattern=re.compile(r"^(\\d+)x(\\d+)\\+(\\d+)\\+(\\d+)$")
+        for case in range(100_000):
+            width=1+(case*977)%3840
+            height=1+(case*613)%2160
+            value=(f"{320+case%580}x{380+case%721}+"
+                   f"{(case*73)%12000}+{(case*337)%12000}")
+            result=safe_window_geometry(value,"334x242+0+0",
+                                         width,height,fixed=bool(case%2))
+            match=pattern.fullmatch(result)
+            self.assertIsNotNone(match)
+            w,h,x,y=(int(part) for part in match.groups())
+            self.assertGreaterEqual(x,0)
+            self.assertGreaterEqual(y,0)
+            self.assertLessEqual(x+w,width)
+            self.assertLessEqual(y+h,height)
+
     def test_tiny_display_cannot_leave_unreachable_window(self):
         self.assertEqual(safe_window_geometry(
             "468x810+400+500","468x810+0+0",300,200),

@@ -57,7 +57,7 @@ class CompactGuiTests(unittest.TestCase):
         self.assertTrue(self.app.hud_minimize_button.winfo_exists())
         self.assertTrue(self.app.history.winfo_exists())
         self.assertEqual(self.app.history.cget("state"),"disabled")
-        self.assertIn("РАСПОЗНАНО",self.app.hud_last_transcript.cget("text"))
+        self.assertIn("РАСПОЗНАНО",self.app.hud_transcript.get())
         self.assertLessEqual(int(self.app.hud_reactor.cget("height")),150)
 
     def test_minimize_button_opens_conversation_bubble(self):

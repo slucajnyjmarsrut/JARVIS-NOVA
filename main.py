@@ -25,12 +25,13 @@ class Jarvis(tk.Tk):
         self.title("JARVIS NOVA")
         self._ui_layout=load_layout()
         default=compact_geometry(self.winfo_screenwidth(),self.winfo_screenheight())
-        self.geometry(safe_window_geometry(
+        initial_geometry=safe_window_geometry(
             self._ui_layout.get("main"),default,
-            self.winfo_screenwidth(),self.winfo_screenheight()))
+            self.winfo_screenwidth(),self.winfo_screenheight())
+        self.geometry(initial_geometry)
         self.minsize(min(385,self.winfo_screenwidth()),
                      min(600,self.winfo_screenheight()))
-        self._last_normal_geometry=self.geometry()
+        self._last_normal_geometry=initial_geometry
         self.configure(bg="#070D17")
         # Keep Windows' real minimize/maximize/close buttons, but request
         # a dark native titlebar so it doesn't clash with NOVA's dark HUD.
@@ -1043,7 +1044,9 @@ class Jarvis(tk.Tk):
     def close(self):
         # WM_DELETE_WINDOW is a *complete exit*, never "hide to tray".
         if self._closing:return
-        self.save_window_layout()
+        # Also safe when close() is invoked by a lightweight test controller.
+        saver=getattr(self,"save_window_layout",None)
+        if callable(saver):saver()
         self._closing=True
         self._shutdown.set()  # prevent slow model initialization reopening the mic
         overlay=getattr(self,"overlay",None)
