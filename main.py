@@ -132,6 +132,11 @@ class Jarvis(tk.Tk):
             recognition_menu.add_radiobutton(
                 label=label,variable=self._recognition_mode,value=mode,
                 command=lambda selected=mode:self.voice.set_recognition_mode(selected))
+        recognition_menu.add_separator()
+        recognition_menu.add_command(label="Выбрать микрофон…",command=self.select_microphone)
+        recognition_menu.add_command(label="Тест сигнала…",command=self.test_microphone)
+        recognition_menu.add_command(label="Чувствительность голоса…",
+                                     command=self.adjust_sensitivity)
         menu.add_cascade(label="Распознавание речи",menu=recognition_menu)
         ai=tk.Menu(menu,tearoff=False)
         for title,choice in [("Свободный разговор (встроенная Qwen, офлайн)","bundled"),
@@ -158,6 +163,7 @@ class Jarvis(tk.Tk):
         learning_menu.add_command(label="Самовосстановление: проверить и исправить настройки…",
                                   command=self.self_repair_now)
         menu.add_cascade(label="Самоулучшение",menu=learning_menu)
+        menu.add_command(label="Возможности JARVIS NOVA",command=self.show_capabilities)
         menu.add_command(label="Стоп/Выключить микрофон",command=self.toggle_voice)
         # The native Tk menu bar is bright on Windows and duplicates the
         # LEFT control rail. Keep every command in a pop-up from the sidebar.
@@ -324,6 +330,17 @@ class Jarvis(tk.Tk):
             self.voice.start();self.voice_enabled=True
             self.status.set("Включаю микрофон…")
             self.mic_state.set("Микрофон: подключается…")
+
+    def adjust_sensitivity(self):
+        """Keep advanced microphone gain reachable from compact UI's F10."""
+        if self._closing:return
+        current=float(getattr(self.voice,"sensitivity",1.2))
+        level=simpledialog.askfloat(
+            "Голос JARVIS", "Чувствительность (0.75–2.0):",
+            initialvalue=current,minvalue=.75,maxvalue=2.0,parent=self)
+        if level is not None:
+            self.voice.set_sensitivity(level)
+            self.status.set(f"Чувствительность микрофона: {level:.2f}×")
 
     def select_microphone(self):
         """Allow Windows users to choose the actual input, not only OS default."""

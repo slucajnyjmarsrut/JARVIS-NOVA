@@ -43,6 +43,15 @@ class RealCompactBootTests(TestCase):
                     self.assertTrue(app.history.winfo_exists())
                     self.assertTrue(app.overlay.winfo_exists())
                     self.assertEqual(app.overlay.state(),"withdrawn")
+                    # Compact layout retains access to microphone sensitivity.
+                    with patch("main.simpledialog.askfloat",return_value=1.55):
+                        app.adjust_sensitivity()
+                    voice.return_value.set_sensitivity.assert_called_with(1.55)
+                    self.assertIn("1.55",app.status.get())
+                    voice.return_value.set_sensitivity.reset_mock()
+                    with patch("main.simpledialog.askfloat",return_value=None):
+                        app.adjust_sensitivity()
+                    voice.return_value.set_sensitivity.assert_not_called()
                     app.hide_main()
                     app.update()
                     self.assertEqual(app.state(),"withdrawn")
