@@ -534,6 +534,9 @@ class Voice:
                     recognizer=KaldiRecognizer(model,16000)
                     recognizer.SetWords(True)
                     audio_queue=queue.Queue(maxsize=60)
+                    received_frames=[0]  # callback-owned monotonic frame IDs
+                    processed_frame=0
+                    last_loss_warning_at=0.0
                     segment.clear()
                     pre_roll.clear()
                     vosk_parts.clear()
@@ -547,11 +550,18 @@ class Voice:
                         raise ValueError("Микрофон сообщает неверную частоту дискретизации")
                     pcm_stream=BufferedMicResampler(native_rate)
                     def callback(indata,frames,tm,status):
-                        try:audio_queue.put_nowait(bytes(indata))
+                        # PortAudio callback must stay cheap: only enqueue raw
+                        # bytes, the frame number and a driver-overflow flag.
+                        # IDs reveal precisely where bounded queue eviction
+                        # removed audio, so Vosk never splices two fragments.
+                        received_frames[0]+=1
+                        item=(received_frames[0],bytes(indata),
+                              bool(getattr(status,"input_overflow",False)))
+                        try:audio_queue.put_nowait(item)
                         except queue.Full:
                             try:audio_queue.get_nowait()
                             except queue.Empty:pass
-                            try:audio_queue.put_nowait(bytes(indata))
+                            try:audio_queue.put_nowait(item)
                             except queue.Full:pass
                     # Model initialization may finish after the application was closed.
                     if not self.running or generation!=self._generation:return
@@ -564,13 +574,35 @@ class Voice:
                             return
                         last_packet_at=time.monotonic()
                         while self.running and generation==self._generation:
-                            try: packet=audio_queue.get(timeout=0.2)
+                            try: frame_id,packet,input_overflow=audio_queue.get(timeout=0.2)
                             except queue.Empty:
                                 if time.monotonic()-last_packet_at>4.0:
                                     raise TimeoutError("Нет аудиопакетов 4 секунды: устройство отключено или зависло")
                                 continue
-                            last_packet_at=time.monotonic()
+                            stamp=time.monotonic()
+                            last_packet_at=stamp
                             attempt=0  # a real frame proves the stream recovered
+                            # A full queue or PortAudio input overflow means
+                            # missing syllables. Never silently join speech
+                            # on opposite sides of that discontinuity.
+                            discontinuity=(frame_id!=processed_frame+1 or input_overflow)
+                            processed_frame=frame_id
+                            if discontinuity:
+                                segment.clear()
+                                pre_roll.clear()
+                                vosk_parts.clear()
+                                segment_vosk_wake=False
+                                silent=0
+                                gate.reset()
+                                pcm_stream.reset()
+                                recognizer=KaldiRecognizer(model,16000)
+                                recognizer.SetWords(True)
+                                if stamp-last_loss_warning_at>=4.0:
+                                    last_loss_warning_at=stamp
+                                    self.on_status(
+                                        "Микрофон пропустил часть звука — повтори фразу. "
+                                        "Проверь нагрузку процессора и аудиоустройство.")
+                                continue
                             if self.speaking():
                                 if not was_speaking:
                                     segment.clear();pre_roll.clear();silent=0;segment_vosk_wake=False
