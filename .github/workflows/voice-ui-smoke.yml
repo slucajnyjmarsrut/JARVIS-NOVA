@@ -136,7 +136,7 @@ jobs:
       - name: Minimal test dependencies
         run: python -m pip install numpy scipy pillow
       - name: Compile changed modules
-        run: python -m py_compile voice_engine.py main.py nova_ui.py nova_overlay.py overlay_commands.py whisper_mode.py speaker.py speech_output.py speech_capture.py asr_quality.py build_models.py verify_models.py local_chat.py online_media.py editing_knowledge.py agent_core.py viral_studio_ui.py smart_montage.py viral_studio.py post_montage_review.py video_forecast.py video_frame_audit.py video_audio_audit.py video_quality_gate.py self_repair.py auto_update.py updater_worker.py updater_launcher.py
+        run: python -m py_compile voice_engine.py main.py nova_ui.py nova_compact_ui.py nova_overlay.py nova_window_state.py overlay_commands.py whisper_mode.py speaker.py speech_output.py speech_capture.py asr_quality.py build_models.py verify_models.py local_chat.py online_media.py editing_knowledge.py agent_core.py viral_studio_ui.py smart_montage.py viral_studio.py post_montage_review.py video_forecast.py video_frame_audit.py video_audio_audit.py video_quality_gate.py self_repair.py auto_update.py updater_worker.py updater_launcher.py
       - name: Three complete regression passes on each Windows version
         shell: pwsh
         run: |
@@ -153,6 +153,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_nova_ui.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_nova_compact_ui.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Compact NOVA UI failed in pass '+$pass }
+            python -m unittest discover -s tests -p 'test_nova_window_state.py' -v
+            if ($LASTEXITCODE -ne 0) { throw 'Compact window layout failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_voice_telemetry.py' -v
             if ($LASTEXITCODE -ne 0) { throw 'Regression failed in pass '+$pass }
             python -m unittest discover -s tests -p 'test_nova_overlay.py' -v

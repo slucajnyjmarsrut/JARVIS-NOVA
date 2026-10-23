@@ -13,7 +13,8 @@ from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
 from voice_engine import Voice as RC4Voice
 from local_chat import LocalChat
-from nova_ui import build_interface
+from nova_compact_ui import build_interface, compact_geometry
+from nova_window_state import load_layout, save_layout, safe_window_geometry
 from nova_overlay import NovaOverlay
 from overlay_commands import overlay_intent, preview_line
 from whisper_mode import normalize_style
@@ -22,8 +23,14 @@ class Jarvis(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("JARVIS NOVA")
-        self.geometry("1060x720")
-        self.minsize(760,590)
+        self._ui_layout=load_layout()
+        default=compact_geometry(self.winfo_screenwidth(),self.winfo_screenheight())
+        self.geometry(safe_window_geometry(
+            self._ui_layout.get("main"),default,
+            self.winfo_screenwidth(),self.winfo_screenheight()))
+        self.minsize(min(385,self.winfo_screenwidth()),
+                     min(600,self.winfo_screenheight()))
+        self._last_normal_geometry=self.geometry()
         self.configure(bg="#070D17")
         # Keep Windows' real minimize/maximize/close buttons, but request
         # a dark native titlebar so it doesn't clash with NOVA's dark HUD.
@@ -32,8 +39,9 @@ class Jarvis(tk.Tk):
         self.q=queue.Queue()
         self.voice_enabled=False
         self._answer_style="normal"
-        # Private floating HUD preview is opt-in and never persisted.
-        self.overlay_show_text=False
+        # The user asked for a conversational mini-panel; text can still
+        # be hidden instantly with its dedicated privacy toggle.
+        self.overlay_show_text=True
         self.overlay_last_user=""
         self.overlay_last_answer=""
         self._closing=False
@@ -67,6 +75,14 @@ class Jarvis(tk.Tk):
         # Keep the assistant active when the main window is minimized/hidden.
         # The small overlay is another local Tk window, not a second app.
         self.overlay=NovaOverlay(self)
+        miniature=safe_window_geometry(
+            self._ui_layout.get("mini"),
+            self.overlay.geometry(),
+            self.winfo_screenwidth(),self.winfo_screenheight(),fixed=True)
+        if self._ui_layout.get("mini"):
+            self.overlay.geometry(miniature)
+            self.overlay._manual_position=True
+        self.bind("<Configure>",self._remember_main_geometry,add="+")
         self.bind("<Unmap>",self._main_unmapped,add="+")
         self.bind("<Map>",self._main_mapped,add="+")
         self.bind("<Control-Shift-O>",lambda event:(self.toggle_overlay(),"break")[1])
@@ -123,11 +139,11 @@ class Jarvis(tk.Tk):
         menu.add_cascade(label="AI",menu=ai)
         interface_menu=tk.Menu(menu,tearoff=False)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
-        interface_menu.add_command(label="Скрыть окно → оверлей слева (Ctrl+Shift+O)",
+        interface_menu.add_command(label="Свернуть → мини-диалог справа (Ctrl+Shift+O)",
                                    command=self.hide_main)
         interface_menu.add_command(label="Вернуть главное окно",command=self.show_main)
-        interface_menu.add_command(label="Исходный размер окна",
-                                   command=lambda:self.geometry("1060x720"))
+        interface_menu.add_command(label="Размер компактной панели по умолчанию",
+                                   command=self.reset_compact_geometry)
         menu.add_cascade(label="Интерфейс",menu=interface_menu)
         learning_menu=tk.Menu(menu,tearoff=False)
         learning_menu.add_command(label="Научить названию программы…",command=self.teach_alias)
@@ -184,6 +200,24 @@ class Jarvis(tk.Tk):
         finally:
             menu.grab_release()
 
+    def _remember_main_geometry(self,event):
+        if (event.widget is self and not self._closing and
+                self.state()=="normal"):
+            self._last_normal_geometry=self.geometry()
+
+    def reset_compact_geometry(self):
+        default=compact_geometry(self.winfo_screenwidth(),self.winfo_screenheight())
+        self.geometry(default)
+        self._last_normal_geometry=default
+
+    def save_window_layout(self):
+        """Only positions/sizes; never store conversation or mic audio."""
+        overlay=getattr(self,"overlay",None)
+        mini=overlay.geometry() if overlay is not None and overlay.winfo_exists() else None
+        main=(self.geometry() if self.state()=="normal"
+              else getattr(self,"_last_normal_geometry",None))
+        return save_layout(main,mini)
+
     def _main_unmapped(self,event):
         """Tk also sends Unmap for child widgets: ignore those events."""
         if event.widget is self and not self._closing:
@@ -201,6 +235,9 @@ class Jarvis(tk.Tk):
 
     def hide_main(self):
         if self._closing:return
+        if self.state()=="normal":
+            self._last_normal_geometry=self.geometry()
+        self.save_window_layout()
         self.withdraw()
         self.overlay.show()
 
@@ -701,7 +738,7 @@ class Jarvis(tk.Tk):
             return
         if overlay_action=="hide":
             self.hide_main()
-            self.reply("Оверлей JARVIS слева. Чтобы вернуться, нажми «ОТКРЫТЬ».")
+            self.reply("Мини-панель разговора справа. Нажми «РАЗВЕРНУТЬ», чтобы вернуться.")
             return
         mode_command=self.modes.parse(text,self.desktop.is_installed)
         if mode_command is not None:
@@ -1006,6 +1043,7 @@ class Jarvis(tk.Tk):
     def close(self):
         # WM_DELETE_WINDOW is a *complete exit*, never "hide to tray".
         if self._closing:return
+        self.save_window_layout()
         self._closing=True
         self._shutdown.set()  # prevent slow model initialization reopening the mic
         overlay=getattr(self,"overlay",None)
