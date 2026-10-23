@@ -30,7 +30,13 @@ class MicrophoneRecoveryTests(unittest.TestCase):
                     calls[0]+=1
                     if forever or calls[0]<=fail_open:
                         raise OSError("Bluetooth microphone disconnected")
-                    self.callback(samples,1600,None,None)
+                    # A 48-kHz device supplies 4800 samples/100ms. The
+                    # buffered FIR converter needs the next packet as context.
+                    rate=48000 if device==7 else 16000
+                    frame=(np.ones(rate//10,dtype="<i2")*450).tobytes()
+                    self.callback(frame,rate//10,None,None)
+                    if rate!=16000:
+                        self.callback(frame,rate//10,None,None)
                     return self
                 def __exit__(self,*exc):
                     return False

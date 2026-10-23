@@ -9,6 +9,7 @@ from agent_core import WAKE, strip_wake
 from speaker import assets
 from whisper_mode import WhisperClassifier, normalize_style
 from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
+from audio_io import BufferedMicResampler
 from asr_quality import (should_refine, prefer_refined, transcript_confidence,
                          suspicious_wake_prefix, should_refine_short_phrase,
                          prefer_short_refined, russian_app_vocabulary,
@@ -544,6 +545,7 @@ class Voice:
                     native_rate=int(round(device_info["default_samplerate"]))
                     if not 8000<=native_rate<=192000:
                         raise ValueError("Микрофон сообщает неверную частоту дискретизации")
+                    pcm_stream=BufferedMicResampler(native_rate)
                     def callback(indata,frames,tm,status):
                         try:audio_queue.put_nowait(bytes(indata))
                         except queue.Full:
@@ -574,11 +576,17 @@ class Voice:
                                     segment.clear();pre_roll.clear();silent=0;segment_vosk_wake=False
                                     vosk_parts.clear()
                                     gate.reset()
+                                    pcm_stream.reset()  # never mix TTS playback with speech
                                     recognizer=KaldiRecognizer(model,16000)
                                 was_speaking=True
                                 continue
                             was_speaking=False
-                            packet=self.normalize_mic_packet(packet,native_rate)
+                            # FIR context survives packet boundaries. A 100ms
+                            # lookahead avoids repeatedly corrupting consonants
+                            # on standard 44.1/48-kHz Windows microphones.
+                            packet=pcm_stream.feed(packet)
+                            if not packet:
+                                continue
                             data=np.frombuffer(packet,dtype="<i2")
                             rms=float(np.sqrt(np.mean(data.astype(np.float64)**2))) if data.size else 0
                             # Bounded UI telemetry: 5 readings/s, no microphone audio

@@ -1,7 +1,7 @@
 """Audio conversion shared by the ASR and capture modules. No files created."""
 from __future__ import annotations
 
-from math import gcd
+from math import ceil, gcd
 from pathlib import Path
 import wave
 
@@ -43,6 +43,71 @@ def prepare_audio(samples: np.ndarray, sample_rate: int, *, target_rate: int = W
         divisor = gcd(sample_rate, target_rate)
         array = resample_poly(array, target_rate // divisor, sample_rate // divisor)
     return np.ascontiguousarray(np.clip(array, -1.0, 1.0), dtype=np.float32)
+
+
+
+class BufferedMicResampler:
+    """Continuous PCM16 microphone resampling with one-frame lookahead.
+
+    Resampling every 100ms chunk independently incorrectly zero-pads the
+    FIR filter at EVERY chunk boundary. Preserve a source-phase-aligned
+    history and a short lookahead from the NEXT frame instead.
+    No recording is saved, and only one 100ms packet is buffered.
+    """
+    def __init__(self, source_rate: int, target_rate: int = WHISPER_RATE):
+        if not (8000 <= source_rate <= 192000 and
+                8000 <= target_rate <= 192000):
+            raise AudioFormatError("Invalid microphone sample rate")
+        self.source_rate=int(source_rate)
+        self.target_rate=int(target_rate)
+        divisor=gcd(self.source_rate,self.target_rate)
+        self.up=self.target_rate//divisor
+        self.down=self.source_rate//divisor
+        self.margin=max(self.down,ceil(
+            self.source_rate*.002/self.down)*self.down)
+        self.reset()
+
+    def reset(self) -> None:
+        """Drop audio context after TTS, microphone changes or stop."""
+        self.previous=None
+        self.history=np.empty(0,dtype="<i2")
+
+    def _convert(self, future: np.ndarray) -> bytes:
+        left=self.history
+        previous=self.previous
+        joined=np.concatenate((left,previous,future))
+        converted=resample_poly(
+            joined.astype(np.float32)/32768.0,self.up,self.down)
+        start=round(left.size*self.up/self.down)
+        count=round(previous.size*self.up/self.down)
+        pcm=np.clip(converted[start:start+count]*32768.0,
+                    -32768,32767).astype("<i2")
+        self.history=previous[-self.margin:].copy()
+        return pcm.tobytes()
+
+    def feed(self, packet: bytes) -> bytes:
+        """Return next continuous output; first packet awaits lookahead."""
+        if len(packet)%2:
+            raise AudioFormatError("PCM16 packet must have even length")
+        if not packet:
+            return b""
+        if self.source_rate==self.target_rate:
+            return packet
+        current=np.frombuffer(packet,dtype="<i2")
+        if self.previous is None:
+            self.previous=current.copy()
+            return b""
+        result=self._convert(current[:self.margin])
+        self.previous=current.copy()
+        return result
+
+    def flush(self) -> bytes:
+        """Finish the last packet without any invented future speech."""
+        if self.previous is None:
+            return b""
+        result=self._convert(np.empty(0,dtype="<i2"))
+        self.reset()
+        return result
 
 
 def read_pcm16_wav(file_path: str | Path) -> tuple[np.ndarray, int]:
