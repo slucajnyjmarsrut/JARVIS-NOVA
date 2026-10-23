@@ -131,6 +131,38 @@ class ModesTest(unittest.TestCase):
         other=ModeManager(self.path)
         self.assertEqual(other.mode,'neutral')
 
+    def test_future_version_and_corrupted_preferences_cannot_be_overwritten(self):
+        for original in (
+            b'{corrupt json', b'x'*9000,
+            json.dumps({"version":99,"apps":{"work":["Notepad"]}}).encode(),
+            json.dumps({"version":1,"apps":{"work":["cmd.exe"]}}).encode(),
+        ):
+            with self.subTest(size=len(original)):
+                self.path.write_bytes(original)
+                other=ModeManager(self.path)
+                with self.assertRaises(RuntimeError):
+                    other.configure('work',['Notepad'],self.check)
+                self.assertEqual(self.path.read_bytes(),original)
+                self.assertEqual(list(self.path.parent.glob('.modes-*.tmp')),[])
+
+    def test_second_jarvis_does_not_overwrite_first_instances_preferences(self):
+        self.manager.configure('work',['Notepad'],self.check)
+        second=ModeManager(self.path)
+        self.manager.configure('study',['Calculator'],self.check)
+        latest=self.path.read_bytes()
+        with self.assertRaisesRegex(RuntimeError,'другим процессом'):
+            second.configure('office',['Explorer'],self.check)
+        self.assertEqual(self.path.read_bytes(),latest)
+        self.assertNotIn('office',second.overrides)
+        self.assertIn('study',ModeManager(self.path).overrides)
+
+    def test_mode_config_created_after_start_is_not_clobbered(self):
+        external=b'{"version":1,"apps":{"work":["Calculator"]}}'
+        self.path.write_bytes(external)
+        with self.assertRaisesRegex(RuntimeError,'другим процессом'):
+            self.manager.configure('work',['Notepad'],self.check)
+        self.assertEqual(self.path.read_bytes(),external)
+
     def test_mode_voice_routing_preempts_normal_agent(self):
         ui=Mock()
         ui._closing=False
