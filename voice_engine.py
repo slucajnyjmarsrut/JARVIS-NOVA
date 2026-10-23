@@ -36,6 +36,7 @@ class Voice:
         self.last_text=""
         self.last_at=0
         self.pending=""
+        self.pending_until=0.0
         self.whisper_model=None
         self.small_model=None
         self.recognition_mode="balanced"  # fast base first; reserve small for uncertain speech
@@ -134,6 +135,8 @@ class Voice:
                 status="Микрофон загружается — начну слушать после подключения…"
             else:
                 self.until=time.monotonic()+8
+                self.pending=""
+                self.pending_until=0.0
                 status="Слушаю команду…"
         self.on_status(status)
 
@@ -165,6 +168,7 @@ class Voice:
             self.mic_ready=False
             self.until=0
             self.pending=""
+            self.pending_until=0.0
             return True
 
     def _wait_for_mic(self, generation, seconds):
@@ -183,21 +187,33 @@ class Voice:
         if not text:return
         now=time.monotonic()
         with self.lock:
-            # Suppress duplicate engine events, not deliberate repeated commands after 900 ms.
+            addressed=bool(WAKE.match(text))
+            # Background speech is not an engine event. Do not let it poison
+            # de-duplication and suppress the next real F9/wake command.
+            if not addressed and now>=self.until:
+                return
+            # Suppress duplicate authorized engine callbacks for 900 ms.
             if text==self.last_text and now-self.last_at<0.9:return
             self.last_text=text;self.last_at=now
-            if WAKE.match(text):
+            if addressed:
+                # A new "Джарвис" is a new request, never a continuation of
+                # an abandoned "открой" from the previous listening window.
+                self.pending=""
+                self.pending_until=0.0
                 self.until=now+8
                 command=strip_wake(text)
-            elif now<self.until:
-                command=text
             else:
-                return
-            if self.pending:
-                command=self.pending+" "+command
-                self.pending=""
+                command=text
+                if self.pending:
+                    # Partial verbs expire independently of the general chat
+                    # window. F9 can rearm listening without resurrecting them.
+                    if now<self.pending_until:
+                        command=self.pending+" "+command
+                    self.pending=""
+                    self.pending_until=0.0
             if command.strip().casefold() in {"открой","запусти","включи"}:
                 self.pending=command.strip()
+                self.pending_until=now+6
                 self.until=now+6
                 self.on_status("Что открыть?")
                 return
@@ -222,6 +238,7 @@ class Voice:
             self.reconnect_attempt=0
             self.until=0
             self.pending=""
+            self.pending_until=0.0
             self.last_text=""
             self.last_at=0
             self.whisper_last_at=0.0
@@ -239,6 +256,7 @@ class Voice:
             self._manual_pending=False
             self.until=0
             self.pending=""
+            self.pending_until=0.0
             self.whisper_queue.clear()
             self._generation+=1
             worker=self.thread

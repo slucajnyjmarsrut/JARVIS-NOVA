@@ -254,14 +254,17 @@ def build_interface(app):
     _action(controls,"◉  СЛУШАЙ  /  F9",lambda:app.f9(),
             compact=True).pack(fill="x",pady=(0,5))
     _label(controls,"ЧУВСТВИТЕЛЬНОСТЬ",fg=CYAN_DIM,size=8,bold=True).pack(anchor="w")
-    app.hud_sensitivity_readout=_label(controls,"1.00×  /  ТИХАЯ РЕЧЬ",
-                                       fg=MUTED,size=8)
+    # The GUI must reflect the actual Voice setting. Previously it reset
+    # the improved quiet-speech sensitivity (1.2) back to 1.0 on startup.
+    initial_sensitivity=float(getattr(getattr(app,"voice",None),"sensitivity",1.2))
+    app.hud_sensitivity_readout=_label(
+        controls,f"{initial_sensitivity:.2f}×  /  ТИХАЯ РЕЧЬ",fg=MUTED,size=8)
     def update_sensitivity(value):
         level=round(float(value),2)
         if hasattr(app,"voice") and hasattr(app.voice,"set_sensitivity"):
             app.voice.set_sensitivity(level)
         app.hud_sensitivity_readout.configure(text=f"{level:.2f}×  /  ТИХАЯ РЕЧЬ")
-    app.hud_sensitivity_var=tk.DoubleVar(master=app,value=1.0)
+    app.hud_sensitivity_var=tk.DoubleVar(master=app,value=initial_sensitivity)
     app.hud_sensitivity_var.trace_add(
         "write",lambda *_:update_sensitivity(app.hud_sensitivity_var.get()))
     app.hud_sensitivity=tk.Scale(controls,from_=0.75,to=2.0,resolution=.05,
@@ -270,7 +273,7 @@ def build_interface(app):
         highlightthickness=0,bd=0,troughcolor=EDGE,showvalue=False,length=220)
     app.hud_sensitivity.pack(fill="x",pady=(0,0))
     app.hud_sensitivity_readout.pack(anchor="w",pady=(0,3))
-    app.hud_sensitivity.set(1.0)
+    app.hud_sensitivity.set(initial_sensitivity)
 
 
     main=tk.Frame(body,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)

@@ -63,6 +63,9 @@ class HudWidgetTests(unittest.TestCase):
         self.app.engine="bundled"
         self.app.speaker=SimpleNamespace(busy=False)
         self.app.trimodal=SimpleNamespace(speaking=False)
+        # An unusual user-adjusted setting proves the HUD never resets the
+        # live mic sensitivity to a hard-coded 1.0 during initialization.
+        self.app.voice=SimpleNamespace(sensitivity=1.35,set_sensitivity=Mock())
         self.actions={}
         for name in ("toggle_voice","select_microphone","test_microphone",
                      "f9","enter","open_viral_studio","activate_mode",
@@ -157,10 +160,14 @@ class HudWidgetTests(unittest.TestCase):
         self.app.hud_shortcut_buttons[1].invoke()
         self.actions["activate_mode"].assert_called_with("gaming")
 
-    def test_mic_sensitivity_scale_is_real_control(self):
-        self.assertAlmostEqual(float(self.app.hud_sensitivity.get()),1.0)
+    def test_mic_sensitivity_scale_preserves_engine_setting(self):
+        self.assertAlmostEqual(float(self.app.hud_sensitivity.get()),1.35)
+        self.assertIn("1.35",self.app.hud_sensitivity_readout.cget("text"))
+        self.assertNotIn(1.0,[call.args[0]
+            for call in self.app.voice.set_sensitivity.call_args_list])
         self.app.hud_sensitivity.set(1.8)
         self.assertIn("1.80",self.app.hud_sensitivity_readout.cget("text"))
+        self.app.voice.set_sensitivity.assert_called_with(1.8)
 
     def test_current_mode_and_real_focus_timer_display(self):
         self.app.modes=SimpleNamespace(mode="study")
