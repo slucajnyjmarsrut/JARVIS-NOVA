@@ -8,6 +8,7 @@ filesystem execution, blind clicks, closing apps or elevated actions.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -120,22 +121,56 @@ class ModeManager:
         self.awaiting_game=False
         self.path=Path(path) if path is not None else default_data_file().with_name('modes-v1.json')
         self.overrides: dict[str,tuple[str,...]]={}
+        self._loaded_digest: str | None=None
+        self._read_only=False
         self._load()
 
     def _load(self):
         try:
-            if not self.path.is_file() or self.path.stat().st_size>8192:
+            if self.path.is_symlink():
+                self._read_only=True
                 return
-            doc=json.loads(self.path.read_text('utf-8'))
-            if not isinstance(doc,dict) or doc.get('version')!=1:
+            if not self.path.exists():
+                return
+            if not self.path.is_file() or not 0<self.path.stat().st_size<=8192:
+                self._read_only=True
+                return
+            payload=self.path.read_bytes()
+            if len(payload)>8192:
+                self._read_only=True
+                return
+            doc=json.loads(payload.decode('utf-8'))
+            if (not isinstance(doc,dict) or type(doc.get('version')) is not int
+                    or doc['version']!=1):
+                self._read_only=True
                 return
             apps=doc.get('apps',{})
-            if not isinstance(apps,dict):return
+            if not isinstance(apps,dict):
+                self._read_only=True
+                return
+            self._loaded_digest=hashlib.sha256(payload).hexdigest()
             for key,items in apps.items():
-                if key in MODES and type(items) is list and 1<=len(items)<=3 and all(safe_name(v) for v in items):
+                if (key in MODES and type(items) is list and 1<=len(items)<=3
+                        and all(safe_name(v) for v in items)):
                     self.overrides[key]=tuple(items)
-        except (OSError, ValueError, UnicodeError, TypeError):
-            pass
+                else:
+                    self._read_only=True
+        except (OSError,ValueError,UnicodeError,TypeError):
+            # Safe defaults for this run; never erase unrecognized user data.
+            self._read_only=True
+
+    def _check_unchanged(self):
+        if self._read_only or self.path.is_symlink():
+            raise RuntimeError('Настройки режимов требуют ручной проверки')
+        if self.path.exists():
+            if self._loaded_digest is None or not self.path.is_file():
+                raise RuntimeError('Файл режимов изменён другим процессом')
+            if self.path.stat().st_size>8192:
+                raise RuntimeError('Файл режимов превышает допустимый размер')
+            if hashlib.sha256(self.path.read_bytes()).hexdigest()!=self._loaded_digest:
+                raise RuntimeError('Файл режимов изменён другим процессом')
+        elif self._loaded_digest is not None:
+            raise RuntimeError('Файл режимов удалён другим процессом')
 
     def configure(self,mode:str,programs:list[str],is_installed:Callable[[str],bool]):
         if mode not in MODES:raise ValueError('Неизвестный режим')
@@ -148,13 +183,17 @@ class ModeManager:
         if any(not is_installed(s) for s in cleaned):
             raise ValueError('Программа не найдена в меню Пуск. Нужны точные установленные названия.')
         candidate={**self.overrides,mode:cleaned}
+        self._check_unchanged()
         self.path.parent.mkdir(parents=True,exist_ok=True)
+        payload=json.dumps({'version':1,'apps':candidate},ensure_ascii=False,indent=2)
         fd,name=tempfile.mkstemp(prefix='.modes-',suffix='.tmp',dir=str(self.path.parent))
         try:
             with os.fdopen(fd,'w',encoding='utf-8') as out:
-                json.dump({'version':1,'apps':candidate},out,ensure_ascii=False,indent=2)
+                out.write(payload)
                 out.flush();os.fsync(out.fileno())
+            self._check_unchanged()
             os.replace(name,self.path)
+            self._loaded_digest=hashlib.sha256(payload.encode('utf-8')).hexdigest()
         finally:
             if os.path.exists(name):os.unlink(name)
         self.overrides=candidate
