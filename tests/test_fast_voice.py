@@ -15,6 +15,56 @@ from voice_engine import Voice
 
 
 class QuickVoiceTests(unittest.TestCase):
+    def test_balanced_verifies_confident_but_wrong_russian_word(self):
+        heard=[];calls=[];done=threading.Event()
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"test")
+            (root/"small.pt").write_bytes(b"test")
+            voice=Voice(lambda value:(heard.append(value),done.set()),
+                        lambda _:None,lambda:False)
+            def base(*args,**kw):
+                calls.append("base")
+                return {"text":"джарвис открой браузер","segments":[
+                    {"avg_logprob":-.1,"no_speech_prob":.02,"compression_ratio":1}]}
+            def small(*args,**kw):
+                calls.append("small")
+                return {"text":"джарвис открой блокнот","segments":[
+                    {"avg_logprob":-.03,"no_speech_prob":.02,"compression_ratio":1}]}
+            voice._get_whisper_model=lambda _:types.SimpleNamespace(transcribe=base)
+            voice._get_small_model=lambda _:types.SimpleNamespace(transcribe=small)
+            with patch("voice_engine.assets",return_value=root):
+                voice._try_whisper((np.ones(16000,dtype="<i2")*140).tobytes(),
+                                   did_wake=True,fallback_text="джарвис открой блокнот")
+                self.assertTrue(done.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
+        self.assertEqual(calls,["base","small"])
+        self.assertEqual(heard,["открой блокнот"])
+
+    def test_matching_wake_command_skips_second_model(self):
+        heard=[];calls=[];done=threading.Event()
+        with TemporaryDirectory() as folder:
+            root=Path(folder)
+            (root/"base.pt").write_bytes(b"test")
+            (root/"small.pt").write_bytes(b"test")
+            voice=Voice(lambda value:(heard.append(value),done.set()),
+                        lambda _:None,lambda:False)
+            def base(*args,**kw):
+                calls.append("base")
+                return {"text":"джарвис открой блокнот","segments":[
+                    {"avg_logprob":-.1,"no_speech_prob":.02,"compression_ratio":1}]}
+            voice._get_whisper_model=lambda _:types.SimpleNamespace(transcribe=base)
+            voice._get_small_model=lambda _:self.fail("Redundant accurate-model load")
+            with patch("voice_engine.assets",return_value=root):
+                voice._try_whisper((np.ones(16000,dtype="<i2")*140).tobytes(),
+                                   did_wake=True,fallback_text="джарвис открой блокнот")
+                self.assertTrue(done.wait(3))
+                deadline=time.monotonic()+3
+                while voice.whisper_busy and time.monotonic()<deadline:time.sleep(.01)
+        self.assertEqual(calls,["base"])
+        self.assertEqual(heard,["открой блокнот"])
+
     def test_balanced_mode_uses_fast_base_for_clear_activated_russian(self):
         heard=[];calls=[];done=threading.Event()
         with TemporaryDirectory() as folder:

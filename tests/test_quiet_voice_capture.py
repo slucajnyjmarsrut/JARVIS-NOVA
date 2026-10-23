@@ -20,6 +20,24 @@ def quiet_sine(pcm_level=12,seconds=1.0):
 
 
 class QuietCaptureTests(unittest.TestCase):
+    def test_default_sensitivity_helps_quiet_russian_onset(self):
+        voice=Voice(lambda _:None,lambda _:None,lambda:False)
+        self.assertAlmostEqual(voice.sensitivity,1.2)
+        gate=AdaptiveSpeechGate(noise_floor=3.5)
+        self.assertEqual(gate.observe(8.5,sensitivity=voice.sensitivity),"idle")
+        self.assertEqual(gate.observe(8.5,sensitivity=voice.sensitivity),"start")
+        old=AdaptiveSpeechGate(noise_floor=3.5)
+        self.assertEqual(old.observe(8.5,sensitivity=1.0),"idle")
+        self.assertEqual(old.observe(8.5,sensitivity=1.0),"idle")
+
+    def test_russian_quiet_endings_are_not_cut_at_seven_frames(self):
+        gate=AdaptiveSpeechGate()
+        gate.observe(20)
+        self.assertEqual(gate.observe(20),"start")
+        for i in range(8):
+            self.assertEqual(gate.observe(1,hangover_frames=9),"speech")
+        self.assertEqual(gate.observe(1,hangover_frames=9),"end")
+
     def test_activated_short_command_finishes_after_seven_quiet_frames(self):
         gate=AdaptiveSpeechGate()
         gate.observe(16)

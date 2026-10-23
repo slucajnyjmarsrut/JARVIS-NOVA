@@ -11,7 +11,8 @@ from whisper_mode import WhisperClassifier, normalize_style
 from speech_capture import AdaptiveSpeechGate, prepare_whisper_audio
 from asr_quality import (should_refine, prefer_refined, transcript_confidence,
                          suspicious_wake_prefix, should_refine_short_phrase,
-                         prefer_short_refined, russian_app_vocabulary)
+                         prefer_short_refined, russian_app_vocabulary,
+                         should_verify_vosk_disagreement)
 
 
 class Voice:
@@ -50,7 +51,7 @@ class Voice:
         self.reconnect_attempt=0
         self._whisper_init_lock=threading.Lock()
         self._whisper_warm_thread=None
-        self.sensitivity=1.0  # 1.0 balanced, up to 2.0 for quiet microphones
+        self.sensitivity=1.2  # modestly stronger quiet-speech pickup, adjustable
 
     def set_recognition_mode(self, mode: str):
         """Real CPU/memory tradeoff; switch without opening another microphone."""
@@ -329,8 +330,18 @@ class Voice:
                 short_retry=(self.recognition_mode in ("balanced","accurate") and active and
                              len(pcm)<=16000*2*4 and
                              should_refine_short_phrase(first,authorized))
+                # Base may confidently substitute a different Russian word.
+                # Only a verified Vosk wake with clearly different words can
+                # request the more accurate model; Vosk text never executes.
+                vosk_disagreement=(
+                    not quality and active and
+                    self.recognition_mode=="balanced" and
+                    (root/"small.pt").is_file() and
+                    should_verify_vosk_disagreement(
+                        first,fallback_text,authorized=did_wake))
                 result=first
                 if (should_refine(first,authorized) or recover_wake or short_retry or
+                        vosk_disagreement or
                         (not quality and not active and
                          self.recognition_mode in ("balanced","accurate") and
                          (root/"small.pt").is_file() and
@@ -476,7 +487,7 @@ class Voice:
             recognizer.SetWords(True)
             audio_queue=queue.Queue(maxsize=60)
             segment=bytearray()
-            pre_roll=deque(maxlen=7)  # 700 ms before onset, preserves quiet first syllables.
+            pre_roll=deque(maxlen=10)  # 1 sec pre-roll preserves weak first syllables.
             silent=0
             max_segment=16000*2*11
             vosk_parts=[]
@@ -553,12 +564,11 @@ class Voice:
                                 if self.running and generation==self._generation:
                                     try:self.on_audio_level(min(1.0,rms/32768.0))
                                     except Exception:pass  # UI errors cannot stop speech
-                            # A confirmed wake/F9 has already authorized capture: finish
-                            # after 0.7s quiet instead of passive 0.9s.
-                            # Passive capture keeps the longer tail for hesitant speech.
+                            # Keep full word endings after wake/F9. 700ms was
+                            # too aggressive for hesitant, quiet Russian speech.
                             state=gate.observe(
                                 rms,sensitivity=getattr(self,"sensitivity",1.0),
-                                hangover_frames=7 if stamp<self.until else 9)
+                                hangover_frames=9)
                             if state=="start":
                                 segment.extend(b"".join(pre_roll))
                                 pre_roll.clear()

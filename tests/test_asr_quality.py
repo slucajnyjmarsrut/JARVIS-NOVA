@@ -12,7 +12,8 @@ import numpy as np  # Windows native extension preloaded before module mocks.
 
 from asr_quality import (should_refine,prefer_refined,transcript_confidence,
                          suspicious_wake_prefix,should_refine_short_phrase,
-                         prefer_short_refined,russian_app_vocabulary)
+                         prefer_short_refined,russian_app_vocabulary,
+                         should_verify_vosk_disagreement)
 from speech_capture import AdaptiveSpeechGate
 from voice_engine import Voice
 from main import Jarvis
@@ -25,6 +26,31 @@ def recognition(text,logprob=-0.15,compression=1.0,silence=0.05):
 
 
 class RecognitionQualityTests(unittest.TestCase):
+    def test_confident_base_vosk_mismatch_requests_small(self):
+        first=recognition("джарвис открой браузер",logprob=-.11)
+        self.assertTrue(should_verify_vosk_disagreement(
+            first,"джарвис открой блокнот",authorized=True))
+        self.assertFalse(should_verify_vosk_disagreement(
+            first,"джарвис открой браузер",authorized=True))
+
+    def test_mismatch_cannot_authorize_passive_noise_or_missing_metadata(self):
+        result=recognition("открой браузер",logprob=-.1)
+        self.assertFalse(should_verify_vosk_disagreement(
+            result,"джарвис открой блокнот",authorized=False))
+        self.assertFalse(should_verify_vosk_disagreement(
+            result,"вчера джарвис открой блокнот",authorized=True))
+        self.assertFalse(should_verify_vosk_disagreement(
+            {"text":"открой браузер"},"джарвис открой блокнот",authorized=True))
+        self.assertFalse(should_verify_vosk_disagreement(
+            recognition("открой браузер",logprob=-1.25),
+            "джарвис открой блокнот",authorized=True))
+        self.assertFalse(should_verify_vosk_disagreement(
+            recognition("привет",logprob=-.1),
+            "джарвис открой блокнот",authorized=True))
+        self.assertFalse(should_verify_vosk_disagreement(
+            recognition("открой браузер",logprob=-.1,silence=.9),
+            "джарвис открой блокнот",authorized=True))
+
     def test_near_wake_requires_low_confidence_and_segment_metadata(self):
         self.assertTrue(suspicious_wake_prefix(
             recognition("джавис открой блокнот",logprob=-1.2)))

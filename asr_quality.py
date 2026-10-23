@@ -10,7 +10,7 @@ import math
 import re
 from difflib import SequenceMatcher
 
-from agent_core import strip_wake
+from agent_core import WAKE, strip_wake
 
 
 def _segments(result):
@@ -76,6 +76,33 @@ def russian_app_vocabulary(result):
         return None
     return ("Телеграм, Telegram, Дискорд, Discord, Стим, Steam, "
             "Гугл Хром, Google Chrome, Блокнот, Проводник, Калькулятор.")
+
+
+
+def should_verify_vosk_disagreement(result, vosk_text, authorized=False):
+    """Flag an obvious mismatch between independent recognizers, not a command.
+
+    Vosk may request verification but its hypothesis must never authorize
+    or replace a Whisper result. Ignore passive listening, absent confidence
+    data, normal spelling changes, and single-word utterances.
+    """
+    if not authorized or not isinstance(result,dict) or not isinstance(vosk_text,str):
+        return False
+    if not WAKE.match(vosk_text):
+        return False
+    score=transcript_confidence(result)
+    if score is None or score<-.76:
+        return False
+    def words(value):
+        return re.findall(r"[а-яёa-z0-9]+",
+                          strip_wake(value).casefold().replace("ё","е"))
+    first=words(str(result.get("text","") or ""))
+    second=words(vosk_text)
+    if len(first)<2 or len(second)<2:
+        return False
+    if any(_number(s.get("no_speech_prob"),1.0)>=.45 for s in _segments(result)):
+        return False
+    return SequenceMatcher(None," ".join(first)," ".join(second)).ratio()<.72
 
 
 def suspicious_wake_prefix(result):
