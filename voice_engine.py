@@ -208,7 +208,14 @@ class Voice:
                     # Partial verbs expire independently of the general chat
                     # window. F9 can rearm listening without resurrecting them.
                     if now<self.pending_until:
-                        command=self.pending+" "+command
+                        # A repeat of a full command must not become
+                        # "открой открой блокнот" after a partial "открой".
+                        fresh_action=bool(re.match(
+                            r"^(?:открой|запусти|включи|выключи|закрой|"
+                            r"сверни|разверни|напиши|введи|нажми|"
+                            r"посмотри|опиши)\b",command,re.I))
+                        if not fresh_action:
+                            command=self.pending+" "+command
                     self.pending=""
                     self.pending_until=0.0
             if command.strip().casefold() in {"открой","запусти","включи"}:

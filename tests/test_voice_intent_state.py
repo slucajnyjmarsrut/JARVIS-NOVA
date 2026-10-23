@@ -14,6 +14,30 @@ class VoiceIntentStateTests(unittest.TestCase):
         statuses=[]
         return Voice(heard.append,statuses.append,lambda:False),heard,statuses
 
+    def test_repeated_complete_action_overrides_incomplete_fragment(self):
+        voice,heard,_=self.make_voice()
+        with mock.patch("voice_engine.time.monotonic",side_effect=[100,101]):
+            voice.accept_text("джарвис открой")
+            voice.accept_text("открой блокнот")
+        self.assertEqual(heard,["открой блокнот"])
+        self.assertEqual(voice.pending,"")
+
+    def test_changed_action_overrides_incomplete_fragment(self):
+        voice,heard,_=self.make_voice()
+        with mock.patch("voice_engine.time.monotonic",side_effect=[100,101]):
+            voice.accept_text("джарвис открой")
+            voice.accept_text("запусти браузер")
+        self.assertEqual(heard,["запусти браузер"])
+
+    def test_repeated_verb_still_asks_for_missing_app_name(self):
+        voice,heard,status=self.make_voice()
+        with mock.patch("voice_engine.time.monotonic",side_effect=[100,101,102]):
+            voice.accept_text("джарвис открой")
+            voice.accept_text("открой")
+            voice.accept_text("блокнот")
+        self.assertEqual(heard,["открой блокнот"])
+        self.assertEqual(sum("Что открыть" in s for s in status),2)
+
     def test_new_jarvis_request_clears_old_incomplete_verb(self):
         voice,heard,_=self.make_voice()
         with mock.patch("voice_engine.time.monotonic",side_effect=[100,101]):
