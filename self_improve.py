@@ -139,7 +139,7 @@ class LearningStore:
         fd,filename=tempfile.mkstemp(prefix=".jarvis-learning-",suffix=".tmp",
                                       dir=str(self.path.parent))
         try:
-            with os.fdopen(fd,"w",encoding="utf-8") as stream:
+            with os.fdopen(fd,"w",encoding="utf-8",newline="\n") as stream:
                 stream.write(payload)
                 stream.flush()
                 os.fsync(stream.fileno())
