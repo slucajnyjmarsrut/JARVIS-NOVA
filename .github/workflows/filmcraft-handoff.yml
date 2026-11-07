@@ -1,0 +1,57 @@
+name: JARVIS FilmCraft native handoff (Windows)
+on:
+  push:
+    branches: [jarvis]
+    paths:
+      - filmcraft_bridge.py
+      - viral_studio_ui.py
+      - viral_studio.py
+      - tests/test_filmcraft_bridge.py
+      - scripts/verify_filmcraft_handoff.py
+      - .github/workflows/filmcraft-handoff.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  filmcraft-cli:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run safe FilmCraft adapter unit tests
+        run: python -m unittest discover -s tests -p test_filmcraft_bridge.py -v
+      - name: Install FFmpeg for synthetic media fixture
+        shell: pwsh
+        run: |
+          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg --yes --no-progress
+            "C:\ProgramData\chocolatey\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          }
+      - name: Obtain official pinned FilmCraft portable and validate SHA256
+        shell: pwsh
+        run: |
+          $archive=Join-Path $env:RUNNER_TEMP 'filmcraft-windows-x64.zip'
+          $url='https://github.com/storytold/filmcraft/releases/download/v0.18.0/filmcraft-0.18.0-windows-x64-portable.zip'
+          Invoke-WebRequest -Uri $url -OutFile $archive -TimeoutSec 300
+          $expected='82847cf49087e95fd3f72dde80955d1c63af2821ad677e34e3de7a0e873e95bf'
+          $actual=(Get-FileHash -Path $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "FilmCraft archive SHA256 mismatch: $actual" }
+          $dest=Join-Path $env:RUNNER_TEMP 'FilmCraftPortable'
+          Expand-Archive -Path $archive -DestinationPath $dest -Force
+          $found=Get-ChildItem -Path $dest -Filter filmcraft.exe -File -Recurse | Select-Object -First 1
+          if (!$found) { throw "Official FilmCraft archive has no filmcraft.exe" }
+          if (!(Test-Path (Join-Path $found.DirectoryName 'filmcraft-cli.exe'))) {
+            throw "Official FilmCraft archive has no filmcraft-cli.exe next to desktop binary"
+          }
+          "JARVIS_FILMCRAFT_EXE=$($found.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Import actual MP4 source cuts and reopen native FilmCraft project
+        shell: pwsh
+        run: |
+          python scripts/verify_filmcraft_handoff.py --filmcraft-exe "$env:JARVIS_FILMCRAFT_EXE"

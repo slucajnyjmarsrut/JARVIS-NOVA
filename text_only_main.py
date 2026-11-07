@@ -141,6 +141,8 @@ class TextJarvis(BaseJarvis):
         menu.add_cascade(label="AI", menu=ai)
         menu.add_command(label="Программирование Java / Roblox…", command=self.open_code_assistant)
         menu.add_command(label="Видео-студия…", command=self.open_viral_studio)
+        menu.add_command(label="FilmCraft — открыть редактор",
+                         command=self.open_filmcraft)
         menu.add_command(label="Самовосстановление настроек…", command=self.self_repair_now)
         menu.add_command(label="Проверить локальную модель", command=self.check_models)
         menu.add_command(label="Возможности", command=self.show_capabilities)
@@ -197,6 +199,11 @@ class TextJarvis(BaseJarvis):
         except Exception as exc:
             message="Локальная Qwen недоступна: "+str(exc)[:160]
         messagebox.showinfo("Локальная модель", message, parent=self)
+
+    def open_filmcraft(self):
+        studio=self.open_viral_studio(stage="edit")
+        if studio is not None:
+            studio.open_filmcraft()
 
     def open_viral_studio(self, stage="audience"):
         if self._closing:

@@ -38,6 +38,8 @@ class ViralStudioWindow(tk.Toplevel):
         self.project=None
         self.profile=None
         self.rendered_video=None
+        self.rendered_info=None
+        self.filmcraft_exe=None
         self.running=False
         self.stop_event=threading.Event()
         self._notifications=queue.Queue()
@@ -102,6 +104,13 @@ class ViralStudioWindow(tk.Toplevel):
         ttk.Checkbutton(pro_frame,
             text='Подбирать кадры по сюжету через локальную Qwen (может быть медленно)',
             variable=self.pro_semantic).pack(anchor='w')
+        film_row=ttk.Frame(self,padding=(12,0,12,6))
+        film_row.pack(fill='x')
+        self.filmcraft_button=ttk.Button(
+            film_row,text='🎬 ОТКРЫТЬ FILMCRAFT — РУЧНОЙ МОНТАЖ',
+            command=self.open_filmcraft)
+        self.filmcraft_button.pack(side='left',padx=(0,9))
+        ttk.Label(film_row,text='Откроет готовый ролик или редактируемую шкалу').pack(side='left')
         guide_row=ttk.Frame(self,padding=(12,0,12,6))
         guide_row.pack(fill='x')
         ttk.Button(guide_row,text='Изучить официальную справку FFmpeg',
@@ -115,6 +124,51 @@ class ViralStudioWindow(tk.Toplevel):
         ttk.Label(self,textvariable=self.status,wraplength=690).pack(fill='x',padx=12,pady=(0,10))
         self.focus_set()
         self.after(100,self._pump_notifications)
+
+    def open_filmcraft(self):
+        """Single-click handoff: native editable timeline when CLI is installed."""
+        from filmcraft_bridge import find_filmcraft, FilmCraftError, FILMCRAFT_DOWNLOAD
+        try:
+            executable=find_filmcraft(self.filmcraft_exe)
+        except FilmCraftError:
+            chosen=filedialog.askopenfilename(
+                title='Укажи установленный filmcraft.exe',
+                parent=self,filetypes=[('FilmCraft (Windows)','filmcraft.exe')])
+            if not chosen:
+                messagebox.showinfo(
+                    'FilmCraft не найден',
+                    'Установи FilmCraft с официальной страницы:\n'
+                    +FILMCRAFT_DOWNLOAD+
+                    '\n\nЗатем нажми кнопку ещё раз. JARVIS не загружает'
+                    ' и не запускает сторонние программы без твоего выбора.',
+                    parent=self)
+                return
+            try:
+                executable=find_filmcraft(chosen)
+                self.filmcraft_exe=executable
+            except FilmCraftError as exc:
+                messagebox.showerror('FilmCraft',str(exc),parent=self)
+                return
+        video=getattr(self,'rendered_video',None)
+        if video is not None and not Path(video).is_file():
+            video=None
+        metadata=(self.rendered_info if video is not None else None)
+        self.status.set('Передаю монтаж в FilmCraft…')
+        def worker():
+            from filmcraft_bridge import open_in_filmcraft
+            result=open_in_filmcraft(executable,video,metadata=metadata)
+            def done():
+                self.status.set('FilmCraft открыт: '+result.mode)
+                self._show(
+                    result.detail+'\n\n'
+                    +(('Редактируемый проект: '+str(result.project)+'\n')
+                      if result.project else '')
+                    +(('OTIO-шкала: '+str(result.timeline)+'\n')
+                      if result.timeline else '')
+                    +'Готовый MP4 остаётся на диске и не меняется.\n'
+                    'После правок сохрани новый .fcproj и экспортируй видео в FilmCraft.')
+            self._notify(done)
+        self._spawn(worker)
 
     def _choose_music(self):
         folder=filedialog.askopenfilename(
@@ -180,7 +234,8 @@ class ViralStudioWindow(tk.Toplevel):
         self.running=value
         state='disabled' if value else 'normal'
         for widget in (self.make_button,self.edit_button,self.load_button,self.audience_button,
-                       self.review_button,self.auto_button):
+                       self.review_button,self.auto_button,
+                       self.filmcraft_button):
             widget.configure(state=state)
 
     def _pump_notifications(self):
@@ -391,6 +446,7 @@ class ViralStudioWindow(tk.Toplevel):
                 self.brief=outcome.brief
                 self.project=project
                 self.rendered_video=out
+                self.rendered_info=result
                 self._show(
                     'Автомонтаж завершён.\n\n'
                     'Тема: '+topic+'\n'
@@ -464,6 +520,7 @@ class ViralStudioWindow(tk.Toplevel):
             report=outcome.report
             def done():
                 self.rendered_video=out
+                self.rendered_info=data
                 self.brief=outcome.brief
 
                 self.status.set('Ролик готов: '+str(out)+

@@ -20,7 +20,7 @@ binaries=[]
 datas=[(str(assets),'assets')]
 hiddenimports=['win32com.client','pythoncom','pywintypes','PIL.ImageGrab',
                'sounddevice','_sounddevice_data','tiktoken_ext.openai_public',
-               'pyautogui','pygetwindow','text_only_main','text_only_ui','text_only_overlay','freellm_client','pro_montage','code_gui','code_agent','code_autopilot','code_workspace','code_edits','coding_intent']
+               'pyautogui','pygetwindow','text_only_main','text_only_ui','text_only_overlay','freellm_client','pro_montage','filmcraft_bridge','code_gui','code_agent','code_autopilot','code_workspace','code_edits','coding_intent']
 for library in ('vosk','whisper','torch','sounddevice','_sounddevice_data',
                 'PIL','scipy','pyttsx3'):
     try:

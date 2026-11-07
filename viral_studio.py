@@ -517,7 +517,8 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
         edl=out_file.with_name(out_file.stem+'_EDL.json')
         result={'output':str(out_file),'duration':verified_duration,'size':[width,height],
                 'technical_quality':technical,
-                'segments':decisions,'captions':'экранные вставки, не транскрипция речи',
+                'segments':decisions,'source_directory':str(footage_dir),
+                'captions':'экранные вставки, не транскрипция речи',
                 'professional':advanced,
                 'created_utc':datetime.now(timezone.utc).isoformat(),
                 'subtitle_file':str(srt)}
