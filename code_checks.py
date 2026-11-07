@@ -141,7 +141,12 @@ def check_project(language:str,root:Path,*,timeout=30)->dict:
                 cmd=[tool,source.as_posix(),*prefix[1:],str(Path(tmp)/"classes")]
             else:
                 cmd=[tool,*prefix[1:],str(source)]
-            err=_syntax_process(cmd,root,timeout=timeout)
+            # Recent TypeScript versions reject CLI source filenames if
+            # tsconfig.json is found in the current working directory
+            # (TS5112). Compile a temp-rooted source path instead; this
+            # isolates the check from repo-specific build hooks as well.
+            check_cwd=Path(tmp) if language=="typescript" else root
+            err=_syntax_process(cmd,check_cwd,timeout=timeout)
             if err:
                 return {"status":"failed","reason":f"{source.name}: {err}",
                         "verification":"syntax_only"}
