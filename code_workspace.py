@@ -120,6 +120,7 @@ def starter_project(language: str, name: str) -> ChangePlan:
                 'Check dependencies and configuration before deploying.\n'),
         )))
     return ChangePlan('luau', (
+        ProposedFile('src/server/Main.server.luau',
             f'-- {name}: Roblox server entry point\nprint("JARVIS NOVA: {name}")\n'),
         ProposedFile('default.project.json', '{\n  \"name\": \"'+name+'\",\n  \"tree\": {\n    \"$className\": \"DataModel\",\n    \"ServerScriptService\": {\n      \"$className\": \"ServerScriptService\",\n      \"Main\": {\n        \"$path\": \"src/server/Main.server.luau\"\n      }\n    }\n  }\n}\n'),
         ProposedFile('README.md', f'# {name}\n\nRoblox Studio: import `src/server/Main.server.luau` into ServerScriptService, or use Rojo with `default.project.json`. Test with Play in Roblox Studio before publishing.\n'),
