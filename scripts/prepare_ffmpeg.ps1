@@ -5,7 +5,9 @@ $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ArchiveName = 'ffmpeg-n8.1-latest-win64-gpl-8.1.zip'
 $ReleaseApi = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest'
-$DownloadUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/$ArchiveName"
+# Use the asset's canonical download URL from the GitHub API. A movable
+# "latest" release may point to an underlying autobuild tag.
+
 
 $Headers = @{
     Accept = 'application/vnd.github+json'
@@ -24,8 +26,13 @@ if ($Candidates.Count -ne 1) {
     throw "Expected one Windows x64 GPL FFmpeg archive in the official latest release; found $($Candidates.Count)"
 }
 $Asset = $Candidates[0]
-if ($Asset.browser_download_url -ne $DownloadUrl) {
-    throw 'FFmpeg asset URL does not match the audited GitHub release URL'
+$DownloadUrl = [string]$Asset.browser_download_url
+$ExpectedPrefix = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/'
+if ((-not $DownloadUrl.StartsWith($ExpectedPrefix, [System.StringComparison]::Ordinal)) -or
+    (-not $DownloadUrl.EndsWith("/$ArchiveName", [System.StringComparison]::Ordinal)) -or
+    $DownloadUrl.Length -gt 350 -or $DownloadUrl.Contains('?') -or
+    $DownloadUrl.Contains('#')) {
+    throw 'FFmpeg asset URL is not a valid official BtbN release archive'
 }
 if ([string]$Asset.digest -cnotmatch '^sha256:[0-9a-f]{64}$') {
     throw 'Official GitHub asset metadata has no valid SHA256 digest'
