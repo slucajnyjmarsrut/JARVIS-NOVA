@@ -145,6 +145,10 @@ class Jarvis(tk.Tk):
                              ("Claude API (нужен ключ)","anthropic")]:
             ai.add_command(label=title,command=lambda v=choice:self.set_engine(v))
         menu.add_cascade(label="AI",menu=ai)
+        code_menu=tk.Menu(menu,tearoff=False)
+        code_menu.add_command(label="Java / Roblox Luau — написать код…",
+                              command=self.open_code_assistant)
+        menu.add_cascade(label="Программирование",menu=code_menu)
         interface_menu=tk.Menu(menu,tearoff=False)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
         interface_menu.add_command(label="Свернуть → мини-диалог справа (Ctrl+Shift+O)",
@@ -191,6 +195,19 @@ class Jarvis(tk.Tk):
                 dwm(handle,19,ctypes.byref(flag),ctypes.sizeof(flag))
         except (OSError,AttributeError,ValueError):
             pass  # older Windows builds keep normal titlebar
+
+    def open_code_assistant(self, language="java", task=""):
+        """Open an integrated coding dialog; user approves changes explicitly."""
+        try:
+            from code_gui import CodeWindow
+            window=getattr(self,"_code_window",None)
+            if window is not None and window.winfo_exists():
+                window.prefill(language,task)
+                window.focus_force()
+                return
+            self._code_window=CodeWindow(self,language=language,task=task)
+        except Exception as exc:
+            messagebox.showerror("Программирование",str(exc),parent=self)
 
     def show_settings_menu(self,event=None):
         """All formerly top-bar menus stay available from the LEFT rail."""
@@ -744,6 +761,12 @@ class Jarvis(tk.Tk):
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        from coding_intent import detect_coding_intent
+        coding=detect_coding_intent(text)
+        if coding is not None:
+            self.open_code_assistant(coding.language,coding.task)
+            self.reply("Открываю программирование. Проверь проект и подтверди запись файлов.")
+            return
         if text.casefold().strip(" .!?,") in {
             "проверь и исправь ошибки", "джарвис проверь и исправь ошибки",
             "самовосстановление", "исправь ошибки джарвис"}:
