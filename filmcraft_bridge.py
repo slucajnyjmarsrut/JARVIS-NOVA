@@ -59,7 +59,10 @@ def find_filmcraft(preferred=None):
             return exe
         raise FilmCraftError("Выбранный файл — не установленный filmcraft.exe")
     local = os.environ.get("LOCALAPPDATA", "")
-    locations = [os.environ.get("JARVIS_FILMCRAFT_EXE", ""),
+    from filmcraft_installer import installed_executable
+    portable = installed_executable()
+    locations = [str(portable) if portable else "",
+                 os.environ.get("JARVIS_FILMCRAFT_EXE", ""),
                  shutil.which("filmcraft.exe") or ""]
     if local:
         locations.append(str(Path(local) / "Programs" / "ArtCraft" /

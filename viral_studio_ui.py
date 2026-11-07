@@ -107,10 +107,10 @@ class ViralStudioWindow(tk.Toplevel):
         film_row=ttk.Frame(self,padding=(12,0,12,6))
         film_row.pack(fill='x')
         self.filmcraft_button=ttk.Button(
-            film_row,text='🎬 ОТКРЫТЬ FILMCRAFT — РУЧНОЙ МОНТАЖ',
+            film_row,text='🎬 FILMCRAFT — СКАЧАТЬ И ОТКРЫТЬ',
             command=self.open_filmcraft)
         self.filmcraft_button.pack(side='left',padx=(0,9))
-        ttk.Label(film_row,text='Откроет готовый ролик или редактируемую шкалу').pack(side='left')
+        ttk.Label(film_row,text='При первом нажатии скачает FilmCraft автоматически').pack(side='left')
         guide_row=ttk.Frame(self,padding=(12,0,12,6))
         guide_row.pack(fill='x')
         ttk.Button(guide_row,text='Изучить официальную справку FFmpeg',
@@ -126,36 +126,40 @@ class ViralStudioWindow(tk.Toplevel):
         self.after(100,self._pump_notifications)
 
     def open_filmcraft(self):
-        """Single-click handoff: native editable timeline when CLI is installed."""
-        from filmcraft_bridge import find_filmcraft, FilmCraftError, FILMCRAFT_DOWNLOAD
-        try:
-            executable=find_filmcraft(self.filmcraft_exe)
-        except FilmCraftError:
-            chosen=filedialog.askopenfilename(
-                title='Укажи установленный filmcraft.exe',
-                parent=self,filetypes=[('FilmCraft (Windows)','filmcraft.exe')])
-            if not chosen:
-                messagebox.showinfo(
-                    'FilmCraft не найден',
-                    'Установи FilmCraft с официальной страницы:\n'
-                    +FILMCRAFT_DOWNLOAD+
-                    '\n\nЗатем нажми кнопку ещё раз. JARVIS не загружает'
-                    ' и не запускает сторонние программы без твоего выбора.',
-                    parent=self)
-                return
-            try:
-                executable=find_filmcraft(chosen)
-                self.filmcraft_exe=executable
-            except FilmCraftError as exc:
-                messagebox.showerror('FilmCraft',str(exc),parent=self)
-                return
+        """One click: auto-download verified FilmCraft if needed, then open."""
+        if self.running:
+            return
         video=getattr(self,'rendered_video',None)
         if video is not None and not Path(video).is_file():
             video=None
         metadata=(self.rendered_info if video is not None else None)
-        self.status.set('Передаю монтаж в FilmCraft…')
+        self.status.set('Проверяю, установлен ли FilmCraft…')
+
         def worker():
-            from filmcraft_bridge import open_in_filmcraft
+            from filmcraft_bridge import find_filmcraft, FilmCraftError, open_in_filmcraft
+            try:
+                executable=find_filmcraft(getattr(self,'filmcraft_exe',None))
+            except FilmCraftError:
+                from filmcraft_installer import install_filmcraft
+                previous=[None]
+                def progress(phase,completed,total):
+                    percent=int(completed*100/max(1,total))
+                    if phase=='download':
+                        label=f'Скачиваю FilmCraft с официального GitHub: {percent}%'
+                    elif phase=='unpack':
+                        label=f'Распаковываю проверенную версию FilmCraft: {percent}%'
+                    else:
+                        label='FilmCraft установлен, открываю редактор…'
+                    # Only queue a GUI refresh every 5%, not for every chunk.
+                    step=(phase,percent//5)
+                    if step!=previous[0]:
+                        previous[0]=step
+                        self._notify(lambda value=label: self.status.set(value))
+                executable=install_filmcraft(
+                    progress=progress,cancel=self.stop_event)
+                self.filmcraft_exe=executable
+            if self.stop_event.is_set():
+                return
             result=open_in_filmcraft(executable,video,metadata=metadata)
             def done():
                 self.status.set('FilmCraft открыт: '+result.mode)
