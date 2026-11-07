@@ -19,6 +19,7 @@ COLORS = {
     "wood": ((117, 78, 48), 0.0, .86),
     "leaves": ((46, 116, 67), 0.0, .94),
     "stone": ((144, 149, 153), 0.02, .83),
+    "slate": ((97, 112, 130), 0.025, .88),
     "plaster": ((220, 200, 168), 0.0, .9),
     "roof": ((67, 88, 110), .06, .72),
     "glass": ((75, 156, 194), .1, .24),
@@ -304,7 +305,8 @@ def export_prop_gltf(name,kind,seed=8472,detail="detailed"):
         rng=random.Random(seed)
         for i in range(8 if detail=="detailed" else 4):
             x=rng.uniform(-3,3);z=rng.uniform(-3,3)
-            add("Boulder_%02d"%i,"sphere","stone",
+            add("Boulder_%02d"%i,"sphere",
+                "slate" if i%3==0 else "stone",
                 (x,rng.uniform(.6,1.4),z),
                 (rng.uniform(1.5,3.7),rng.uniform(1.1,2.7),
                  rng.uniform(1.4,3.5)))
