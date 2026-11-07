@@ -141,7 +141,7 @@ class FilmCraftBridgeTests(unittest.TestCase):
             self.assertEqual(result.mode, "video")
             self.assertIsNone(result.project)
             self.assertTrue(result.timeline.is_file())
-            self.assertEqual(recorded[0][-1], str(movie))
+            self.assertEqual(Path(recorded[0][-1]).resolve(),movie.resolve())
             self.assertEqual(list(home.glob("*.fcproj")), [])
 
     def test_without_cli_opens_rendered_file(self):
@@ -153,7 +153,7 @@ class FilmCraftBridgeTests(unittest.TestCase):
             result=open_in_filmcraft(home / "filmcraft.exe", movie,
                 metadata=meta, launcher=lambda a,**kw:args.append(a))
             self.assertEqual(result.mode,"video")
-            self.assertEqual(args[0][-1],str(movie))
+            self.assertEqual(Path(args[0][-1]).resolve(),movie.resolve())
             self.assertTrue(result.timeline.is_file())
 
     def test_empty_editor_opens_without_media(self):
