@@ -74,11 +74,11 @@ class CodeWindow(tk.Toplevel):
                      values=THEMES,width=12,state='readonly').pack(side='left',padx=3)
         ttk.Combobox(row,textvariable=self.world_size,
                      values=SIZES,width=6,state='readonly').pack(side='left',padx=3)
-        ttk.Button(row,text='Создать карту',command=self.create_roblox_world).pack(side='left',padx=4)
+        ttk.Button(row,text='Создать карту + план',command=self.create_roblox_world).pack(side='left',padx=4)
         ttk.Label(row,text='3D-модель:').pack(side='left',padx=(12,2))
         ttk.Combobox(row,textvariable=self.model_kind,
                      values=MODELS,width=15,state='readonly').pack(side='left',padx=3)
-        ttk.Button(row,text='Создать 3D-модель',
+        ttk.Button(row,text='Создать 3D-модель + PBR',
                    command=self.create_roblox_model).pack(side='left',padx=4)
         ttk.Label(frame,text='Предварительный просмотр кода и результаты проверки:').pack(anchor='w')
         self.log=tk.Text(frame,wrap='word',font=('Consolas',10))
@@ -125,9 +125,19 @@ class CodeWindow(tk.Toplevel):
         return request_local_model(task,language,endpoint=endpoint,model=runtime.config.model)
 
     def _preview_text(self,plan):
-        lines=['Файлы проекта (проверь весь код до сохранения):']
+        lines=['Файлы проекта (проверь содержимое до сохранения):']
         for item in plan.files:
-            lines.extend([f'\n--- {item.path} ---',item.content])
+            lines.append(f'\n--- {item.path} ---')
+            if item.path.endswith('.gltf'):
+                # Embedded mesh buffers/PNG textures are base64; avoid flooding
+                # Tk with hundreds of KB of unreadable binary serialization.
+                lines.append('[glTF 2.0: геометрия и PBR-текстуры, '
+                             +str(len(item.content.encode('utf-8')))+
+                             ' байт. После записи проверь через 3D Importer.]')
+            else:
+                lines.append(item.content[:30000]+
+                             ('\n[ПРЕВЬЮ ОБРЕЗАНО: полный файл сохраняется]'
+                              if len(item.content)>30000 else ''))
         return '\n'.join(lines)
 
     def starter(self):
@@ -159,7 +169,8 @@ class CodeWindow(tk.Toplevel):
             changes=preview(plan,root)
             self.language.set('luau')
             self.result=CodeResult(plan,changes)
-            self.show('Roblox Studio: код для Edit mode → View → Command Bar. '
+            self.show('Roblox Studio: Luau для Edit mode → View → Command Bar. '
+                'Для модели также создаётся .gltf с PBR; для карты — SVG-план. '
                 'Ничего не выполнялось и не сохранялось. '
                 'Проверь скрипт и нажми «Подтвердить запись».\n'
                 +self._preview_text(plan))

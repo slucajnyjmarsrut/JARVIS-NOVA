@@ -9,6 +9,7 @@ on:
       - code_checks.py
       - code_project_engine.py
       - roblox_world_builder.py
+      - roblox_asset_pipeline.py
       - code_workspace.py
       - code_agent.py
       - code_autopilot.py
@@ -18,6 +19,7 @@ on:
       - freellm_client.py
       - tests/test_universal_code_engine.py
       - tests/test_roblox_world_builder.py
+      - tests/test_roblox_asset_pipeline.py
       - .github/workflows/universal-coding.yml
   workflow_dispatch:
 
@@ -34,11 +36,13 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax check
-        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
+        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
       - name: Run universal language tests
         run: python -m unittest discover -s tests -p test_universal_code_engine.py -v
       - name: Run Roblox map tests
         run: python -m unittest discover -s tests -p test_roblox_world_builder.py -v
+      - name: Validate self-contained glTF geometry and SVG layouts
+        run: python -m unittest discover -s tests -p test_roblox_asset_pipeline.py -v
       - name: Run prior coding regression tests
         run: python -m unittest discover -s tests -p 'test_code_*.py' -v
       - name: Run FreeLLM regression tests
@@ -53,11 +57,13 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax check
-        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
+        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
       - name: Run universal language tests
         run: python -m unittest discover -s tests -p test_universal_code_engine.py -v
       - name: Run Roblox map tests
         run: python -m unittest discover -s tests -p test_roblox_world_builder.py -v
+      - name: Validate self-contained glTF geometry and SVG layouts
+        run: python -m unittest discover -s tests -p test_roblox_asset_pipeline.py -v
       - name: Run prior coding regression tests
         run: python -m unittest discover -s tests -p "test_code_*.py" -v
       - name: Run FreeLLM regression tests

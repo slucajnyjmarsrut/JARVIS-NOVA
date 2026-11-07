@@ -303,6 +303,8 @@ def build_world(name,*,theme="forest",size=384,quality="detailed",seed=8472):
         not 0<=seed<=1_000_000):
         raise WorkspaceError("Некорректный дизайн карты")
     script=_header(name,theme,quality,seed,size)+_COMMON+_WORLD
+    from roblox_asset_pipeline import make_map_svg
+    overview=make_map_svg(theme,size,seed)
     description=(f"# Roblox map: {name}\n\nTheme: {theme}, size: {size} studs, "
         f"quality: {quality}, seed: {seed}.\n\n"
         "Roblox Studio: open a new Place, View > Command Bar. Paste the "
@@ -311,10 +313,13 @@ def build_world(name,*,theme="forest",size=384,quality="detailed",seed=8472):
         "Save the Place (.rbxl). Test navigation, collisions and performance.\n"
         "Script does not clear all existing Terrain, but it modifies Terrain "
         "and Lighting in the open Place; use a NEW Place for safety.\n"
-        "For movie-quality PBR meshes, import licensed GLB/FBX with the "
-        "Studio 3D Importer; this generator creates native Parts, not meshes.\n")
+        "The assets/map_overview.svg file is a top-down DESIGN CONCEPT, "
+        "not an exact height map. Open it in a browser to inspect layout.\n"
+        "For movie-quality PBR meshes, import licensed GLB/FBX or glTF with "
+        "Studio 3D Importer; this world generator creates native Parts.\n")
     return validate_plan(ChangePlan("luau",(
         ProposedFile("tools/GenerateWorld.luau",script),
+        ProposedFile("assets/map_overview.svg",overview),
         ProposedFile("WORLD_DESIGN.json",json.dumps(
             {"name":name,"theme":theme,"size_studs":size,
              "quality":quality,"seed":seed},ensure_ascii=False,indent=2)),
@@ -327,14 +332,23 @@ def build_model(name,*,model_type="house",quality="detailed",seed=8472):
         type(seed) is not int or not 0<=seed<=1_000_000):
         raise WorkspaceError("Некорректная модель Roblox")
     script=_header(name,"forest",quality,seed,model=model_type)+_COMMON+_PROP
+    from roblox_asset_pipeline import export_prop_gltf
+    gltf=export_prop_gltf(name,model_type,seed,quality)
     description=(f"# Roblox 3D asset: {name}\n\nModel: {model_type}, "
         f"quality: {quality}.\n\nOpen Roblox Studio > View > Command Bar. "
         "Paste tools/GenerateModel.luau and run ONCE while editing your Place. "
         "Find Workspace/JARVIS_NOVA_* and customize individual Parts, "
         "lighting, colors and materials. Save the Place. "
-        "For photorealistic custom meshes, rigging and PBR maps use Blender "
-        "and import FBX/GLB into Studio manually. Play Test is required.\n")
+        "The assets/"+model_type+".gltf contains separate 3D mesh objects "
+        "with vertex normals, embedded procedural base-color and PBR "
+        "roughness/metallic textures. In Roblox Studio use File > Import "
+        "to import this glTF (no external download). Review Importer warnings. "
+        "This glTF does not include rigs or production-grade UV-sculpted "
+        "textures; refine it with Blender for highest quality. "
+        "Generated materials need visual verification in Studio. "
+        "Play Test is required.\n")
     return validate_plan(ChangePlan("luau",(
         ProposedFile("tools/GenerateModel.luau",script),
+        ProposedFile("assets/"+model_type+".gltf",gltf),
         ProposedFile("README.md",description),
     )))

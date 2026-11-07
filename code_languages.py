@@ -13,7 +13,7 @@ COMMON = frozenset({
 })
 LANGUAGE_FILES = {
     "java": {".java", ".gradle"},
-    "luau": {".lua", ".luau"},
+    "luau": {".lua", ".luau", ".gltf", ".svg"},
     "python": {".py", ".pyi"},
     "javascript": {".js", ".mjs", ".cjs", ".jsx"},
     "typescript": {".ts", ".tsx", ".js", ".jsx"},

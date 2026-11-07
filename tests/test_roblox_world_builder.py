@@ -16,7 +16,7 @@ class RobloxWorldBuilderTests(unittest.TestCase):
             with self.subTest(theme=theme),tempfile.TemporaryDirectory() as tmp:
                 plan=build_world("SkyRealm",theme=theme,size=256,seed=2026)
                 self.assertEqual(plan.language,"luau")
-                self.assertEqual(len(plan.files),3)
+                self.assertEqual(len(plan.files),4)
                 code=next(x.content for x in plan.files
                           if x.path=="tools/GenerateWorld.luau")
                 self.assertIn("Terrain:FillBlock(",code)
@@ -35,7 +35,7 @@ class RobloxWorldBuilderTests(unittest.TestCase):
                 with self.assertRaises(PermissionError):
                     apply_plan(plan,Path(tmp))
                 paths=apply_plan(plan,Path(tmp),confirmed=True)
-                self.assertEqual(len(paths),3)
+                self.assertEqual(len(paths),4)
                 self.assertTrue((Path(tmp)/"tools/GenerateWorld.luau").exists())
                 config=json.loads((Path(tmp)/"WORLD_DESIGN.json").read_text(encoding="utf-8"))
                 self.assertEqual(config["theme"],theme)
@@ -84,7 +84,7 @@ class RobloxWorldBuilderTests(unittest.TestCase):
             before=list(path.iterdir())
             self.assertEqual(before,[])
             entries=preview(script,path)
-            self.assertEqual(len(entries),2)
+            self.assertEqual(len(entries),3)
             self.assertEqual(list(path.iterdir()),[])
             apply_plan(script,path,confirmed=True)
             self.assertTrue((path/"tools/GenerateModel.luau").is_file())
