@@ -4,10 +4,12 @@ import argparse
 from pathlib import Path
 from code_agent import propose, approve_and_write, check_java, check_luau
 from code_workspace import starter_project, preview, ChangePlan
+from code_languages import SUPPORTED
+from code_checks import check_project
 
 def main():
-    parser = argparse.ArgumentParser(description='JARVIS NOVA Java/Roblox coding extension')
-    parser.add_argument('language', choices=['java', 'luau'])
+    parser = argparse.ArgumentParser(description='JARVIS NOVA universal coding assistant')
+    parser.add_argument('language', choices=sorted(SUPPORTED))
     parser.add_argument('directory', type=Path)
     parser.add_argument('--task', help='Generate project with local Ollama')
     parser.add_argument('--starter', help='Create a starter project with this name')
@@ -26,7 +28,7 @@ def main():
         print('Отменено, файлы не изменены')
         return
     approve_and_write(result, args.directory, approved=True)
-    print('Проверка:', check_java(args.directory) if args.language == 'java' else check_luau(args.directory))
+    print('Проверка:', check_project(args.language,args.directory))
 
 if __name__ == '__main__':
     main()

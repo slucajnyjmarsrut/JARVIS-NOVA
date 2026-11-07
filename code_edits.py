@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Bounded, reviewable edits of existing Java/Luau projects.
+"""Bounded, reviewable edits of existing multi-language projects.
 
 Generated code is data. Existing files are replaced only after explicit approval,
 while backups are retained for recovery; no shell or generated code is executed.
@@ -14,8 +14,8 @@ import tempfile
 
 from code_workspace import ChangePlan, WorkspaceError, _relative_path, validate_plan, preview, EXTENSIONS
 
-MAX_CONTEXT_FILES = 24
-MAX_CONTEXT_BYTES = 80_000
+MAX_CONTEXT_FILES = 60
+MAX_CONTEXT_BYTES = 160_000
 
 
 def _project_files(root: Path, language: str) -> list[Path]:

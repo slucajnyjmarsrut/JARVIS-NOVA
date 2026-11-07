@@ -14,13 +14,18 @@ import urllib.request
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 from code_workspace import ChangePlan, WorkspaceError, parse_model_proposal, preview, apply_plan
+from code_languages import SUPPORTED
 
-SYSTEM = ("You generate project files for JARVIS NOVA. Return ONLY a JSON object with "
-          "exactly keys language and files. language must be java or luau; files is an array "
-          "of {path,content}. No markdown, no shell commands. Write original, working code. "
-          "For Roblox use Luau scripts and describe placement in README.md. "
-          "For Java prefer Java standard library and include README.md. "
-          "Do not claim to have run code or tested in an IDE.")
+SYSTEM = ("You are a senior software engineer building a complete, maintainable project. "
+          "Return ONLY valid JSON with exactly keys language and files; files is "
+          "an array of {path,content}. The language must exactly match the user's "
+          "requested language. No markdown fences, no invented test results or "
+          "shell commands to execute. Build multi-file architecture with meaningful "
+          "modules, useful tests, error handling, docs and a README. Prefer "
+          "standard libraries; record required dependencies but do not install them. "
+          "For Roblox create Luau scripts and explain Rojo/Studio placement, "
+          "models and map generation. Never embed secrets or API keys. "
+          "Never claim to have tested or launched code unless validated by tools.")
 
 @dataclass(frozen=True)
 class CodeResult:
@@ -31,7 +36,7 @@ class CodeResult:
 def request_local_model(task: str, language: str, *, endpoint: str = 'http://127.0.0.1:11434',
                         model: str = 'qwen2.5-coder:7b', transport=None) -> str:
     """Only loopback Ollama is supported; no user code is sent to the cloud."""
-    if language not in ('java', 'luau') or not isinstance(task, str) or not 1 <= len(task.strip()) <= 20000:
+    if language not in SUPPORTED or not isinstance(task, str) or not 1 <= len(task.strip()) <= 20000:
         raise WorkspaceError('Некорректная задача или язык')
     try:
         parsed = urlsplit(endpoint)
@@ -46,7 +51,7 @@ def request_local_model(task: str, language: str, *, endpoint: str = 'http://127
     payload = {'model': model, 'stream': False, 'format': 'json',
                'messages': [{'role': 'system', 'content': SYSTEM},
                             {'role': 'user', 'content': f'Language: {language}\nTask: {task}'}],
-               'options': {'temperature': 0.1, 'num_predict': 4096}}
+               'options': {'temperature': 0.1, 'num_predict': 8192}}
     if transport is None:
         def transport(url, data):
             opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))

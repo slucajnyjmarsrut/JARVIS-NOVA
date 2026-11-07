@@ -22,11 +22,9 @@ class ChangePlan:
     language: str
     files: tuple[ProposedFile, ...]
 
-SUPPORTED = frozenset({'java', 'luau'})
-EXTENSIONS = {'java': frozenset({'.java', '.xml', '.gradle', '.properties', '.md', '.gitignore'}),
-              'luau': frozenset({'.luau', '.lua', '.json', '.md', '.toml'})}
-MAX_FILES = 30
-MAX_BYTES = 150_000
+from code_languages import SUPPORTED, EXTENSIONS, starter_files
+MAX_FILES = 100
+MAX_BYTES = 500_000
 WINDOWS_RESERVED = frozenset({'CON', 'PRN', 'AUX', 'NUL', *[f'COM{x}' for x in range(1,10)], *[f'LPT{x}' for x in range(1,10)]})
 
 def _relative_path(raw: str, language: str) -> Path:
@@ -112,8 +110,16 @@ def starter_project(language: str, name: str) -> ChangePlan:
                 f'package {name};\n\npublic final class Main {{\n    public static void main(String[] args) {{\n        System.out.println("JARVIS NOVA: {name}");\n    }}\n}}\n'),
             ProposedFile('README.md', f'# {name}\n\nJava starter project. Compile with javac from the project root.\n'),
         ))
+    if language != 'luau':
+        entries=starter_files(language,name)
+        return validate_plan(ChangePlan(language,(
+            *(ProposedFile(path,content) for path,content in entries),
+            ProposedFile('README.md',
+                f'# {name}\n\nStarter project ({language}). '
+                'No tests or executable code run automatically. '
+                'Check dependencies and configuration before deploying.\n'),
+        )))
     return ChangePlan('luau', (
-        ProposedFile('src/server/Main.server.luau',
             f'-- {name}: Roblox server entry point\nprint("JARVIS NOVA: {name}")\n'),
         ProposedFile('default.project.json', '{\n  \"name\": \"'+name+'\",\n  \"tree\": {\n    \"$className\": \"DataModel\",\n    \"ServerScriptService\": {\n      \"$className\": \"ServerScriptService\",\n      \"Main\": {\n        \"$path\": \"src/server/Main.server.luau\"\n      }\n    }\n  }\n}\n'),
         ProposedFile('README.md', f'# {name}\n\nRoblox Studio: import `src/server/Main.server.luau` into ServerScriptService, or use Rojo with `default.project.json`. Test with Play in Roblox Studio before publishing.\n'),

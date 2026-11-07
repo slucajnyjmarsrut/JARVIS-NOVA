@@ -13,7 +13,11 @@ from tkinter import filedialog, messagebox, ttk
 
 from code_autopilot import generate_and_check, install_reviewed
 from code_workspace import starter_project, preview, WorkspaceError
-from code_agent import CodeResult, request_local_model, check_java, check_luau
+from code_agent import CodeResult, request_local_model
+from code_languages import SUPPORTED, LANGUAGE_LABELS
+from code_checks import check_project
+from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
+from code_project_engine import build_complete_project
 
 
 class CodeWindow(tk.Toplevel):
@@ -23,25 +27,33 @@ class CodeWindow(tk.Toplevel):
             master.withdraw()
             self._standalone_root=master
         super().__init__(master)
-        self.title('JARVIS NOVA — Java / Roblox Luau')
+        self.title('JARVIS NOVA — Универсальный ИИ-разработчик')
         self.protocol('WM_DELETE_WINDOW', self._close)
         self.geometry('800x650')
-        self.language=tk.StringVar(value=language if language in ('java','luau') else 'java')
+        self.language=tk.StringVar(value=language if language in SUPPORTED else 'python')
         self.folder=tk.StringVar()
         self.task=tk.StringVar(value=task)
         self.result=None
         self.modify_existing=tk.BooleanVar(value=False)
+        self.full_project=tk.BooleanVar(value=True)
+        self.world_theme=tk.StringVar(value='forest')
+        self.world_size=tk.IntVar(value=384)
+        self.model_kind=tk.StringVar(value='house')
         self._generation_busy=False
         frame=ttk.Frame(self,padding=16)
         frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='Язык программирования').pack(anchor='w')
-        ttk.Combobox(frame,textvariable=self.language,values=['java','luau'],state='readonly').pack(fill='x')
+        ttk.Combobox(frame,textvariable=self.language,
+                     values=sorted(SUPPORTED),state='readonly').pack(fill='x')
         ttk.Label(frame,text='Новая папка проекта (существующие файлы не перезаписываются)').pack(anchor='w',pady=(8,0))
         row=ttk.Frame(frame);row.pack(fill='x')
         ttk.Entry(row,textvariable=self.folder).pack(side='left',fill='x',expand=True)
         ttk.Button(row,text='Выбрать',command=self.choose).pack(side='left')
         ttk.Checkbutton(frame,text='Изменять существующий проект (с резервными копиями и подтверждением)',
                         variable=self.modify_existing).pack(anchor='w',pady=(7,0))
+        ttk.Checkbutton(frame,
+            text='Полный проект: архитектура → функции → тесты и документация (3 шага)',
+            variable=self.full_project).pack(anchor='w')
         ttk.Label(frame,text='Задача (для генерации) или имя проекта (для шаблона)').pack(anchor='w',pady=(8,0))
         ttk.Entry(frame,textvariable=self.task).pack(fill='x')
         bar=ttk.Frame(frame);bar.pack(fill='x',pady=8)
@@ -54,11 +66,26 @@ class CodeWindow(tk.Toplevel):
         actions=ttk.Frame(frame);actions.pack(fill='x',pady=(0,8))
         ttk.Button(actions,text='Открыть папку проекта',command=self.open_project).pack(side='left')
         ttk.Button(actions,text='Открыть IDE',command=self.open_ide).pack(side='left',padx=8)
+        roblox=ttk.LabelFrame(frame,text='Roblox Studio: генерация 3D-моделей и карт')
+        roblox.pack(fill='x',pady=(0,7))
+        row=ttk.Frame(roblox);row.pack(fill='x',padx=8,pady=5)
+        ttk.Label(row,text='Карта:').pack(side='left')
+        ttk.Combobox(row,textvariable=self.world_theme,
+                     values=THEMES,width=12,state='readonly').pack(side='left',padx=3)
+        ttk.Combobox(row,textvariable=self.world_size,
+                     values=SIZES,width=6,state='readonly').pack(side='left',padx=3)
+        ttk.Button(row,text='Создать карту',command=self.create_roblox_world).pack(side='left',padx=4)
+        ttk.Label(row,text='3D-модель:').pack(side='left',padx=(12,2))
+        ttk.Combobox(row,textvariable=self.model_kind,
+                     values=MODELS,width=15,state='readonly').pack(side='left',padx=3)
+        ttk.Button(row,text='Создать 3D-модель',
+                   command=self.create_roblox_model).pack(side='left',padx=4)
         ttk.Label(frame,text='Предварительный просмотр кода и результаты проверки:').pack(anchor='w')
         self.log=tk.Text(frame,wrap='word',font=('Consolas',10))
         self.log.pack(fill='both',expand=True)
         self.show('Выбери пустую папку, опиши задачу, затем проверь код и подтверди запись.\n'
-                  'Roblox Studio Play Test и тестирование на Windows выполняются отдельно.')
+                  'Компиляторы и проверки работают только если установлены. '
+                  'Roblox Studio Play Test, запуск и проверка функций выполняются отдельно.')
 
     def _close(self):
         self.destroy()
@@ -66,7 +93,7 @@ class CodeWindow(tk.Toplevel):
         if standalone is not None:standalone.destroy()
 
     def prefill(self,language,task):
-        if language in ('java','luau'):
+        if language in SUPPORTED:
             self.language.set(language)
         if task:
             self.task.set(task[:700])
@@ -114,12 +141,45 @@ class CodeWindow(tk.Toplevel):
         except Exception as exc:
             messagebox.showerror('Ошибка',str(exc),parent=self)
 
+    def _roblox_asset(self,kind):
+        if self._generation_busy:
+            return
+        try:
+            root=self._target()
+            label=self.task.get().strip()
+            import re
+            if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]{0,39}',label):
+                label='NOVA_Map' if kind=='world' else 'NOVA_Model'
+            if kind=='world':
+                plan=build_world(label,theme=self.world_theme.get(),
+                    size=int(self.world_size.get()),quality='detailed')
+            else:
+                plan=build_model(label,model_type=self.model_kind.get(),
+                    quality='detailed')
+            changes=preview(plan,root)
+            self.language.set('luau')
+            self.result=CodeResult(plan,changes)
+            self.show('Roblox Studio: код для Edit mode → View → Command Bar. '
+                'Ничего не выполнялось и не сохранялось. '
+                'Проверь скрипт и нажми «Подтвердить запись».\n'
+                +self._preview_text(plan))
+            self.write.configure(state='normal')
+        except Exception as exc:
+            messagebox.showerror('Roblox 3D',str(exc),parent=self)
+
+    def create_roblox_world(self):
+        self._roblox_asset('world')
+
+    def create_roblox_model(self):
+        self._roblox_asset('model')
+
     def generate(self):
         try:
             root=self._target()
             language=self.language.get()
             task=self.task.get().strip()
             existing=self.modify_existing.get()
+            full_project=self.full_project.get()
             if not 1<=len(task)<=3000:raise WorkspaceError('Опиши задачу (1–3000 символов)')
         except Exception as exc:
             messagebox.showerror('Ошибка',str(exc),parent=self)
@@ -141,8 +201,13 @@ class CodeWindow(tk.Toplevel):
         self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
         def worker():
             try:
-                result=generate_and_check(task,language,generator=self._model_generator,
-                                          workspace=root if existing else None)
+                if full_project:
+                    result=build_complete_project(task,language,
+                        generator=self._model_generator,workspace=root if existing else None)
+                else:
+                    result=generate_and_check(task,language,
+                        generator=self._model_generator,
+                        workspace=root if existing else None)
                 preview(result.plan,root)
                 self._on_ui(lambda:self.ready(result))
             except Exception as exc:
@@ -165,11 +230,13 @@ class CodeWindow(tk.Toplevel):
 
     def ready(self,result):
         self.result=result
-        lines=['Проверено Java-компилятором: '+('ДА' if result.verified else 'НЕТ'),
+        lines=['Язык: '+LANGUAGE_LABELS.get(result.plan.language,result.plan.language),
+               'Статическая проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
+               'Важное ограничение: JARVIS не запускает сгенерированный код и тесты.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],
                self._preview_text(result.plan)]
         self.show('\n'.join(lines))
-        if result.attempts and result.attempts[-1].status == 'failed':
+        if result.attempts and result.attempts[-1].status not in ('passed','partial'):
             self.write.configure(state='disabled')
         else:
             self.write.configure(state='normal')
@@ -196,7 +263,7 @@ class CodeWindow(tk.Toplevel):
                 paths=approve_and_write(self.result,root,approved=True)
             else:
                 paths=install_reviewed(self.result,root,confirmed=True)
-            check=check_java(root) if self.result.plan.language=='java' else check_luau(root)
+            check=check_project(self.result.plan.language,root)
             self.show('Файлы записаны:\n'+'\n'.join(paths)+'\n\nПроверка: '+str(check))
             self.write.configure(state='disabled')
         except Exception as exc:

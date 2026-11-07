@@ -139,7 +139,7 @@ class TextJarvis(BaseJarvis):
         ):
             ai.add_command(label=label, command=lambda v=value:self.set_engine(v))
         menu.add_cascade(label="AI", menu=ai)
-        menu.add_command(label="Программирование Java / Roblox…", command=self.open_code_assistant)
+        menu.add_command(label="Программирование · 20 языков и Roblox 3D…", command=self.open_code_assistant)
         menu.add_command(label="Видео-студия…", command=self.open_viral_studio)
         menu.add_command(label="FilmCraft — открыть редактор",
                          command=self.open_filmcraft)
@@ -187,7 +187,7 @@ class TextJarvis(BaseJarvis):
     def show_capabilities(self):
         messagebox.showinfo("JARVIS NOVA — текст",
             "Пиши сообщения в чате, ответы появляются только текстом.\n\n"
-            "Локальная Qwen, команды Windows, Java, Roblox Luau, монтаж и "
+            "Локальная Qwen, команды Windows, 20 языков, Roblox 3D, монтаж и "
             "анализ экрана с подтверждением доступны.\n"
             "Микрофон и синтез речи не запускаются.", parent=self)
 

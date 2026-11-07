@@ -153,7 +153,8 @@ class FreeLLMChat:
     def generate_code(self, task: str, language: str) -> str:
         """Isolated code request; never leaks previous chat turns to the model."""
         from code_agent import SYSTEM
-        if language not in ("java", "luau") or not isinstance(task, str) or not 1 <= len(task.strip()) <= 20000:
+        from code_languages import SUPPORTED
+        if language not in SUPPORTED or not isinstance(task, str) or not 1 <= len(task.strip()) <= 20000:
             raise FreeLLMError("Недопустимый запрос к генератору кода")
         code_model = os.environ.get("FREELLM_CODE_MODEL", self.model)
         if not self._lock.acquire(blocking=False):
@@ -163,7 +164,7 @@ class FreeLLMChat:
                 {"role": "system", "content": SYSTEM},
                 {"role": "user", "content": "Language: " + language +
                  "\nTask: " + task}
-            ], model=code_model, max_tokens=4096)
+            ], model=code_model, max_tokens=8192)
         finally:
             self._lock.release()
 

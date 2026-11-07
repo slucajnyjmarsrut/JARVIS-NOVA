@@ -8,6 +8,8 @@ import shutil
 import tempfile
 from code_workspace import ChangePlan, ProposedFile, WorkspaceError, validate_plan, preview
 from code_agent import request_local_model, check_java, check_luau
+from code_languages import SUPPORTED
+from code_checks import check_project
 
 @dataclass
 class Attempt:
@@ -24,7 +26,7 @@ class AutopilotResult:
     expected_sha: dict[str,str] = field(default_factory=dict)
 
 def _check(language: str, root: Path) -> dict:
-    return check_java(root) if language == 'java' else check_luau(root)
+    return check_project(language,root)
 
 def _stage(plan: ChangePlan, root: Path) -> None:
     """Stage a proposed project in an isolated temporary directory for checking."""
@@ -39,7 +41,7 @@ def generate_and_check(task: str, language: str, *, generator=request_local_mode
 
     For Luau, checks are partial unless an actual Roblox Studio test is performed.
     """
-    if language not in ('java', 'luau') or not 1 <= max_attempts <= 5:
+    if language not in SUPPORTED or not 1 <= max_attempts <= 5:
         raise WorkspaceError('Недопустимые параметры проверки')
     if not isinstance(task,str) or not 1<=len(task.strip())<=3000:
         raise WorkspaceError('Задача должна быть длиной от 1 до 3000 символов')
@@ -72,7 +74,7 @@ def generate_and_check(task: str, language: str, *, generator=request_local_mode
         status = outcome['status']
         diag = str(outcome.get('diagnostics') or outcome.get('reason') or '')[-3000:]
         attempts.append(Attempt(n, status, diag))
-        if status in ('passed', 'partial', 'skipped'):
+        if status in ('passed', 'partial'):
             return AutopilotResult(plan, attempts, status == 'passed', workspace, expected_sha)
         original_request=request.split('\nPrevious generated project failed validation.')[0][:14000]
         request=(f'{original_request}\nPrevious generated project failed validation. '
@@ -84,7 +86,7 @@ def install_reviewed(result: AutopilotResult, destination: Path, *, confirmed: b
     """Write files only with approval, never replace existing files or follow symlinks."""
     if not confirmed:
         raise PermissionError('Требуется подтверждение')
-    if not result.attempts or result.attempts[-1].status == 'failed':
+    if not result.attempts or result.attempts[-1].status not in ('passed','partial'):
         raise WorkspaceError('Нельзя устанавливать код, который не прошёл проверку')
     if result.workspace is not None:
         from code_edits import write_reviewed_update
