@@ -39,7 +39,7 @@ class UniversalCodingTests(unittest.TestCase):
                 written=apply_plan(plan,Path(tmp),confirmed=True)
                 self.assertEqual(len(written),len(plan.files))
                 result=check_project(language,Path(tmp))
-                self.assertIn(result["status"],("passed","partial"))
+                self.assertIn(result["status"],("passed","partial"), f"{language}: {result}")
                 self.assertTrue((Path(tmp)/"README.md").is_file())
 
     def test_python_real_ast_rejects_syntax_error(self):
