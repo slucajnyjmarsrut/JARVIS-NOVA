@@ -130,7 +130,10 @@ def finish_video(parts,lengths,output,ffmpeg,*,options,executor,cancel=None):
         raise ValueError('Неожиданное число фрагментов')
     if any(not math.isfinite(x) or not .68<=x<=15. for x in lengths):
         raise ValueError('Некорректная длительность фрагмента')
-    fade=min(options.transition,max(0.,min(lengths)-.3)) if len(parts)>1 else 0.
+    # Leave every screen-caption interval at least 0.70 s after overlap.
+    # Extremely short source clips fall back to a clean hard cut.
+    fade=min(options.transition,max(0.,min(lengths)-.705)) if len(parts)>1 else 0.
+    if fade<.05:fade=0.
     total=sum(lengths)-fade*(len(parts)-1)
     if total>95.01:raise ValueError('Ролик длиннее безопасного ограничения')
     cmd=[ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-y']

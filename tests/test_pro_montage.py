@@ -56,6 +56,19 @@ class ProMontageTests(unittest.TestCase):
                         fallback=.7)
         self.assertEqual(fallback,.7)
         self.assertEqual(why['mode'],'pixel')
+    def test_short_clips_keep_caption_intervals_valid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)
+            paths=[folder/f'{i}.mp4' for i in range(3)]
+            for path in paths:path.write_bytes(b'placeholder')
+            args=[]
+            result=finish_video(paths,[.75,.75,.75],folder/'out.mp4',
+                FFMPEG or 'ffmpeg',options=ProOptions(transition=.45),
+                executor=lambda argv,**kwargs:args.append(argv))
+            self.assertEqual(result['transition_seconds'],0.)
+            self.assertEqual(result['transition'],'none')
+            self.assertTrue(any('concat=n=3' in token for token in args[0]))
+
     @unittest.skipUnless(FFMPEG and FFPROBE,'FFmpeg not installed')
     def test_real_video_transitions_and_music(self):
         with tempfile.TemporaryDirectory() as tmp:
