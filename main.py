@@ -1126,4 +1126,5 @@ class Jarvis(tk.Tk):
 if __name__=="__main__":
     if sys.platform!="win32":
         print("Это приложение предназначено для Windows.")
-    Jarvis().mainloop()
+    from text_only_main import TextJarvis
+    TextJarvis().mainloop()

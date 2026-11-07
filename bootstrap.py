@@ -137,8 +137,8 @@ def main():
     if guard is False:
         return 10  # No second microphone/UI/vision server.
     try:
-        from main import Jarvis
-        Jarvis().mainloop()
+        from text_only_main import TextJarvis
+        TextJarvis().mainloop()
         return 0
     finally:
         if guard is not None:
