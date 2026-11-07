@@ -22,6 +22,7 @@ from nova_window_state import load_layout, safe_window_geometry
 from nova_overlay import dock_geometry
 from text_only_ui import build_text_interface
 from text_only_overlay import TextOverlay
+from freellm_client import FreeLLMChat, FreeLLMError
 
 
 class NoAudio:
@@ -86,6 +87,8 @@ class TextJarvis(BaseJarvis):
         self.runtime = BundledVisionRuntime(BundledRuntimeConfig(root=assets))
         self.trimodal.runtime = self.runtime
         self.local_chat = LocalChat(self.runtime)
+        self.freellm_chat = FreeLLMChat()
+        self._freellm_consent = False
         self.desktop = Desktop(
             lambda: self.control_allowed, lambda: self.vision_allowed,
             learning=self.learning)
@@ -130,7 +133,8 @@ class TextJarvis(BaseJarvis):
         ai = tk.Menu(menu, tearoff=False)
         for label, value in (
             ("Локальная Qwen","bundled"),("Только команды","none"),
-            ("Внешняя Ollama","ollama"),("OpenAI API","openai"),
+            ("Внешняя Ollama","ollama"),("FreeLLM · несколько ИИ","freellm"),
+            ("OpenAI API","openai"),
             ("Claude API","anthropic")
         ):
             ai.add_command(label=label, command=lambda v=value:self.set_engine(v))
@@ -150,6 +154,22 @@ class TextJarvis(BaseJarvis):
         self.after(100, self.pump)
         self.after(20000, self._check_auto_update)
         self.after(150, self.entry.focus_set)
+
+    def set_engine(self, engine):
+        if engine == "freellm":
+            if not self._freellm_consent:
+                if not messagebox.askyesno(
+                    "FreeLLM — разрешить отправку текста?",
+                    "FreeLLM может отправлять ваши сообщения внешним провайдерам ИИ. "
+                    "При генерации кода содержимое проекта также может быть отправлено. "
+                    "API-ключи хранятся на вашем компьютере, не в GitHub. "
+                    "Разрешить использование FreeLLM в этой сессии?", parent=self):
+                    return
+                self._freellm_consent = True
+            self.engine = "freellm"
+            self.status.set("FreeLLM · несколько моделей · текстовый режим")
+            return
+        return super().set_engine(engine)
 
     def init_voice(self):
         return None
@@ -260,6 +280,7 @@ class TextJarvis(BaseJarvis):
             except Exception:
                 pass
         self.local_chat.close()
+        self.freellm_chat.close()
         self._focus_epoch += 1
         self._focus_deadline = None
         self.control_allowed = False

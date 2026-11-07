@@ -828,21 +828,26 @@ class Jarvis(tk.Tk):
         local=parse_local(text)
         if self.engine=="none" or local.steps or local.answer or text.casefold().strip() in {"открой","запусти","включи"}:
             self.execute_plan(local)
-        elif self.engine=="bundled":
+        elif self.engine in ("bundled","freellm"):
             if self.executing:
                 self.reply("Подожди, пока я закончу предыдущий запрос.")
                 return
             self.executing=True
             request_style=normalize_style(getattr(self,"_answer_style","normal"))
             self._answer_style="normal"
-            self.status.set("Думаю локально — первый ответ может занять время…")
+            provider=self.engine
+            self.status.set(
+                "FreeLLM: ожидаю ответ выбранной модели…" if provider=="freellm"
+                else "Думаю локально — первый ответ может занять время…")
             def chat_worker():
                 try:
-                    result=(True,self.local_chat.ask(text))
+                    client=self.freellm_chat if provider=="freellm" else self.local_chat
+                    result=(True,client.ask(text))
                 except Exception as exc:
-                    result=(False,"Локальный разговор недоступен: "+str(exc)[:200])
+                    name="FreeLLM" if provider=="freellm" else "Локальная модель"
+                    result=(False,name+" недоступен: "+str(exc)[:200])
                 self.q.put(("chat_result",(*result,request_style)))
-            threading.Thread(target=chat_worker,daemon=True,name="jarvis-local-chat").start()
+            threading.Thread(target=chat_worker,daemon=True,name="jarvis-text-chat").start()
         else:
             request_style=normalize_style(getattr(self,"_answer_style","normal"))
             self._answer_style="normal"

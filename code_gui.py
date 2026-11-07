@@ -89,6 +89,8 @@ class CodeWindow(tk.Toplevel):
     def _model_generator(self, task, language):
         """Prefer the shared, offline runtime already running inside JARVIS."""
         host=self.master
+        if getattr(host,"engine",None)=="freellm":
+            return host.freellm_chat.generate_code(task,language)
         runtime=getattr(getattr(host,'trimodal',None),'runtime',None)
         if runtime is None:
             return request_local_model(task,language)
@@ -123,12 +125,20 @@ class CodeWindow(tk.Toplevel):
             messagebox.showerror('Ошибка',str(exc),parent=self)
             return
         if self._generation_busy:return
+        if getattr(self.master,"engine",None)=="freellm":
+            if not messagebox.askyesno(
+                "Подтвердить отправку кода в FreeLLM",
+                "Задача и, при редактировании существующего проекта, исходные файлы "
+                "будут переданы через FreeLLM подключённому ИИ-провайдеру. "
+                "Не отправляйте пароли, токены и конфиденциальные данные. Продолжить?",
+                parent=self):
+                return
         self._generation_busy=True
         self.gen.configure(state='disabled')
         self.starter_button.configure(state='disabled')
         self.write.configure(state='disabled')
         self.result=None
-        self.show('Локальный ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
+        self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
         def worker():
             try:
                 result=generate_and_check(task,language,generator=self._model_generator,

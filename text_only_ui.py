@@ -95,7 +95,8 @@ def build_text_interface(app):
             engine=getattr(app,"engine","bundled")
             app.hud_engine.configure(text={
                 "bundled":"QWEN · ЛОКАЛЬНО","none":"КОМАНДЫ · ОФЛАЙН",
-                "ollama":"OLLAMA · ЛОКАЛЬНО","openai":"OPENAI · СЕТЬ",
+                "ollama":"OLLAMA · ЛОКАЛЬНО","freellm":"FREELLM · МОДЕЛИ",
+                "openai":"OPENAI · СЕТЬ",
                 "anthropic":"CLAUDE · СЕТЬ"}.get(engine,"AI"),
                 fg=GREEN if engine in ("bundled","none") else AMBER)
             selected=getattr(getattr(app,"modes",None),"mode","neutral")
