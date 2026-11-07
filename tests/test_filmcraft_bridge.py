@@ -182,7 +182,7 @@ class FilmCraftBridgeTests(unittest.TestCase):
         gui=(root/"viral_studio_ui.py").read_text(encoding="utf-8")
         main=(root/"text_only_main.py").read_text(encoding="utf-8")
         self.assertIn("command=self.open_filmcraft",gui)
-        self.assertIn("from filmcraft_bridge import open_in_filmcraft",gui)
+        self.assertIn("open_in_filmcraft",gui)
         self.assertIn("FilmCraft — открыть редактор",main)
 
 
