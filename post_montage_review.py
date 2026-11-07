@@ -154,6 +154,8 @@ def analyze_and_recut(
     renderer=None,
     reviewer=None,
     media_auditor=None,
+    pro_options=None,
+    semantic_describe=None,
 ) -> MontageOutcome:
     """Render, assess, recut if actionable, reassess, keep highest-scoring version.
 
@@ -185,7 +187,11 @@ def analyze_and_recut(
         suffix="" if attempt==0 else f"_V{attempt+1}"
         path=project_dir/(Path(filename).stem+suffix+".mp4")
         try:
-            rendered=render(current,footage_dir,path,cancel=cancel)
+            kwargs={'cancel':cancel}
+            if pro_options is not None:
+                kwargs['pro_options']=pro_options
+                kwargs['semantic_describe']=semantic_describe
+            rendered=render(current,footage_dir,path,**kwargs)
         except Exception as exc:
             if attempt==0 or (cancel is not None and cancel.is_set()):
                 raise

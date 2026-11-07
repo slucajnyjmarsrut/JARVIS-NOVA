@@ -45,6 +45,12 @@ class ViralStudioWindow(tk.Toplevel):
         self.topic=tk.StringVar(value='')
         self.country=tk.StringVar(value='RU')
         self.web_enabled=tk.BooleanVar(value=False)
+        # Pro features are local and opt-in. Original clips are never changed.
+        self.pro_enabled=tk.BooleanVar(value=True)
+        self.pro_color=tk.StringVar(value='natural')
+        self.pro_transition=tk.StringVar(value='0.22')
+        self.pro_music=tk.StringVar(value='')
+        self.pro_semantic=tk.BooleanVar(value=False)
         self.status=tk.StringVar(value='Начни с экспорта статистики своего канала (CSV). Без анализа канала сценарий не создаётся.')
         header=ttk.Frame(self,padding=12)
         header.pack(fill='x')
@@ -61,7 +67,7 @@ class ViralStudioWindow(tk.Toplevel):
         self.make_button.pack(side='left',padx=(0,6))
         self.load_button=ttk.Button(row,text='Открыть сценарий',command=self.open_brief)
         self.load_button.pack(side='left',padx=(0,6))
-        self.speak_button=ttk.Button(row,text='Озвучить, что снимать',command=self.read_shots)
+        self.speak_button=ttk.Button(row,text='Показать план съёмки',command=self.read_shots)
         self.speak_button.pack(side='left')
         second=ttk.Frame(self,padding=(12,0,12,8));second.pack(fill='x')
         self.edit_button=ttk.Button(second,text='3. Монтаж: мои или онлайн-кадры',command=self.montage)
@@ -74,6 +80,28 @@ class ViralStudioWindow(tk.Toplevel):
         self.auto_button=ttk.Button(auto_row,text='АВТОМОНТАЖ: тема → исходники → ролик',
                                     command=self.auto_montage)
         self.auto_button.pack(side='left')
+        pro_frame=ttk.LabelFrame(self,text='Профессиональный монтаж · локально',padding=(10,5))
+        pro_frame.pack(fill='x',padx=12,pady=(0,7))
+        options_row=ttk.Frame(pro_frame);options_row.pack(fill='x')
+        ttk.Checkbutton(options_row,text='Плавные переходы + анимация титров',
+                        variable=self.pro_enabled).pack(side='left',padx=(0,9))
+        ttk.Label(options_row,text='Цвет:').pack(side='left')
+        ttk.Combobox(options_row,textvariable=self.pro_color,
+                     values=['natural','cinematic','none'],width=10,
+                     state='readonly').pack(side='left',padx=(4,9))
+        ttk.Label(options_row,text='Переход, с:').pack(side='left')
+        ttk.Combobox(options_row,textvariable=self.pro_transition,
+                     values=['0','0.16','0.22','0.32'],width=5,
+                     state='readonly').pack(side='left',padx=(4,0))
+        soundtrack_row=ttk.Frame(pro_frame);soundtrack_row.pack(fill='x',pady=(5,0))
+        ttk.Label(soundtrack_row,text='Музыка:').pack(side='left',padx=(0,5))
+        ttk.Entry(soundtrack_row,textvariable=self.pro_music,width=37).pack(
+            side='left',fill='x',expand=True,padx=(0,5))
+        ttk.Button(soundtrack_row,text='Выбрать',command=self._choose_music).pack(side='left')
+        ttk.Button(soundtrack_row,text='Очистить',command=lambda:self.pro_music.set('')).pack(side='left',padx=3)
+        ttk.Checkbutton(pro_frame,
+            text='Подбирать кадры по сюжету через локальную Qwen (может быть медленно)',
+            variable=self.pro_semantic).pack(anchor='w')
         guide_row=ttk.Frame(self,padding=(12,0,12,6))
         guide_row.pack(fill='x')
         ttk.Button(guide_row,text='Изучить официальную справку FFmpeg',
@@ -87,6 +115,44 @@ class ViralStudioWindow(tk.Toplevel):
         ttk.Label(self,textvariable=self.status,wraplength=690).pack(fill='x',padx=12,pady=(0,10))
         self.focus_set()
         self.after(100,self._pump_notifications)
+
+    def _choose_music(self):
+        folder=filedialog.askopenfilename(
+            parent=self,title='Выбери собственную музыку',
+            filetypes=[('Аудио','*.mp3 *.m4a *.wav *.flac *.ogg *.aac')])
+        if folder:self.pro_music.set(folder)
+
+    def _video_options(self):
+        """Return None for classic editors and lightweight regression stubs."""
+        selected=getattr(self,'pro_enabled',None)
+        if selected is None or not selected.get():
+            return None
+        from pro_montage import ProOptions, validate_options
+        music=self.pro_music.get().strip()
+        return validate_options(ProOptions(
+            transition=float(self.pro_transition.get()),
+            color=self.pro_color.get(),
+            animated_titles=True,
+            music_path=Path(music) if music else None,
+            beat_sync=True,
+            semantic=self.pro_semantic.get()))
+
+    def _semantic_describer(self, opts):
+        """Only the bundled local Qwen; never send footage to FreeLLM/cloud."""
+        if opts is None or not opts.semantic:
+            return None
+        parent=getattr(self,'parent',None)
+        runtime=(getattr(parent,'runtime',None) or
+                 getattr(getattr(parent,'trimodal',None),'runtime',None))
+        if runtime is None:return None
+        try:
+            from vision_engine import LocalOllamaVision, VisionConfig
+            vision=LocalOllamaVision(VisionConfig(endpoint=runtime.start()))
+            vision.initialize()
+            return vision.describe
+        except Exception:
+            # Retain honest pixel-based selection when local Vision unavailable.
+            return None
 
     def focus_stage(self, stage: str):
         """Navigate without triggering filesystem dialogs, web requests or rendering."""
@@ -283,6 +349,11 @@ class ViralStudioWindow(tk.Toplevel):
                 'Окончательный результат нужно проверить.',
                 parent=self):
             return
+        try:
+            pro=ViralStudioWindow._video_options(self)
+        except (ValueError,OSError) as exc:
+            messagebox.showerror('Профессиональный монтаж',str(exc),parent=self)
+            return
         self.status.set('Автомонтаж: создаю сценарий по теме…')
         def work():
             note=''
@@ -307,9 +378,13 @@ class ViralStudioWindow(tk.Toplevel):
             download_free_video(candidates[:len(brief.shots)],source,
                                 consent=True,cancel=self.stop_event)
             if self.stop_event.is_set():return
+            options=({'pro_options':pro,
+                      'semantic_describe':ViralStudioWindow._semantic_describer(self,pro)}
+                     if pro is not None else {})
             outcome=analyze_and_recut(
                 brief,source,project,profile=self.profile,
-                filename='JARVIS_NOVA_AUTO_VERTICAL.mp4',cancel=self.stop_event)
+                filename='JARVIS_NOVA_AUTO_VERTICAL.mp4',cancel=self.stop_event,
+                **options)
             out=outcome.output
             result=outcome.rendered
             def done():
@@ -350,6 +425,11 @@ class ViralStudioWindow(tk.Toplevel):
             if not messagebox.askyesno('Подтверждение монтажа',
                 f'Смонтировать {len(self.brief.shots)} кадров из {folder}? '
                 'Исходные файлы не изменятся.',parent=self):return
+        try:
+            pro=ViralStudioWindow._video_options(self)
+        except (ValueError,OSError) as exc:
+            messagebox.showerror('Профессиональный монтаж',str(exc),parent=self)
+            return
         brief=self.brief
         project=self.project
         out=project/'JARVIS_NOVA_VERTICAL.mp4'
@@ -371,9 +451,13 @@ class ViralStudioWindow(tk.Toplevel):
                                     consent=True,cancel=self.stop_event)
                 credits=str(source/'CREDITS_RU.md')
             if self.stop_event.is_set():return
+            options=({'pro_options':pro,
+                      'semantic_describe':ViralStudioWindow._semantic_describer(self,pro)}
+                     if pro is not None else {})
             outcome=analyze_and_recut(
                 brief,source,project,profile=self.profile,
-                filename='JARVIS_NOVA_VERTICAL.mp4',cancel=self.stop_event)
+                filename='JARVIS_NOVA_VERTICAL.mp4',cancel=self.stop_event,
+                **options)
             out=outcome.output
             data=outcome.rendered
             review=outcome.review

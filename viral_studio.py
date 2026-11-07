@@ -383,7 +383,8 @@ def _make_caption_png(text: str, path: Path, width: int, height: int):
 
 
 def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,1920),
-                 tools=None, cancel: threading.Event | None = None) -> dict:
+                 tools=None, cancel: threading.Event | None = None,
+                 pro_options=None, semantic_describe=None) -> dict:
     """Produce a vertical H264/AAC MP4 from user-owned clips, with title overlays.
 
     Clips are matched to brief shots in alphabetical/number order, one per shot.
@@ -410,6 +411,13 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
     if out_file.parent==footage_dir or footage_dir in out_file.parents:
         raise ViralStudioError('Результат должен сохраняться вне папки исходных кадров')
     ffmpeg,ffprobe=tools if tools else ffmpeg_tools()
+    pro=None
+    beats=[]
+    if pro_options is not None:
+        from pro_montage import validate_options, music_beats
+        pro=validate_options(pro_options)
+        if pro.music_path is not None and pro.beat_sync:
+            beats=music_beats(pro.music_path,ffmpeg,executor=_execute,cancel=cancel)
     decisions=[]
     out_file.parent.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='jarvis_viral_') as directory:
@@ -423,7 +431,21 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             # rather than always taking the first seconds of unrelated footage.
             duration=min(shot.seconds,available-.08)
             begin=choose_highlight_start(clip,available,duration,ffmpeg,cancel=cancel)
+            semantic={'mode':'pixel'}
+            if pro is not None and pro.semantic:
+                from pro_montage import semantic_highlight_start
+                begin,semantic=semantic_highlight_start(
+                    clip,available,duration,brief.topic+'; '+shot.film,ffmpeg,
+                    describe=semantic_describe,executor=_execute,cancel=cancel,
+                    fallback=begin)
             length=min(duration,available-begin-.05)
+            if pro is not None and beats and idx<len(brief.shots):
+                from pro_montage import snap_length
+                overlap=pro.transition
+                elapsed=(sum(item['seconds'] for item in decisions)-
+                         overlap*max(0,len(decisions)-1))
+                length=snap_length(length,elapsed,beats,overlap=overlap,
+                    maximum=min(15.,available-begin-.05,shot.seconds+.20))
             if length<0.7:
                 raise ViralStudioError(f'Кадр {clip.name} слишком короткий')
             length=round(length,2)
@@ -434,11 +456,22 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
                   '-ss',str(begin),'-i',str(clip),'-loop','1','-i',str(caption_image)]
             if not has_audio:
                 argv.extend(['-f','lavfi','-i','anullsrc=r=48000:cl=stereo'])
-            filter_graph=(
-                f'[0:v:0]scale={width}:{height}:force_original_aspect_ratio=increase,'
-                f'crop={width}:{height},fps=30,format=rgba[bg];'
-                '[bg][1:v:0]overlay=0:0:shortest=1,format=yuv420p[v]'
-            )
+            if pro is None:
+                filter_graph=(
+                    f'[0:v:0]scale={width}:{height}:force_original_aspect_ratio=increase,'
+                    f'crop={width}:{height},fps=30,format=rgba[bg];'
+                    '[bg][1:v:0]overlay=0:0:shortest=1,format=yuv420p[v]'
+                )
+            else:
+                from pro_montage import color_filter, title_filters
+                title_chain,title_label=title_filters(length,pro.animated_titles)
+                filter_graph=(
+                    f'[0:v:0]scale={width}:{height}:force_original_aspect_ratio=increase,'
+                    f'crop={width}:{height},fps=30,setsar=1,'
+                    f'{color_filter(pro.color)}format=rgba[bg];'
+                    + title_chain +
+                    f'[bg][{title_label}]overlay=0:0:shortest=1,format=yuv420p[v]'
+                )
             argv.extend(['-t',str(length),'-filter_complex',filter_graph,
                          '-map','[v]', '-map','0:a:0' if has_audio else '2:a:0',
                          '-c:v','libx264','-preset','veryfast','-crf','23',
@@ -453,18 +486,30 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
             argv.extend(['-shortest',str(segment)])
             _execute(argv,timeout=900,cancel=cancel)
             segments.append(segment)
-            decisions.append({'file':clip.name,'start':begin,'seconds':length,'on_screen':shot.caption})
-        playlist=work/'playlist.txt'
-        playlist.write_text(''.join(f"file '{p.name}'\n" for p in segments),encoding='utf-8')
+            item={'file':clip.name,'start':begin,'seconds':length,'on_screen':shot.caption}
+            if pro is not None:
+                item['selection']=semantic
+            decisions.append(item)
         temp_final=work/'ready.mp4'
-        _execute([ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-y',
-                  '-f','concat','-safe','1','-i','playlist.txt','-c','copy',
-                  '-movflags','+faststart','ready.mp4'],cwd=work,timeout=300,cancel=cancel)
+        advanced={}
+        if pro is None:
+            playlist=work/'playlist.txt'
+            playlist.write_text(''.join(f"file '{p.name}'\n" for p in segments),encoding='utf-8')
+            _execute([ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-y',
+                      '-f','concat','-safe','1','-i','playlist.txt','-c','copy',
+                      '-movflags','+faststart','ready.mp4'],cwd=work,timeout=300,cancel=cancel)
+        else:
+            from pro_montage import finish_video
+            advanced=finish_video(segments,[item['seconds'] for item in decisions],
+                temp_final,ffmpeg,options=pro,executor=_execute,cancel=cancel)
+            advanced['beat_markers_detected']=len(beats)
+            advanced['semantic_scorer_available']=callable(semantic_describe)
         verified_duration,_=_probe(temp_final,ffprobe,cancel)
         if verified_duration<0.7 or temp_final.stat().st_size<1000:
             raise ViralStudioError('FFmpeg создал некорректный MP4')
-        technical=verify_output_media(temp_final,ffprobe,
-                                      sum(part['seconds'] for part in decisions),cancel=cancel)
+        expected=advanced.get('expected_seconds',
+                              sum(part['seconds'] for part in decisions))
+        technical=verify_output_media(temp_final,ffprobe,expected,cancel=cancel)
         # Prepare ALL three output artifacts before committing any of them.
         # Previous releases moved the MP4 first; a later SRT/EDL failure
         # left a misleading half-finished export on disk.
@@ -473,11 +518,20 @@ def render_video(brief: Brief, footage_dir: Path, out_file: Path, *, size=(1080,
         result={'output':str(out_file),'duration':verified_duration,'size':[width,height],
                 'technical_quality':technical,
                 'segments':decisions,'captions':'экранные вставки, не транскрипция речи',
+                'professional':advanced,
                 'created_utc':datetime.now(timezone.utc).isoformat(),
                 'subtitle_file':str(srt)}
         staged_srt=work/'captions.srt'
         staged_edl=work/'edit_decisions.json'
-        staged_srt.write_text(caption_subtitles(decisions),encoding='utf-8-sig')
+        caption_timing=decisions
+        fade=float(advanced.get('transition_seconds',0.))
+        if fade>0 and len(decisions)>1:
+            # Caption changes align to the transition midpoint, not raw
+            # segments' summed durations (which include video overlaps).
+            caption_timing=[dict(item,seconds=round(item['seconds']-
+                (fade/2 if index in (0,len(decisions)-1) else fade),2))
+                for index,item in enumerate(decisions)]
+        staged_srt.write_text(caption_subtitles(caption_timing),encoding='utf-8-sig')
         staged_edl.write_text(json.dumps(result,ensure_ascii=False,indent=2),
                               encoding='utf-8')
         # Use exclusive creates: a concurrently created user file is never

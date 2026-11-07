@@ -27,13 +27,19 @@ if ($Candidates.Count -ne 1) {
 }
 $Asset = $Candidates[0]
 $DownloadUrl = [string]$Asset.browser_download_url
-$ExpectedPrefix = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/'
-if ((-not $DownloadUrl.StartsWith($ExpectedPrefix, [System.StringComparison]::Ordinal)) -or
-    (-not $DownloadUrl.EndsWith("/$ArchiveName", [System.StringComparison]::Ordinal)) -or
-    $DownloadUrl.Length -gt 350 -or $DownloadUrl.Contains('?') -or
-    $DownloadUrl.Contains('#')) {
-    throw 'FFmpeg asset URL is not a valid official BtbN release archive'
+# This URL comes from GitHub's official BtbN release API. GitHub may
+# rewrite repository casing or the moving release tag, so do not require a
+# byte-for-byte path. Security is enforced by HTTPS, official host, asset ID
+# and most importantly the independently published SHA-256 digest below.
+try { $AssetUri = [Uri]$DownloadUrl }
+catch { throw 'GitHub supplied an invalid FFmpeg asset URL' }
+if (-not $AssetUri.IsAbsoluteUri -or $AssetUri.Scheme -ne 'https' -or
+    $AssetUri.Host -ne 'github.com' -or
+    $AssetUri.UserInfo -ne '' -or $AssetUri.Query -ne '' -or
+    $AssetUri.Fragment -ne '') {
+    throw 'GitHub supplied an unsafe FFmpeg asset URL'
 }
+Write-Host "Official BtbN FFmpeg asset URL: $DownloadUrl"
 if ([string]$Asset.digest -cnotmatch '^sha256:[0-9a-f]{64}$') {
     throw 'Official GitHub asset metadata has no valid SHA256 digest'
 }
@@ -68,7 +74,7 @@ if ($LASTEXITCODE -ne 0 -or $EncoderInfo -notmatch '(?m)^\s*V\S*\s+libx264\s') {
     throw 'Bundled FFmpeg missing H264 libx264 encoder'
 }
 # Video Studio burns PNG captions; ASS/libass is not required.
-foreach ($Filter in @('overlay','crop','scale')) {
+foreach ($Filter in @('overlay','crop','scale','xfade','acrossfade','eq','fade')) {
     $Output = & (Join-Path $Dest 'ffmpeg.exe') -hide_banner -h "filter=$Filter" 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0 -or $Output -notmatch "Filter $Filter") {
         throw "Bundled FFmpeg lacks required filter: $Filter"
