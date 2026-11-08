@@ -11,6 +11,8 @@ on:
       - optional_model_downloader.py
       - scripts/prepare_ollama.ps1
       - scripts/prepare_ffmpeg.ps1
+      - scripts/generate_icon.py
+      - scripts/generate_installer_art.py
       - scripts/verify_installer_payload.py
       - installer/JarvisNovaLite.iss
       - tests/test_lite_edition.py
@@ -58,8 +60,15 @@ jobs:
         run: |
           ./scripts/prepare_ffmpeg.ps1
           if ($LASTEXITCODE -ne 0) { throw 'FFmpeg preparation failed' }
-      - name: Generate app icon and dark installer art
-        run: python scripts/generate_installer_art.py
+      - name: Generate original Windows icon and Lite installer artwork
+        shell: pwsh
+        run: |
+          python scripts/generate_icon.py
+          if ($LASTEXITCODE -ne 0) { throw 'Icon generation failed' }
+          $env:JARVIS_NOVA_EDITION='lite'
+          python scripts/generate_installer_art.py
+          if ($LASTEXITCODE -ne 0) { throw 'Installer art generation failed' }
+          Remove-Item Env:JARVIS_NOVA_EDITION
       - name: Build compact Lite EXE without bundled Qwen
         shell: pwsh
         run: |

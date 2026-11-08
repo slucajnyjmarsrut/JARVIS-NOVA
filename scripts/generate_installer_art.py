@@ -4,6 +4,7 @@ Run on the Windows builder immediately after scripts/generate_icon.py.
 No downloaded artwork, fonts or binary files from third-party websites.
 """
 from pathlib import Path
+import os
 import math
 
 from PIL import Image, ImageDraw, ImageFont
@@ -56,8 +57,8 @@ def render_banner(path: Path):
     draw.text((cx,cy+56),"N O V A",anchor="mm",fill=CYAN,font=_font(23))
     draw.line((64,820,w-64,820),fill=GLOW,width=3)
     draw.text((64,846),"JARVIS",fill=WHITE,font=_font(76))
-    draw.text((64,940),"NOVA  /  OFFLINE",fill=CYAN,font=_font(36))
-    draw.text((64,1036),"VOICE   ·   LOCAL AI",fill=(115,186,203),
+    draw.text((64,940),"NOVA  /  " + ("LITE" if os.environ.get("JARVIS_NOVA_EDITION")=="lite" else "OFFLINE"),fill=CYAN,font=_font(36))
+    draw.text((64,1036),"TEXT ONLY   ·   LOCAL AI",fill=(115,186,203),
               font=_font(24))
     draw.text((64,1086),"WINDOWS  EDITION",fill=(115,186,203),
               font=_font(24))
