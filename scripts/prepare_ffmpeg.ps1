@@ -4,7 +4,9 @@
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $ArchiveName = 'ffmpeg-n8.1-latest-win64-gpl-8.1.zip'
-$ReleaseApi = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/tags/latest'
+$ReleaseApi = 'https://api.github.com/repos/FFmpeg-Builds/FFmpeg-Builds/releases/tags/latest'
+# Query the CURRENT canonical GitHub repository so the Authorization header
+# is not dropped across a 301 redirect from the old BtbN repository.
 # Use the asset's canonical download URL from the GitHub API. A movable
 # "latest" release may point to an underlying autobuild tag.
 
