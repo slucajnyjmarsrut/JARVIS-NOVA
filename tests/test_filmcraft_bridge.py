@@ -183,7 +183,9 @@ class FilmCraftBridgeTests(unittest.TestCase):
         main=(root/"text_only_main.py").read_text(encoding="utf-8")
         self.assertIn("command=self.open_filmcraft",gui)
         self.assertIn("open_in_filmcraft",gui)
-        self.assertIn("FilmCraft — открыть редактор",main)
+        palette=(root/"nova_command_palette.py").read_text(encoding="utf-8")
+        self.assertIn("nova_command_palette import show_palette",main)
+        self.assertIn("FilmCraft · открыть редактор",palette)
 
 
 if __name__ == "__main__":
