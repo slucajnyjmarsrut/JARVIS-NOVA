@@ -224,6 +224,10 @@ class TextJarvis(BaseJarvis):
             ModeCommand("timer_start", "Таймер 25 минут", minutes=25))
 
     def set_engine(self, engine):
+        if engine == "bundled" and not local_model_available(self._asset_root):
+            self.status.set("Локальная Qwen ещё не установлена: ⚙ → Проверить локальную модель")
+            self.check_models()
+            return
         if engine == "freellm":
             if not self._freellm_consent:
                 if not messagebox.askyesno(
@@ -256,15 +260,6 @@ class TextJarvis(BaseJarvis):
             "Локальная Qwen, команды Windows, 20 языков, Roblox 3D, монтаж и "
             "анализ экрана с подтверждением доступны.\n"
             "Микрофон и синтез речи не запускаются.", parent=self)
-
-    def check_models(self):
-        from bundled_vision_runtime import validate_offline_model_store
-        try:
-            validate_offline_model_store(self.runtime.config.root)
-            message="Локальная Qwen: файлы модели найдены. Это не тест инференса."
-        except Exception as exc:
-            message="Локальная Qwen недоступна: "+str(exc)[:160]
-        messagebox.showinfo("Локальная модель", message, parent=self)
 
     def open_filmcraft(self):
         studio=self.open_viral_studio(stage="edit")
