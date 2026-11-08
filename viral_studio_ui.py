@@ -565,12 +565,22 @@ class ViralStudioWindow(tk.Toplevel):
             messagebox.showerror('Профессиональный монтаж',str(exc),parent=self)
             return
         from quick_video_brief import select_brief
-        mode=self.scenario_mode.get()
-        runtime=getattr(self.parent,"runtime",None)
+        speed_selector=getattr(self,"scenario_mode",None)
+        mode=speed_selector.get() if speed_selector is not None else "legacy"
+        runtime=getattr(getattr(self,"parent",None),"runtime",None)
         self.status.set('Автомонтаж: создаю сценарий по теме…')
         def work():
-            brief,note=select_brief(
-                topic,mode=mode,audience=self.profile,runtime=runtime)
+            if mode=="legacy":
+                # Preserve API for earlier automation and editor integrations.
+                try:
+                    brief=create_local_brief(topic,audience=self.profile)
+                    note=""
+                except Exception as exc:
+                    brief=template_brief(topic)
+                    note="Локальная модель недоступна; использован шаблон: "+str(exc)[:120]
+            else:
+                brief,note=select_brief(
+                    topic,mode=mode,audience=self.profile,runtime=runtime)
             if self.stop_event.is_set():return
             project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
             save_brief(brief,project)
