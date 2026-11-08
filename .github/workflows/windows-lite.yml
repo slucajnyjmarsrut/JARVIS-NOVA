@@ -107,6 +107,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Lite installer compilation failed' }
           $file=Get-ChildItem dist/lite-installer/*.exe | Select-Object -First 1
           if (!$file) { throw 'Lite installer missing' }
+          Write-Host ("LITE INSTALLER SIZE: {0} bytes" -f $file.Length)
           Get-FileHash $file.FullName -Algorithm SHA256 | Format-List
       - name: Install Lite, smoke check without Qwen, uninstall
         shell: pwsh
@@ -114,15 +115,15 @@ jobs:
           $setup=(Get-ChildItem dist/lite-installer/*.exe | Select-Object -First 1).FullName
           $installed=Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/SP-' -PassThru -Wait
           if ($installed.ExitCode -ne 0) { throw "Lite installer failed: $($installed.ExitCode)" }
-          $home=Join-Path $env:LOCALAPPDATA 'Programs/JarvisNova'
-          $exe=Join-Path $home 'JarvisNova.exe'
+          $installDir=Join-Path $env:LOCALAPPDATA 'Programs/JarvisNova'
+          $exe=Join-Path $installDir 'JarvisNova.exe'
           if (!(Test-Path $exe)) { throw 'Installed Lite executable not found' }
           $test=Start-Process $exe -ArgumentList '--self-test' -PassThru -Wait
           if ($test.ExitCode -ne 0) { throw "Installed Lite self-test failed: $($test.ExitCode)" }
-          if (Test-Path (Join-Path $home '_internal/assets/models/ollama')) {
+          if (Test-Path (Join-Path $installDir '_internal/assets/models/ollama')) {
             throw 'Lite installer incorrectly bundled model weights'
           }
-          $remove=Join-Path $home 'unins000.exe'
+          $remove=Join-Path $installDir 'unins000.exe'
           if (!(Test-Path $remove)) { throw 'Lite uninstaller missing' }
           $result=Start-Process $remove -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -PassThru -Wait
           if ($result.ExitCode -ne 0) { throw "Lite uninstall failed: $($result.ExitCode)" }
