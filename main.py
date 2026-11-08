@@ -4,9 +4,21 @@ import os, queue, sys, threading, time, math, re, tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 from agent_core import Plan, parse_local, validate_plan, ask_ai_for_plan
 from desktop import Desktop, AppSuggestion
-# Legacy controller methods remain in source for historical compatibility.
-# Import all audio dependencies ONLY when the old voiced Jarvis constructor is
-# actually called. The production TextJarvis never calls that constructor.
+# Legacy voice classes are LAZY factories so old unit tests can patch
+# main.Speaker / main.TrimodalService / main.RC4Voice without importing
+# speech packages into the text-only app or PyInstaller output.
+def Speaker(*args,**kwargs):
+    from speaker import Speaker as _LegacySpeaker
+    return _LegacySpeaker(*args,**kwargs)
+
+def TrimodalService(*args,**kwargs):
+    from trimodal_service import TrimodalService as _LegacyService
+    return _LegacyService(*args,**kwargs)
+
+def RC4Voice(*args,**kwargs):
+    from voice_engine import Voice as _LegacyVoice
+    return _LegacyVoice(*args,**kwargs)
+
 def normalize_style(*args,**kwargs):
     from whisper_mode import normalize_style as _legacy_normalize_style
     return _legacy_normalize_style(*args,**kwargs)
@@ -62,9 +74,6 @@ class Jarvis(tk.Tk):
         self._auto_update_busy=False
         self._auto_update_pending=None
         self._auto_update_first_seen=0.0
-        from speaker import Speaker
-        from trimodal_service import TrimodalService
-        from voice_engine import Voice as RC4Voice
         self.speaker=Speaker()
         self.trimodal=TrimodalService()
         self.local_chat=LocalChat(self.trimodal.runtime)
