@@ -117,6 +117,23 @@ class LiteStorageTests(unittest.TestCase):
         app._model_download_busy=False
         self.assertFalse(editing_window_open(app))
 
+    def test_download_prompt_is_not_overridden_by_legacy_model_check(self):
+        import ast
+        root=Path(__file__).resolve().parents[1]
+        source=(root/"text_only_main.py").read_text(encoding="utf-8")
+        module=ast.parse(source)
+        controller=next(x for x in module.body
+                        if isinstance(x,ast.ClassDef) and x.name=="TextJarvis")
+        methods=[x.name for x in controller.body
+                 if isinstance(x,(ast.FunctionDef,ast.AsyncFunctionDef))]
+        self.assertEqual(methods.count("check_models"),1)
+        check=next(x for x in controller.body
+                   if isinstance(x,ast.FunctionDef) and x.name=="check_models")
+        called=ast.get_source_segment(source,check)
+        self.assertIn("messagebox.askyesno",called)
+        self.assertIn("self.download_local_model()",called)
+        self.assertIn("model_store=self.runtime.config.model_store",called)
+
     def test_compact_edition_has_ui_button_and_no_silent_pull(self):
         root=Path(__file__).resolve().parents[1]
         ui=(root/"text_only_main.py").read_text(encoding="utf-8")
