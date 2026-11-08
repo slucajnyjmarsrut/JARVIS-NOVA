@@ -761,8 +761,10 @@ class Jarvis(tk.Tk):
         # which could interrupt somebody reading the answer or notes.
         # Restart only after ten minutes of no keyboard or mouse interaction.
         if not force:
-            last_activity=getattr(self,"_last_input_activity",0)
             last_seen=getattr(self,"_auto_update_first_seen",0)
+            # Older controller integrations do not track keyboard activity.
+            # In that case the ready timestamp still controls safe deferral.
+            last_activity=getattr(self,"_last_input_activity",last_seen)
             if time.monotonic()-max(last_activity,last_seen)<600:
                 self.after(15000,self._finish_auto_update)
                 return
