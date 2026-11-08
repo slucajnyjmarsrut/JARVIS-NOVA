@@ -50,7 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ./scripts/prepare_ollama.ps1 -RuntimeOnly
-          if ($LASTEXITCODE -ne 0) { throw 'Portable Ollama preparation failed' }
+          if (-not $?) { throw 'Portable Ollama preparation failed' }
       - name: Download verified FFmpeg and FFprobe
         shell: pwsh
         env:
