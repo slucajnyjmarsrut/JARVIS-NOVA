@@ -20,6 +20,11 @@ datas=[]
 for path in assets.iterdir():
     if path.name=='models':
         datas.append((str(path/'ollama'), 'assets/models/ollama'))
+    elif path.is_dir():
+        # PyInstaller copies directory contents into the DESTINATION path.
+        # Preserve /assets/bin/ffmpeg.exe and /assets/ollama/ollama.exe,
+        # otherwise packaged launch and real Qwen/video smoke fail.
+        datas.append((str(path), 'assets/'+path.name))
     else:
         datas.append((str(path), 'assets'))
 binaries=[]
