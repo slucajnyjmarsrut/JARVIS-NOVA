@@ -11,6 +11,10 @@ import tkinter as tk
 
 
 def editing_window_open(app) -> bool:
+    # A Qwen model pull can last much longer than ten minutes. Restarting
+    # JARVIS in the middle can interrupt a multi-gigabyte opt-in download.
+    if getattr(app,"_model_download_busy",False):
+        return True
     children=getattr(app,"winfo_children",None)
     if not callable(children):
         return False

@@ -8,6 +8,7 @@ on:
       - text_only_main.py
       - bundled_vision_runtime.py
       - model_storage.py
+      - update_idle_guard.py
       - optional_model_downloader.py
       - scripts/prepare_ollama.ps1
       - scripts/prepare_ffmpeg.ps1

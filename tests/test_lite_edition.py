@@ -109,6 +109,14 @@ class LiteStorageTests(unittest.TestCase):
                               edition="lite")
         self.assertEqual(latest.edition,"lite")
 
+    def test_update_defers_while_optional_qwen_is_downloading(self):
+        from types import SimpleNamespace
+        from update_idle_guard import editing_window_open
+        app=SimpleNamespace(_model_download_busy=True)
+        self.assertTrue(editing_window_open(app))
+        app._model_download_busy=False
+        self.assertFalse(editing_window_open(app))
+
     def test_compact_edition_has_ui_button_and_no_silent_pull(self):
         root=Path(__file__).resolve().parents[1]
         ui=(root/"text_only_main.py").read_text(encoding="utf-8")
