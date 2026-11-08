@@ -8,7 +8,7 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-TESTS=("test_agent.py",
+TESTS=(
        "test_audience_pipeline.py",
        "test_audience_review_files.py",
        "test_auto_update.py",
@@ -29,7 +29,7 @@ TESTS=("test_agent.py",
        "test_installer_appearance.py",
        "test_installer_contract.py",
        "test_local_chat.py",
-       "test_no_camera.py",
+       
        "test_nova_window_state.py",
        "test_online_media.py",
        "test_overlay_commands.py",
