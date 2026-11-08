@@ -24,6 +24,7 @@ from text_only_ui import build_text_interface
 from text_only_overlay import TextOverlay
 from freellm_client import FreeLLMChat, FreeLLMError
 from update_preferences import load_preferences
+from model_storage import active_model_store, local_model_available, installed_edition
 
 
 class NoAudio:
@@ -91,7 +92,12 @@ class TextJarvis(BaseJarvis):
         self.speaker = NoAudio()
         self.trimodal = NoAudio()
         assets = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "assets"
-        self.runtime = BundledVisionRuntime(BundledRuntimeConfig(root=assets))
+        self._asset_root=assets
+        self._model_download_busy=False
+        self._model_download_queue=queue.Queue()
+        self._model_download_cancel=threading.Event()
+        self.runtime = BundledVisionRuntime(BundledRuntimeConfig(
+            root=assets,model_store=active_model_store(assets)))
         self.trimodal.runtime = self.runtime
         self.local_chat = LocalChat(self.runtime)
         self.freellm_chat = FreeLLMChat()
@@ -127,6 +133,78 @@ class TextJarvis(BaseJarvis):
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
+        self.after(250,self._pump_model_download)
+
+    def check_models(self):
+        """No speech asset imports. Offer Lite users a consent-gated Qwen pull."""
+        from bundled_vision_runtime import validate_offline_model_store
+        try:
+            validate_offline_model_store(
+                self._asset_root,model_store=self.runtime.config.model_store)
+        except Exception:
+            if self._model_download_busy:
+                messagebox.showinfo("Локальная Qwen",
+                    "Загрузка модели уже идёт. Прогресс отображается в чате.",
+                    parent=self)
+                return
+            if messagebox.askyesno("Скачать локальную Qwen?",
+                "Локальная Qwen ещё не установлена.\n\n"
+                "Скачать приблизительно 1,9 ГБ с официального реестра Ollama?\n"
+                "Потребуется интернет и не менее 3 ГБ свободного места.\n"
+                "JARVIS сохранит модель отдельно от программы, "
+                "чтобы обновления не загружали её повторно.\n\n"
+                "Начать загрузку?",parent=self):
+                self.download_local_model()
+            return
+        messagebox.showinfo("Локальная модель готова",
+            "Qwen установлена и может отвечать без интернета. "
+            "Модель находится в "+str(self.runtime.config.model_store),parent=self)
+
+    def download_local_model(self):
+        if self._model_download_busy or self._closing:
+            return
+        self._model_download_busy=True
+        self.log("Система","Скачиваю Qwen после твоего разрешения. "
+                 "Прогресс указан ниже. Текстовая программа остаётся открытой.")
+        self.status.set("Загрузка Qwen: подключение к официальной Ollama…")
+        self._model_download_cancel.clear()
+        def worker():
+            try:
+                from optional_model_downloader import download_qwen
+                store=download_qwen(
+                    self._asset_root,target=self.runtime.config.model_store,
+                    confirm=True,cancel=self._model_download_cancel,
+                    progress=lambda size:self._model_download_queue.put(
+                        ("progress",int(size))))
+                self._model_download_queue.put(("done",str(store)))
+            except Exception as exc:
+                self._model_download_queue.put(
+                    ("error",type(exc).__name__+": "+str(exc)[:170]))
+        threading.Thread(target=worker,daemon=True,
+                         name="jarvis-consented-qwen-download").start()
+
+    def _pump_model_download(self):
+        if self._closing:
+            return
+        try:
+            while True:
+                kind,value=self._model_download_queue.get_nowait()
+                if kind=="progress":
+                    self.status.set("Скачивание локальной Qwen: "+
+                        f"{value/1_000_000_000:.2f} ГБ загружено")
+                elif kind=="done":
+                    self._model_download_busy=False
+                    self.hud_engine.configure(text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
+                    self.log("Система","Локальная Qwen установлена и проверена. "
+                             "Теперь чат и анализ экрана работают офлайн.")
+                    self.status.set("Локальная Qwen установлена и готова")
+                elif kind=="error":
+                    self._model_download_busy=False
+                    self.log("Система","Модель не установлена: "+str(value))
+                    self.status.set("Не удалось скачать Qwen — можно повторить через ⚙")
+        except queue.Empty:
+            pass
+        self.after(250,self._pump_model_download)
 
     def _record_interaction(self, event=None):
         self._last_input_activity=time.monotonic()
@@ -265,6 +343,7 @@ class TextJarvis(BaseJarvis):
         if palette is not None:
             palette.close()
         self._shutdown.set()
+        self._model_download_cancel.set()
         overlay = getattr(self, "overlay", None)
         if overlay is not None:
             try:

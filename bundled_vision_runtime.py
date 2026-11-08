@@ -27,6 +27,7 @@ class BundledRuntimeConfig:
     root: Path
     model: str = 'qwen3-vl:2b-instruct'
     startup_seconds: float = 45.0
+    model_store: Path | None = None
 
 
 def _model_manifest(models: Path, model: str) -> Path:
@@ -36,13 +37,15 @@ def _model_manifest(models: Path, model: str) -> Path:
     return models / 'manifests' / 'registry.ollama.ai' / 'library' / 'qwen3-vl' / '2b-instruct'
 
 
-def validate_offline_model_store(root: Path, model: str = 'qwen3-vl:2b-instruct', *, verify_hashes: bool = False) -> None:
+def validate_offline_model_store(root: Path, model: str = 'qwen3-vl:2b-instruct', *,
+                                 verify_hashes: bool = False,
+                                 model_store: Path | None = None) -> None:
     """Check manifest and local blobs. Hash full weights at BUILD TIME only.
 
     verify_hashes=True streams every blob to verify official content digests.
     Neither mode establishes that the model can actually process an image.
     """
-    models = root / 'models' / 'ollama'
+    models = Path(model_store) if model_store is not None else root / 'models' / 'ollama'
     manifest = _model_manifest(models, model)
     if not manifest.is_file():
         raise BundledRuntimeError(f'Missing offline Vision model manifest: {manifest}')
@@ -153,7 +156,8 @@ class BundledVisionRuntime:
         exe = root / 'ollama' / 'ollama.exe'
         if not exe.is_file():
             raise BundledRuntimeError(f'Missing bundled Ollama Windows executable: {exe}')
-        validate_offline_model_store(root, self.config.model)
+        validate_offline_model_store(root, self.config.model,
+            model_store=self.config.model_store)
         # Pick an ephemeral free loopback port. Only the process we spawn is used.
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
             server.bind(('127.0.0.1', 0))
@@ -161,7 +165,7 @@ class BundledVisionRuntime:
         env = dict(os.environ)
         env.update({
             'OLLAMA_HOST': f'127.0.0.1:{port}',
-            'OLLAMA_MODELS': str(root / 'models' / 'ollama'),
+            'OLLAMA_MODELS': str(self.config.model_store or root / 'models' / 'ollama'),
             'OLLAMA_NO_CLOUD': '1',
             'OLLAMA_KEEP_ALIVE': '0',
             'OLLAMA_MAX_LOADED_MODELS': '1',

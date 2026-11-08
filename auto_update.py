@@ -74,6 +74,7 @@ class Release:
     sha256: str
     size: int
     parts: tuple[ReleasePart, ...] = ()
+    edition: str = "offline"
 
 
 def version_tuple(value: str) -> tuple[int,int,int]:
@@ -122,7 +123,10 @@ def _manifest_fields(body: str) -> tuple[str,int]:
     return hashes[0],size
 
 
-def parse_release(data: dict, current: str = APP_VERSION) -> Release | None:
+def parse_release(data: dict, current: str = APP_VERSION,
+                  edition: str = "offline") -> Release | None:
+    if edition not in ("offline","lite"):
+        raise UpdateError("Неизвестная редакция установщика")
     if not isinstance(data,dict) or data.get("draft") is not False or data.get("prerelease") is not False:
         raise UpdateError("Официального стабильного релиза нет")
     tag=data.get("tag_name")
@@ -132,7 +136,8 @@ def parse_release(data: dict, current: str = APP_VERSION) -> Release | None:
     if not isinstance(data.get("assets"),list):
         raise UpdateError("Релиз не содержит установщика")
     version=".".join(map(str,ver))
-    base=f"JARVIS-NOVA-{version}-OFFLINE-SETUP.exe"
+    flavor="LITE" if edition=="lite" else "OFFLINE"
+    base=f"JARVIS-NOVA-{version}-{flavor}-SETUP.exe"
     singles=[]
     found_parts={}
     for asset in data["assets"]:
@@ -144,16 +149,18 @@ def parse_release(data: dict, current: str = APP_VERSION) -> Release | None:
                 min_size=MIN_INSTALLER_BYTES)
             singles.append(part)
         elif isinstance(name,str) and name.startswith(base+".part"):
-            match=RELEASE_PART.fullmatch(name)
-            if not match or tuple(map(int,match.groups()[:3]))!=ver:
+            part_pattern=re.compile(
+                r"^"+re.escape(base)+r"\.part(\d{2})$",re.I)
+            match=part_pattern.fullmatch(name)
+            if not match:
                 raise UpdateError("Неправильное имя части установщика")
-            index=int(match.group(4))
+            index=int(match.group(1))
             if index<1 or index>MAX_PARTS or index in found_parts:
                 raise UpdateError("Дублирующаяся или лишняя часть установщика")
             found_parts[index]=_official_asset(asset,tag,expected_name=name)
     if len(singles)==1 and not found_parts:
         item=singles[0]
-        return Release(version,base,item.url,item.sha256,item.size)
+        return Release(version,base,item.url,item.sha256,item.size,edition=edition)
     if singles or not (2<=len(found_parts)<=MAX_PARTS):
         raise UpdateError("Для обновления нужен один EXE или проверенный комплект частей")
     if set(found_parts)!=set(range(1,len(found_parts)+1)):
@@ -162,7 +169,7 @@ def parse_release(data: dict, current: str = APP_VERSION) -> Release | None:
     parts=tuple(found_parts[i] for i in range(1,len(found_parts)+1))
     if sum(part.size for part in parts)!=full_size:
         raise UpdateError("Общий размер частей не соответствует манифесту")
-    return Release(version,base,parts[0].url,full_hash,full_size,parts)
+    return Release(version,base,parts[0].url,full_hash,full_size,parts,edition)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -191,7 +198,8 @@ def _trusted_asset_destination(url: str) -> bool:
         return False
 
 
-def latest_release(*, requester=None, current=APP_VERSION) -> Release | None:
+def latest_release(*, requester=None, current=APP_VERSION,
+                   edition="offline") -> Release | None:
     """Fixed upstream only. A downloader's arbitrary URL is never accepted."""
     if requester is None:
         def requester():
@@ -215,7 +223,7 @@ def latest_release(*, requester=None, current=APP_VERSION) -> Release | None:
         data=json.loads(raw.decode("utf-8"))
     except (ValueError,UnicodeError) as exc:
         raise UpdateError("Некорректное описание обновления") from exc
-    return parse_release(data,current)
+    return parse_release(data,current,edition=edition)
 
 
 def cache_dir() -> Path:
@@ -265,7 +273,10 @@ def download_release(release: Release, folder: Path, *,
     if not isinstance(release,Release) or not _exact_repo_url(release.download_url):
         raise UpdateError("Недоверенный адрес")
     version_tuple(release.version)
-    if release.installer_name != f"JARVIS-NOVA-{release.version}-OFFLINE-SETUP.exe":
+    if release.edition not in ("offline","lite"):
+        raise UpdateError("Неизвестная редакция установщика")
+    flavor="LITE" if release.edition=="lite" else "OFFLINE"
+    if release.installer_name != f"JARVIS-NOVA-{release.version}-{flavor}-SETUP.exe":
         raise UpdateError("Некорректное имя установщика")
     parts=release.parts or (ReleasePart(release.installer_name,release.download_url,
                                         release.sha256,release.size),)
@@ -423,7 +434,14 @@ def _recent_failed_version(folder: Path, version: str, now: float | None=None) -
 def check_and_download(*, requester=None, opener=None,
                        cancel=None, folder=None, progress=None,
                        on_release=None) -> tuple[Release,Path] | None:
-    release=latest_release(requester=requester)
+    from model_storage import installed_edition
+    installed=installed_application()
+    edition=(installed_edition(installed.parent/"_internal"/"assets")
+             if installed is not None else "offline")
+    if edition=="lite":
+        release=latest_release(requester=requester,edition="lite")
+    else:
+        release=latest_release(requester=requester)
     if release is None:
         return None
     folder=Path(folder) if folder is not None else cache_dir()

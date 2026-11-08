@@ -31,11 +31,18 @@ def smoke_test():
         if not (root / 'bin' / tool).is_file():
             print('Missing bundled video tool:',tool,flush=True)
             return 6
-    try:
-        validate_offline_model_store(root)
-    except Exception as exc:
-        print('Missing or incomplete Qwen Vision weights:',exc,flush=True)
-        return 5
+    from model_storage import installed_edition, active_model_store
+    edition=installed_edition(root)
+    if edition=='offline':
+        try:
+            validate_offline_model_store(root)
+        except Exception as exc:
+            print('Missing or incomplete Qwen Vision weights:',exc,flush=True)
+            return 5
+    else:
+        if (root/'models'/'ollama'/'blobs').exists():
+            print('Lite installer must not contain embedded Qwen weights',flush=True)
+            return 5
     for module in ('PIL','pyautogui'):
         if importlib.util.find_spec(module) is None:
             print('Missing text/visual dependency:',module,flush=True)
@@ -46,7 +53,9 @@ def smoke_test():
         if (root/rel).exists():
             print('Unexpected voice checkpoint in text-only EXE:',rel,flush=True)
             return 7
-    print('TEXT-ONLY package check passed; Qwen and FFmpeg present',flush=True)
+    print(('LITE package verified: portable Ollama + FFmpeg; '
+           'Qwen is consent-gated and downloaded separately' if edition=='lite'
+           else 'TEXT-ONLY full offline package: Qwen and FFmpeg present'),flush=True)
     return 0
 
 def _acquire_windows_single_instance():

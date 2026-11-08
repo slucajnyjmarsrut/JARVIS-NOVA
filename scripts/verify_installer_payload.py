@@ -48,11 +48,19 @@ def verify(root):
         bundled=assets/'bin'/tool
         if not is_windows_64_executable(bundled):
             raise RuntimeError('Missing offline Windows x64 video editing engine: '+tool)
-    validate_offline_model_store(assets,verify_hashes=True)
+    from model_storage import installed_edition
+    edition=installed_edition(assets)
+    if edition=='lite':
+        if (assets/'models'/'ollama').exists():
+            raise RuntimeError('LITE installer unexpectedly carries Qwen model weights')
+    else:
+        validate_offline_model_store(assets,verify_hashes=True)
     partial=list(root.rglob('*.partial'))
     if partial:
         raise RuntimeError('Incomplete model download included: '+str(partial[0]))
-    print('VERIFIED: text-only Windows x64 app, FFmpeg, Ollama and Qwen blob SHA256')
+    print('VERIFIED:',edition,'x64 app, FFmpeg, portable Ollama, speech-free')
+    if edition=='lite':
+        print('Qwen is intentionally excluded; install only after explicit user consent')
     print('IMPORTANT: this file audit is NOT model inference or a live hardware test')
 
 def main():

@@ -33,7 +33,11 @@ def build_text_interface(app):
     bar.pack(fill="x", padx=12, pady=(9, 0))
     app.hud_mode = _label(bar, "ГОТОВ К ТЕКСТУ", fg=GREEN, size=10, bold=True)
     app.hud_mode.pack(side="left")
-    app.hud_engine = _label(bar, "QWEN · ЛОКАЛЬНО", fg=GREEN, size=8)
+    from model_storage import local_model_available
+    loaded=local_model_available(app._asset_root)
+    app.hud_engine = _label(bar,
+        "QWEN · ЛОКАЛЬНО" if loaded else "QWEN · НЕ УСТАНОВЛЕНА",
+        fg=GREEN if loaded else AMBER, size=8)
     app.hud_engine.pack(side="right")
     app.hud_reactor = Reactor(hub)
     app.hud_reactor.configure(height=105)

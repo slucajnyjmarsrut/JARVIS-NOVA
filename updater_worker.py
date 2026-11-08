@@ -89,7 +89,13 @@ def apply_update(installer: Path, application: Path, expected_version: str,
     # block previously stranded the user with JARVIS closed on network loss.
     (wait or wait_for_parent)(parent_pid)
     try:
-        release=(release_lookup or latest_release)()
+        if release_lookup is not None:
+            release=release_lookup()
+        else:
+            from model_storage import installed_edition
+            flavor=installed_edition(application.parent/"_internal"/"assets")
+            release=(latest_release(edition="lite") if flavor=="lite"
+                     else latest_release())
         if (release is None or release.version!=expected_version
                 or release.sha256!=expected_hash
                 or release.size<100_000):

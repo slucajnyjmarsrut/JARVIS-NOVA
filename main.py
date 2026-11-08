@@ -19,9 +19,10 @@ def RC4Voice(*args,**kwargs):
     from voice_engine import Voice as _LegacyVoice
     return _LegacyVoice(*args,**kwargs)
 
-def normalize_style(*args,**kwargs):
-    from whisper_mode import normalize_style as _legacy_normalize_style
-    return _legacy_normalize_style(*args,**kwargs)
+def normalize_style(style):
+    # The old audio classifier is intentionally EXCLUDED from the packaged
+    # text-only program. Normalization needs no microphone or speech modules.
+    return "whisper" if style=="whisper" else "normal"
 from self_improve import LearningStore, safe_name
 from self_repair import repair_configs, inspect_configs
 from auto_update import installed_application, check_and_download, stage_helper
@@ -749,6 +750,9 @@ class Jarvis(tk.Tk):
         busy=(self.executing or getattr(studio,"running",False) or
               self.speaker.busy or self.trimodal.speaking or
               getattr(self.voice,"whisper_busy",False) or unsent)
+        from update_idle_guard import editing_window_open
+        if editing_window_open(self):
+            busy=True
         if busy:
             if force:
                 self._auto_update_state=(

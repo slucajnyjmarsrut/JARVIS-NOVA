@@ -1,6 +1,6 @@
 # Developer / Windows CI only. End users never install/download Ollama or models.
 # Exit on missing trusted SHA-256 for standalone release or missing Vision weights.
-param([string]$Tag = 'latest')
+param([string]$Tag = 'latest', [switch]$RuntimeOnly)
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Assets = Join-Path $Root 'assets'
@@ -31,6 +31,7 @@ $OllamaExe = Get-ChildItem $TempDir -Recurse -Filter 'ollama.exe' | Select-Objec
 if (!$OllamaExe) { throw 'Official portable archive lacks ollama.exe' }
 Copy-Item (Join-Path $OllamaExe.Directory.FullName '*') -Destination $Dst -Recurse -Force
 if (!(Test-Path (Join-Path $Dst 'ollama.exe'))) { throw 'Portable runtime copy failed' }
+if (!$RuntimeOnly) {
 $env:OLLAMA_HOST = '127.0.0.1:21678'
 $env:OLLAMA_MODELS = $Models
 $env:OLLAMA_NO_CLOUD = '1'
@@ -56,6 +57,10 @@ try {
 } finally {
     if (!$Server.HasExited) { Stop-Process -Id $Server.Id -Force -ErrorAction SilentlyContinue }
 }
+}
+else {
+    Write-Host 'Lite: portable Ollama runtime only; no model weights are downloaded'
+}
 # The portable official archive includes heavy CUDA GPU runtime DLLs.
 # JARVIS NOVA's CPU-only offline Windows installer must stay below 4.2 GB.
 # Prune GPU-only libraries; real model inference is retested on CPU AFTER pruning.
@@ -78,5 +83,5 @@ foreach ($File in $GpuFiles) {
     Remove-Item -LiteralPath $File.FullName -Force
 }
 Write-Host "CPU-only Ollama bundle: removed $BytesPruned GPU bytes (real Vision inference tests MUST now pass)."
-"Ollama tag=$($Release.tag_name) archive_sha256=$ActualHash Vision=qwen3-vl:2b-instruct" |
+"Ollama tag=$($Release.tag_name) archive_sha256=$ActualHash Vision=$(if($RuntimeOnly){'ON_DEMAND'}else{'qwen3-vl:2b-instruct'})" |
     Set-Content -Path (Join-Path $Assets 'BUNDLE_BUILD_INFO.txt') -Encoding utf8

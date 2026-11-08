@@ -40,7 +40,8 @@ class PreferencesTests(unittest.TestCase):
                 '[]', '{invalid json',
             ):
                 path.write_text(data,encoding="utf-8")
-                self.assertEqual(load_preferences(path),UpdatePreferences())
+                self.assertEqual(load_preferences(path),
+                                 UpdatePreferences(False,False))
             with self.assertRaises(ValueError):
                 save_preferences(UpdatePreferences(True,"yes"),path)
             if hasattr(Path,"symlink_to"):

@@ -1,0 +1,82 @@
+; ONE offline Inno Setup EXE; refuse compilation if onedir missing.
+#define AppVersion "0.5.18-dev"
+#define AppName "JARVIS NOVA Lite"
+#define AppExecutable "JarvisNova.exe"
+#if !FileExists("..\dist\lite\JarvisNova\JarvisNova.exe")
+  #error "No complete PyInstaller onedir. Refusing to build empty installer."
+#endif
+#if !FileExists("..\dist\updater\JarvisNovaUpdater.exe")
+  #error "Missing independently packaged, trusted local updater executable."
+#endif
+#if !FileExists("..\assets\APP_RELEASE_VERSION.txt")
+  #error "Missing release version marker."
+#endif
+#if !FileExists("..\assets\installer_banner.bmp")
+  #error "Missing original NOVA dark wizard art. Run scripts/generate_installer_art.py"
+#endif
+#if !FileExists("..\assets\installer_badge.bmp")
+  #error "Missing NOVA badge. Run scripts/generate_installer_art.py"
+#endif
+
+[Setup]
+AppId={{70BEA90C-8814-4E69-AF2D-BA96986F4F03}
+AppName={#AppName}
+AppVersion={#AppVersion}
+AppVerName={#AppName} {#AppVersion}
+AppPublisher=JARVIS NOVA
+DefaultDirName={localappdata}\Programs\JarvisNova
+DefaultGroupName=JARVIS NOVA
+DisableProgramGroupPage=yes
+OutputDir=..\dist\lite-installer
+OutputBaseFilename=JARVIS-NOVA-0.5.18-LITE-SETUP-DEV
+SetupIconFile=..\assets\jarvis.ico
+UninstallDisplayIcon={app}\{#AppExecutable}
+Compression=lzma2/ultra64
+SolidCompression=yes
+DiskSpanning=no
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+MinVersion=10.0
+WizardStyle=modern dark
+WizardImageFile=..\assets\installer_banner.bmp
+WizardSmallImageFile=..\assets\installer_badge.bmp
+WizardSizePercent=110
+DisableWelcomePage=no
+CloseApplications=yes
+RestartApplications=no
+AppMutex=JarvisNovaRuntime
+AllowNoIcons=yes
+UsePreviousAppDir=yes
+ChangesEnvironment=no
+ChangesAssociations=no
+VersionInfoDescription=JARVIS NOVA Lite on-demand AI Installer (development)
+VersionInfoProductName=JARVIS NOVA
+VersionInfoVersion=0.5.18.0
+
+[Languages]
+Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
+Name: "en"; MessagesFile: "compiler:Default.isl"
+
+[Files]
+Source: "..\dist\lite\JarvisNova\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\dist\updater\JarvisNovaUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\APP_RELEASE_VERSION.txt"; DestDir: "{app}"; DestName: "JARVIS_NOVA_VERSION.txt"; Flags: ignoreversion
+
+[InstallDelete]
+; Switching Full -> Lite removes ONLY obsolete bundled model files.
+; User's LOCALAPPDATA/JarvisNova/Models cache is never deleted.
+Type: filesandordirs; Name: "{app}\_internal\assets\models\ollama"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
+[Icons]
+Name: "{autoprograms}\JARVIS NOVA"; Filename: "{app}\{#AppExecutable}"
+Name: "{autodesktop}\JARVIS NOVA"; Filename: "{app}\{#AppExecutable}"; Tasks: desktopicon
+
+[Run]
+Filename: "{app}\{#AppExecutable}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+
+; User learning data is stored under %LOCALAPPDATA%\JarvisNova, not {app}.
+; Upgrading/uninstalling never deletes the user's data folder.

@@ -35,17 +35,19 @@ def load_preferences(path: Path | None = None) -> UpdatePreferences:
         return UpdatePreferences()
     try:
         if path.is_symlink() or path.stat().st_size>MAX_SETTINGS_BYTES:
-            return UpdatePreferences()
+            return UpdatePreferences(False,False)
         raw=json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(raw,dict):
-            return UpdatePreferences()
+            return UpdatePreferences(False,False)
         checks=raw.get("automatic_checks",True)
         restart=raw.get("automatic_restart",True)
         if type(checks) is not bool or type(restart) is not bool:
-            return UpdatePreferences()
+            return UpdatePreferences(False,False)
         return UpdatePreferences(checks,restart)
-    except (OSError,ValueError,UnicodeError,TypeError):
+    except FileNotFoundError:
         return UpdatePreferences()
+    except (OSError,ValueError,UnicodeError,TypeError):
+        return UpdatePreferences(False,False)
 
 
 def save_preferences(prefs: UpdatePreferences, path: Path | None = None) -> Path:

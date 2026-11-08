@@ -12,6 +12,9 @@ on:
       - 'update_preferences.py'
       - 'update_center.py'
       - 'tests/test_update_center.py'
+      - 'tests/test_lite_edition.py'
+      - 'model_storage.py'
+      - 'optional_model_downloader.py'
       - '.github/workflows/voice-ui-smoke.yml'
       - '.github/workflows/windows-offline.yml'
   workflow_dispatch:
@@ -45,6 +48,7 @@ jobs:
                                  'test_text_only_bundle.py',
                                  'test_auto_update.py',
                                  'test_update_center.py',
+                                 'test_lite_edition.py',
                                  'test_nova_ui.py',
                                  'test_nova_window_state.py',
                                  'test_local_chat.py',
