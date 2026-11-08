@@ -259,7 +259,8 @@ def _check_download(path: Path, release: Release) -> None:
 
 
 def download_release(release: Release, folder: Path, *,
-                     opener=None, cancel: threading.Event | None=None) -> Path:
+                     opener=None, cancel: threading.Event | None=None,
+                     progress=None) -> Path:
     """Download one verified installer. Never execute bytes from an API field."""
     if not isinstance(release,Release) or not _exact_repo_url(release.download_url):
         raise UpdateError("Недоверенный адрес")
@@ -296,6 +297,8 @@ def download_release(release: Release, folder: Path, *,
     if dest.exists():
         try:
             _check_download(dest,release)
+            if progress is not None:
+                progress(release.size,release.size)
             return dest
         except UpdateError:
             pass
@@ -311,6 +314,7 @@ def download_release(release: Release, folder: Path, *,
                 urllib.request.ProxyHandler({}),_RestrictedAssetRedirect())
         count=0
         digest=hashlib.sha256()
+        next_notice=0
         with temp.open("xb") as writer:
             for part in parts:
                 req=urllib.request.Request(part.url,headers={
@@ -332,6 +336,9 @@ def download_release(release: Release, folder: Path, *,
                         writer.write(piece)
                         part_digest.update(piece)
                         digest.update(piece)
+                        if progress is not None and (count>=next_notice or count==release.size):
+                            progress(count,release.size)
+                            next_notice=count+max(BUFFER,release.size//50)
                 if part_count!=part.size or part_digest.hexdigest()!=part.sha256:
                     raise UpdateError("Контрольная сумма части обновления не совпала")
         if count!=release.size or digest.hexdigest()!=release.sha256:
@@ -345,6 +352,8 @@ def download_release(release: Release, folder: Path, *,
         # independent SHA256 and content verification of the fresh download.
         os.replace(temp,dest)
         _check_download(dest,release)
+        if progress is not None:
+            progress(release.size,release.size)
         return dest
     finally:
         temp.unlink(missing_ok=True)
@@ -412,12 +421,16 @@ def _recent_failed_version(folder: Path, version: str, now: float | None=None) -
 
 
 def check_and_download(*, requester=None, opener=None,
-                       cancel=None, folder=None) -> tuple[Release,Path] | None:
+                       cancel=None, folder=None, progress=None,
+                       on_release=None) -> tuple[Release,Path] | None:
     release=latest_release(requester=requester)
     if release is None:
         return None
     folder=Path(folder) if folder is not None else cache_dir()
+    if on_release is not None:
+        on_release(release)
     if _recent_failed_version(folder,release.version):
         return None
-    file=download_release(release,folder,opener=opener,cancel=cancel)
+    file=download_release(release,folder,opener=opener,cancel=cancel,
+                          progress=progress)
     return release,file

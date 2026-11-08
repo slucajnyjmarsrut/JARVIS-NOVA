@@ -57,6 +57,7 @@ def entries(app, section="main"):
           ("×","Остановить таймер",app.stop_focus_timer,None)]
         return items
     return [
+        ("⟳", "Автообновления · проверить версию", app.show_update_center, None),
         ("▣", "Разрешения", None, "permissions"),
         ("◎", "Описать экран текстом", lambda: app.request_trimodal("screen"), None),
         None,

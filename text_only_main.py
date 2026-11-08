@@ -23,6 +23,7 @@ from nova_overlay import dock_geometry
 from text_only_ui import build_text_interface
 from text_only_overlay import TextOverlay
 from freellm_client import FreeLLMChat, FreeLLMError
+from update_preferences import load_preferences
 
 
 class NoAudio:
@@ -79,6 +80,12 @@ class TextJarvis(BaseJarvis):
         self._auto_update_busy = False
         self._auto_update_pending = None
         self._auto_update_first_seen = 0.0
+        self._auto_update_state = "Готов к проверке обновлений."
+        self._auto_update_progress = 0
+        self._auto_update_snoozed = False
+        self._update_center = None
+        self._last_input_activity = time.monotonic()
+        self.update_preferences = load_preferences()
 
         self.voice = NoAudio()
         self.speaker = NoAudio()
@@ -105,6 +112,10 @@ class TextJarvis(BaseJarvis):
         self.bind("<Unmap>", self._main_unmapped, add="+")
         self.bind("<Map>", self._main_mapped, add="+")
         self.bind("<Control-Shift-O>", lambda e:(self.toggle_overlay(), "break")[1])
+        # Keep track of activity in all Tk windows so updates cannot close a
+        # half-written script or a user who is actively editing/reading.
+        self.bind_all("<KeyPress>",self._record_interaction,add="+")
+        self.bind_all("<ButtonPress>",self._record_interaction,add="+")
 
         # The stock Tk menu was light, clipped on compact displays and
         # inconsistent with the dark JARVIS design. Use a bounded dark palette.
@@ -114,8 +125,15 @@ class TextJarvis(BaseJarvis):
 
         self.log("Система", "Только текст: напиши сообщение и нажми Enter. Микрофон и озвучивание отключены.")
         self.after(100, self.pump)
-        self.after(20000, self._check_auto_update)
+        self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
+
+    def _record_interaction(self, event=None):
+        self._last_input_activity=time.monotonic()
+
+    def show_update_center(self):
+        from update_center import show_update_center
+        return show_update_center(self)
 
     def show_settings_menu(self, event=None):
         from nova_command_palette import show_palette

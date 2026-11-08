@@ -23,6 +23,8 @@ def build_text_interface(app):
     _label(title, "ТОЛЬКО ТЕКСТ · ЛОКАЛЬНО", fg=CYAN_DIM, size=8).pack(anchor="w")
     app.hud_settings_button = _action(header, "⚙", app.show_settings_menu, compact=True)
     app.hud_settings_button.pack(side="right", padx=4)
+    app.hud_update_button = _action(header, "⟳", app.show_update_center, compact=True)
+    app.hud_update_button.pack(side="right", padx=3)
     app.hud_minimize_button = _action(header, "▁", app.hide_main, compact=True)
     app.hud_minimize_button.pack(side="right")
     hub = tk.Frame(shell, bg=SURFACE, highlightthickness=1, highlightbackground=EDGE)
