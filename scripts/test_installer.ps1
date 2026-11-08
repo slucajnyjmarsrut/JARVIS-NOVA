@@ -52,7 +52,7 @@ try {
     if ($remove.ExitCode -ne 0) { throw "Uninstall failed: $($remove.ExitCode)" }
     if (Test-Path $Exe) { throw 'Uninstall left JarvisNova.exe' }
     if ((Get-Content -LiteralPath $Sentinel -Raw).Trim() -ne $Marker) { throw 'Uninstall damaged user data' }
-    Write-Host 'Installer and real installed Whisper-Vision-Silero E2E passed; learning data survived uninstall'
+    Write-Host 'Installed text-only JARVIS: Qwen text/vision and FFmpeg passed; data survived uninstall'
 } finally {
     if (Test-Path $Sentinel) { Remove-Item -LiteralPath $Sentinel -Force }
     if (Test-Path $TempRoot) { Remove-Item -LiteralPath $TempRoot -Recurse -Force -ErrorAction SilentlyContinue }

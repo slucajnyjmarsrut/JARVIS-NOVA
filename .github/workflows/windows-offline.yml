@@ -9,6 +9,14 @@ on:
       - '**/*.iss'
       - '*.spec'
       - 'requirements-windows.txt'
+      - 'jarvis_nova.spec'
+      - 'bootstrap.py'
+      - 'text_only_main.py'
+      - 'local_chat.py'
+      - 'scripts/verify_text_vision_e2e.py'
+      - 'scripts/run_text_only_tests.py'
+      - 'scripts/verify_text_package_size.py'
+      - 'tests/test_text_only_bundle.py'
       - '.github/workflows/windows-offline.yml'
       - 'self_improve.py'
       - 'tests/test_self_improve.py'
@@ -183,36 +191,24 @@ jobs:
               throw "PowerShell syntax error in $($file.Name)"
             }
           }
-      - name: Install CPU-only Torch and application dependencies
+      - name: Install TEXT-ONLY dependencies (no torch or ASR/TTS)
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-          if ($LASTEXITCODE -ne 0) { throw 'Torch installation failed' }
           python -m pip install -r requirements-windows.txt
-          if ($LASTEXITCODE -ne 0) { throw 'Windows app dependency installation failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Text-only dependency install failed' }
+      - name: Assert release contains NO speech assets/libraries
+        run: python -m unittest discover -s tests -p test_text_only_bundle.py -v
       - name: Gate online-license security, offline documentation, fast local routes
         run: python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
-      - name: Three complete offline unit suite passes, including HUD and video quality
+      - name: Three production TEXT-ONLY unit suite passes
         shell: pwsh
         timeout-minutes: 45
         run: |
           for ($pass=1; $pass -le 3; $pass++) {
-            Write-Host "FULL OFFLINE UNIT SUITE $pass / 3"
-            python -m unittest discover -s tests -v
-            if ($LASTEXITCODE -ne 0) { throw "Offline tests failed on pass $pass" }
-          }
-      - name: Obtain and check Vosk, Whisper and Silero before packaging
-        timeout-minutes: 40
-        run: python build_models.py
-      - name: Three real Whisper, Vosk and Silero checkpoint verification passes
-        shell: pwsh
-        timeout-minutes: 70
-        run: |
-          for ($pass=1; $pass -le 3; $pass++) {
-            Write-Host "REAL OFFLINE MODEL VERIFICATION $pass / 3"
-            python verify_models.py
-            if ($LASTEXITCODE -ne 0) { throw "Real model check failed pass $pass" }
+            Write-Host "TEXT-ONLY UNIT PASS $pass / 3"
+            python scripts/run_text_only_tests.py
+            if ($LASTEXITCODE -ne 0) { throw "Text-only suite failed pass $pass" }
           }
       - name: Download official portable Ollama and full Qwen Vision weights
         timeout-minutes: 75
@@ -220,14 +216,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./scripts/prepare_ollama.ps1 -Tag "${{ inputs.ollama_release_tag || 'latest' }}"
-      - name: Three real Whisper-to-Vision-to-Silero E2E passes (no mocks)
+      - name: Three REAL offline Qwen Vision inference passes without voice
         shell: pwsh
         timeout-minutes: 75
         run: |
           for ($pass=1; $pass -le 3; $pass++) {
-            Write-Host "REAL WHISPER-VISION-SILERO E2E $pass / 3"
-            python offline_e2e_test.py
-            if ($LASTEXITCODE -ne 0) { throw "Actual model inference failed on pass $pass" }
+            Write-Host "REAL OFFLINE QWEN VISION $pass / 3"
+            python scripts/verify_text_vision_e2e.py
+            if ($LASTEXITCODE -ne 0) { throw "Qwen Vision failed pass $pass" }
           }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
@@ -267,6 +263,11 @@ jobs:
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
+      - name: Measure distribution size and reject unexpected voice files
+        shell: pwsh
+        run: |
+          python scripts/verify_text_package_size.py --dir dist/JarvisNova
+          if ($LASTEXITCODE -ne 0) { throw 'Text-only package size audit failed' }
       - name: Build standalone verified updater worker EXE
         shell: pwsh
         timeout-minutes: 25
@@ -278,16 +279,16 @@ jobs:
             & dist/updater/JarvisNovaUpdater.exe --help | Out-Null
             if ($LASTEXITCODE -ne 0) { throw "Updater process smoke check failed $pass" }
           }
-      - name: Three packaged EXE self-test, video render and actual model E2E passes
+      - name: Three packaged TEXT-ONLY EXE, Qwen Vision/chat and video passes
         timeout-minutes: 90
         shell: pwsh
         run: |
           for ($pass=1; $pass -le 3; $pass++) {
-            Write-Host "PACKAGED EXE + REAL MODELS $pass / 3"
+            Write-Host "PACKAGED TEXT/QWEN/VIDEO $pass / 3"
             ./scripts/verify_offline_distribution.ps1
             if (!$?) { throw "Packaged test failed in pass $pass" }
           }
-      - name: Verify packaged AMD64 app and all THREE offline model stores with blob digests
+      - name: Verify AMD64 text-only bundle, NO speech libraries, Qwen SHA256
         timeout-minutes: 15
         run: python scripts/verify_installer_payload.py --dir dist/JarvisNova
       - name: Install official Inno Setup 6.6+ (dark mode) via Chocolatey
@@ -311,7 +312,7 @@ jobs:
           if ($setups.Count -ne 1) { throw 'Expected exactly one installer EXE' }
           Write-Host "Real Windows installer bytes: $($setups[0].Length)"
           Get-FileHash $setups[0].FullName -Algorithm SHA256 | Format-List
-      - name: Three real Windows install, model E2E, uninstall and data-retention passes
+      - name: Three Windows install, Qwen E2E, uninstall and data-retention passes
         shell: pwsh
         timeout-minutes: 120
         run: |
@@ -335,17 +336,18 @@ jobs:
         shell: pwsh
         run: |
           @'
-          This CI runs the unit suites, bundled models, FFmpeg montage, packaged executable, and real installation/uninstall verifications THREE times on hosted Windows. Content quality, source relevance, actual Commons availability, screen appearance, real microphone and user-experience tests still require hardware/manual verification.
-          CI exercises Tk widgets and HUD callbacks but does NOT prove real microphone, camera, Bluetooth, audio output, a user-visible foreground GUI, fresh installation offline, nor close-window cleanup. Treat this installer as DEV/UNVERIFIED until separate clean Windows hardware acceptance.
+          TEXT-ONLY release: no ASR/TTS checkpoints, Whisper, Vosk, Silero, PyTorch or microphone modules in the installer. Real Qwen Vision/text and FFmpeg work is checked in packaged and installed Windows EXE.
+          CI does not prove a user-visible foreground GUI, real Roblox Studio import, video editorial quality, or hardware acceptance. Treat as DEV/UNVERIFIED until a clean Windows machine is tested.
           '@ | Add-Content $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: JARVIS-NOVA-0.5.18-LEARNING-SAFE-DEV-UNVERIFIED-INSTALLER
+          name: JARVIS-NOVA-0.5.18-TEXT-ONLY-LIGHT-DEV-INSTALLER
           path: |
             dist/installer/*.exe
             dist/installer/SHA256SUMS.txt
             dist/installer/FULL_FILE_SHA256_MANIFEST.json
             assets/BUNDLE_BUILD_INFO.txt
+            dist/installer/TEXT_ONLY_SIZE_REPORT.json
           retention-days: 7
           if-no-files-found: error

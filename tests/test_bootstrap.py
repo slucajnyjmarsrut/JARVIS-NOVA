@@ -9,27 +9,36 @@ from main import Jarvis
 class SmokeTests(unittest.TestCase):
     def test_missing_model_fails(self):
         with tempfile.TemporaryDirectory() as d:
-            with patch('speaker.assets', return_value=Path(d)):
-                self.assertEqual(bootstrap.smoke_test(), 2)
+            root=Path(d)
+            (root/'ollama').mkdir()
+            (root/'ollama'/'ollama.exe').write_bytes(b'Ollama')
+            (root/'bin').mkdir()
+            for tool in ('ffmpeg.exe','ffprobe.exe'):
+                (root/'bin'/tool).write_bytes(b'FFmpeg')
+            with patch('bootstrap._assets_root',return_value=root):
+                self.assertEqual(bootstrap.smoke_test(),5)
 
-    def test_all_models_and_python_imports(self):
+    def test_text_only_models_and_python_imports(self):
         with tempfile.TemporaryDirectory() as d:
-            root=Path(d)/'models'
-            for rel in ['vosk/am/final.mdl','base.pt','v5_ru.pt']:
-                p=root/rel;p.parent.mkdir(parents=True,exist_ok=True)
-                p.write_bytes(b'A'*2000)
-            (root.parent/'ollama').mkdir()
-            (root.parent/'ollama'/'ollama.exe').write_bytes(b'unit-test-placeholder')
-            manifest=root/'ollama/manifests/registry.ollama.ai/library/qwen3-vl/2b-instruct'
+            root=Path(d)
+            (root/'ollama').mkdir()
+            (root/'ollama'/'ollama.exe').write_bytes(b'unit-test')
+            (root/'bin').mkdir()
+            for tool in ('ffmpeg.exe','ffprobe.exe'):
+                (root/'bin'/tool).write_bytes(b'test')
+            manifest=root/'models/ollama/manifests/registry.ollama.ai/library/qwen3-vl/2b-instruct'
             manifest.parent.mkdir(parents=True)
             digest='sha256:'+'f'*64
             manifest.write_text(json.dumps({'config':{'digest':digest,'size':1},'layers':[]}))
-            blob=root/'ollama/blobs'/('sha256-'+'f'*64)
+            blob=root/'models/ollama/blobs'/('sha256-'+'f'*64)
             blob.parent.mkdir()
             blob.write_bytes(b'x')
-            with patch('speaker.assets', return_value=root):
-                with patch('importlib.util.find_spec', return_value=object()):
+            with patch('bootstrap._assets_root',return_value=root):
+                with patch('importlib.util.find_spec',return_value=object()):
                     self.assertEqual(bootstrap.smoke_test(),0)
+                    # Presence of ANY legacy voice model must fail closed.
+                    (root/'models'/'base.pt').write_bytes(b'old-whisper')
+                    self.assertEqual(bootstrap.smoke_test(),7)
 
     def test_voice_starts_before_loading_silero(self):
         events=[]

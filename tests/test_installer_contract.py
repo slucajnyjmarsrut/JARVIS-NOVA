@@ -54,7 +54,7 @@ class InstallerContractTests(unittest.TestCase):
         workflow=(ROOT/'.github/workflows/windows-offline.yml').read_text(encoding='utf-8')
         self.assertIn('verify_installer_payload.py',workflow)
         self.assertIn('test_installer.ps1',workflow)
-        self.assertIn('offline_e2e_test.py',workflow)
+        self.assertIn('verify_text_vision_e2e.py',workflow)
         self.assertIn('verify_offline_distribution.ps1',workflow)
 
 if __name__ == '__main__':

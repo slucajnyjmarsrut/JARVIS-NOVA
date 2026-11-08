@@ -13,34 +13,40 @@ if sys.stdout is None:
 if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
-multiprocessing.freeze_support()  # BEFORE importing torch/whisper/tkinter
+multiprocessing.freeze_support()  # BEFORE importing tkinter
+
+def _assets_root():
+    from pathlib import Path
+    return Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parent)) / "assets"
 
 def smoke_test():
-    # Return an error code to GitHub Actions without opening UI/microphone.
-    from speaker import assets
+    """Validate the shipped TEXT/VISION runtime; no voice models required."""
     from bundled_vision_runtime import validate_offline_model_store
     import importlib.util
-    root=assets()
-    files={"Vosk":root/"vosk"/"am"/"final.mdl",
-           "Whisper":root/"base.pt",
-           "Silero":root/"v5_ru.pt"}
-    for label,path in files.items():
-        if not path.is_file() or path.stat().st_size<1024:
-            print("Missing embedded",label,path,flush=True)
-            return 2
-    if not (root.parent / 'ollama' / 'ollama.exe').is_file():
+    root=_assets_root()
+    if not (root / 'ollama' / 'ollama.exe').is_file():
         print('Missing bundled portable Ollama runtime',flush=True)
         return 4
+    for tool in ('ffmpeg.exe','ffprobe.exe'):
+        if not (root / 'bin' / tool).is_file():
+            print('Missing bundled video tool:',tool,flush=True)
+            return 6
     try:
-        validate_offline_model_store(root.parent)
+        validate_offline_model_store(root)
     except Exception as exc:
-        print('Missing or incomplete Vision weights:',exc,flush=True)
+        print('Missing or incomplete Qwen Vision weights:',exc,flush=True)
         return 5
-    for module in ["vosk","whisper","torch","sounddevice","pyautogui","scipy"]:
+    for module in ('PIL','pyautogui'):
         if importlib.util.find_spec(module) is None:
-            print("Missing bundled Python library",module,flush=True)
+            print('Missing text/visual dependency:',module,flush=True)
             return 3
-    print("JARVIS bundled dependencies present; this is NOT a real inference test",flush=True)
+    # A text-only release must not carry legacy speech assets.
+    for rel in ('models/base.pt','models/small.pt','models/v5_ru.pt',
+                'models/vosk/am/final.mdl'):
+        if (root/rel).exists():
+            print('Unexpected voice checkpoint in text-only EXE:',rel,flush=True)
+            return 7
+    print('TEXT-ONLY package check passed; Qwen and FFmpeg present',flush=True)
     return 0
 
 def _acquire_windows_single_instance():
@@ -108,8 +114,7 @@ def conversational_self_test():
     """Run the REAL bundled Qwen text path, from the frozen application."""
     from local_chat import LocalChat
     from bundled_vision_runtime import BundledRuntimeConfig, BundledVisionRuntime
-    from speaker import assets
-    runtime=BundledVisionRuntime(BundledRuntimeConfig(root=assets().parent))
+    runtime=BundledVisionRuntime(BundledRuntimeConfig(root=_assets_root()))
     session=LocalChat(runtime)
     try:
         answer=session.ask("Привет, кто ты? Ответь одним кратким русским предложением.")
@@ -131,8 +136,10 @@ def main():
     if "--video-self-test" in sys.argv:
         return video_self_test()
     if "--real-e2e" in sys.argv:
-        from offline_e2e_test import main as real_test
-        return real_test()
+        # Historical flag retained for installer compatibility, now verifies
+        # real Qwen text + image processing, with NO Whisper/Silero.
+        from scripts.verify_text_vision_e2e import main as text_vision_test
+        return text_vision_test()
     guard = _acquire_windows_single_instance()
     if guard is False:
         return 10  # No second microphone/UI/vision server.

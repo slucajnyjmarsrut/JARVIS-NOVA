@@ -1,4 +1,4 @@
-"""Verify bundled PE64 executables, model weights and every Vision SHA256 blob."""
+"""Verify text-only Windows bundle, model integrity and absence of speech assets."""
 from pathlib import Path
 import argparse
 import struct
@@ -31,10 +31,16 @@ def verify(root):
     if not assets.is_dir():
         raise RuntimeError('Missing PyInstaller _internal/assets')
     models=assets/'models'
-    for name,threshold in [('vosk/am/final.mdl',1000000),('base.pt',10000000),('v5_ru.pt',1000000)]:
-        path=models/name
-        if not path.is_file() or path.stat().st_size<threshold:
-            raise RuntimeError('Missing or truncated '+name)
+    for name in ('vosk','base.pt','small.pt','v5_ru.pt'):
+        if (models/name).exists():
+            raise RuntimeError('Text-only installer contains forbidden speech model: '+name)
+    # PyInstaller's binary tree must not silently include old ML or audio
+    # runtimes. These names are package names; FFmpeg audio codecs stay.
+    internal=root/'_internal'
+    for name in ('torch','torchaudio','torchvision','whisper','vosk',
+                 'sounddevice','_sounddevice_data','pyttsx3','scipy'):
+        if (internal/name).exists():
+            raise RuntimeError('Forbidden voice library packaged: '+name)
     if not is_windows_64_executable(assets/'ollama'/'ollama.exe'):
         raise RuntimeError('Missing x64 portable Ollama')
     # Video Studio must work with no system FFmpeg/Python installation.
@@ -46,7 +52,7 @@ def verify(root):
     partial=list(root.rglob('*.partial'))
     if partial:
         raise RuntimeError('Incomplete model download included: '+str(partial[0]))
-    print('VERIFIED: full offline models, Windows x64 app, Ollama and Vision blob SHA256')
+    print('VERIFIED: text-only Windows x64 app, FFmpeg, Ollama and Qwen blob SHA256')
     print('IMPORTANT: this file audit is NOT model inference or a live hardware test')
 
 def main():

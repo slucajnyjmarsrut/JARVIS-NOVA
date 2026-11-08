@@ -4,20 +4,22 @@ import os, queue, sys, threading, time, math, re, tkinter as tk
 from tkinter import messagebox, simpledialog, ttk
 from agent_core import Plan, parse_local, validate_plan, ask_ai_for_plan
 from desktop import Desktop, AppSuggestion
-from speaker import Speaker
+# Legacy controller methods remain in source for historical compatibility.
+# Import all audio dependencies ONLY when the old voiced Jarvis constructor is
+# actually called. The production TextJarvis never calls that constructor.
+def normalize_style(*args,**kwargs):
+    from whisper_mode import normalize_style as _legacy_normalize_style
+    return _legacy_normalize_style(*args,**kwargs)
 from self_improve import LearningStore, safe_name
 from self_repair import repair_configs, inspect_configs
 from auto_update import installed_application, check_and_download, stage_helper
-from trimodal_service import TrimodalService
 from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
-from voice_engine import Voice as RC4Voice
 from local_chat import LocalChat
 from nova_compact_ui import build_interface, compact_geometry
 from nova_window_state import load_layout, save_layout, safe_window_geometry
 from nova_overlay import NovaOverlay, dock_geometry
 from overlay_commands import overlay_intent, preview_line
-from whisper_mode import normalize_style
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -60,6 +62,9 @@ class Jarvis(tk.Tk):
         self._auto_update_busy=False
         self._auto_update_pending=None
         self._auto_update_first_seen=0.0
+        from speaker import Speaker
+        from trimodal_service import TrimodalService
+        from voice_engine import Voice as RC4Voice
         self.speaker=Speaker()
         self.trimodal=TrimodalService()
         self.local_chat=LocalChat(self.trimodal.runtime)

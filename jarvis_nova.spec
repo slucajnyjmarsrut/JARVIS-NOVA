@@ -1,49 +1,61 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Windows onedir application; Inno Setup wraps it as ONE install EXE.
-
-Using onedir prevents PyInstaller decompressing 3+ GiB of GGUF every startup.
-"""
+"""Text-only Windows onedir, with Qwen Vision and FFmpeg but no speech assets."""
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all
 
 project=Path(SPECPATH)
 assets=project/'assets'
-critical=[assets/'models'/'vosk'/'am'/'final.mdl',
-          assets/'models'/'base.pt',assets/'models'/'small.pt',assets/'models'/'v5_ru.pt',
-          assets/'ollama'/'ollama.exe',
-          assets/'models'/'ollama'/'manifests'/'registry.ollama.ai'/'library'/'qwen3-vl'/'2b-instruct']
+critical=[
+    assets/'ollama'/'ollama.exe',
+    assets/'models'/'ollama'/'manifests'/'registry.ollama.ai'/'library'/'qwen3-vl'/'2b-instruct',
+    assets/'bin'/'ffmpeg.exe',
+    assets/'bin'/'ffprobe.exe',
+]
 for item in critical:
     if not item.is_file():
-        raise RuntimeError(f'Cannot build incomplete offline release. Missing: {item}')
-
+        raise RuntimeError(f'Cannot bundle text-only JARVIS; missing: {item}')
+# Never ship ASR/TTS checkpoints even if the CI runner has legacy test models.
+# Explicitly include ONLY Ollama's audited model store, not assets/models.
+datas=[]
+for path in assets.iterdir():
+    if path.name=='models':
+        datas.append((str(path/'ollama'), 'assets/models/ollama'))
+    else:
+        datas.append((str(path), 'assets'))
 binaries=[]
-datas=[(str(assets),'assets')]
-hiddenimports=['win32com.client','pythoncom','pywintypes','PIL.ImageGrab',
-               'sounddevice','_sounddevice_data','tiktoken_ext.openai_public',
-               'pyautogui','pygetwindow','text_only_main','text_only_ui','text_only_overlay','freellm_client','pro_montage','filmcraft_bridge','filmcraft_installer','code_gui','code_agent','code_autopilot','code_project_engine','code_languages','code_checks','roblox_world_builder','roblox_asset_pipeline','code_workspace','code_edits','coding_intent']
-for library in ('vosk','whisper','torch','sounddevice','_sounddevice_data',
-                'PIL','scipy','pyttsx3'):
-    try:
-        d,b,h=collect_all(library)
-    except Exception:
-        if library=='_sounddevice_data':continue
-        raise
-    # PyTorch wheels contain large static import libraries (.lib) and debug
-    # artifacts that are never loaded by Windows Python inference. Including
-    # them needlessly pushes Inno Setup past its ~4.2 GB one-file limit.
-    # Keep all runtime DLLs and Python modules; fail closed on E2E testing.
-    def runtime_files(entries):
-        ignored=('.lib', '.pdb', '.exp', '.ilk', '.pyi', '.pyc')
-        return [item for item in entries
-                if not str(item[0]).lower().endswith(ignored)]
-    datas+=runtime_files(d); binaries+=runtime_files(b); hiddenimports+=h
-
+hiddenimports=[
+    'win32com.client','pythoncom','pywintypes','PIL.ImageGrab',
+    'pyautogui','pygetwindow','text_only_main','text_only_ui',
+    'text_only_overlay','freellm_client','pro_montage','filmcraft_bridge',
+    'filmcraft_installer','code_gui','code_agent','code_autopilot',
+    'code_project_engine','code_languages','code_checks',
+    'roblox_world_builder','roblox_asset_pipeline','code_workspace',
+    'code_edits','coding_intent','scripts.verify_text_vision_e2e',
+]
+# PIL is needed for screenshots, thumbnails and generated installer art.
+d,b,h=collect_all('PIL')
+datas+=d
+binaries+=b
+hiddenimports+=h
+# These modules remain in the SOURCE repository only for historical tests.
+# No ASR/TTS, PyTorch or microphone runtime is allowed inside the EXE.
+legacy_voice=[
+    'torch','torchaudio','torchvision','whisper','vosk','sounddevice',
+    '_sounddevice_data','pyttsx3','speech_capture','speech_output',
+    'speaker','voice_engine','microphone','audio_io','silero_engine',
+    'whisper_engine','whisper_mode','trimodal_service','trimodal_pipeline',
+    'offline_e2e_test','asr_quality','build_models','verify_models',
+    'scipy','numba','llvmlite','tiktoken',
+]
 analysis=Analysis(['bootstrap.py'],pathex=[str(project)],binaries=binaries,
     datas=datas,hiddenimports=hiddenimports,hookspath=[],hooksconfig={},
-    runtime_hooks=[],excludes=['cv2','torch.testing','pytest','matplotlib','IPython',
-    'tensorflow','jupyter','notebook'],noarchive=False)
+    runtime_hooks=[],excludes=legacy_voice+[
+        'cv2','pytest','matplotlib','IPython','tensorflow',
+        'jupyter','notebook',
+    ],noarchive=False)
 pyz=PYZ(analysis.pure)
 exe=EXE(pyz,analysis.scripts,[],exclude_binaries=True,
         name='JarvisNova',debug=False,bootloader_ignore_signals=False,
         strip=False,upx=False,console=False,icon=str(assets/'jarvis.ico'))
-coll=COLLECT(exe,analysis.binaries,analysis.datas,strip=False,upx=False,name='JarvisNova')
+coll=COLLECT(exe,analysis.binaries,analysis.datas,
+             strip=False,upx=False,name='JarvisNova')
