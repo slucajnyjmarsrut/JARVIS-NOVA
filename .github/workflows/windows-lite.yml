@@ -15,6 +15,7 @@ on:
       - scripts/generate_icon.py
       - scripts/generate_installer_art.py
       - scripts/verify_installer_payload.py
+      - scripts/verify_text_package_size.py
       - installer/JarvisNovaLite.iss
       - tests/test_lite_edition.py
       - .github/workflows/windows-lite.yml
