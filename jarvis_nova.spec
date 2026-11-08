@@ -26,7 +26,8 @@ binaries=[]
 hiddenimports=[
     'win32com.client','pythoncom','pywintypes','PIL.ImageGrab',
     'pyautogui','pygetwindow','text_only_main','text_only_ui',
-    'text_only_overlay','freellm_client','pro_montage','filmcraft_bridge',
+    'text_only_overlay','nova_command_palette','studio_theme','quick_video_brief',
+    'freellm_client','pro_montage','filmcraft_bridge',
     'filmcraft_installer','code_gui','code_agent','code_autopilot',
     'code_project_engine','code_languages','code_checks',
     'roblox_world_builder','roblox_asset_pipeline','code_workspace',

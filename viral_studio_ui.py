@@ -29,9 +29,18 @@ def _home():
 class ViralStudioWindow(tk.Toplevel):
     def __init__(self, parent, speaker=None):
         super().__init__(parent)
-        self.title('JARVIS NOVA — Вирусные ролики')
-        self.geometry('790x700')
-        self.minsize(640,520)
+        from studio_theme import (
+            apply_video_theme, BG, CARD, ALT, EDGE, CYAN, TEXT, MUTED,
+        )
+        apply_video_theme(self)
+        self.configure(bg=BG)
+        self.title("JARVIS NOVA — Видео-студия")
+        screen_w=self.winfo_screenwidth()
+        screen_h=self.winfo_screenheight()
+        width=min(1050,max(650,screen_w-70))
+        height=min(800,max(570,screen_h-100))
+        self.geometry(f"{width}x{height}")
+        self.minsize(min(650,screen_w),min(520,screen_h))
         self.parent=parent
         self.speaker=speaker
         self.brief=None
@@ -43,87 +52,200 @@ class ViralStudioWindow(tk.Toplevel):
         self.running=False
         self.stop_event=threading.Event()
         self._notifications=queue.Queue()
-        self.protocol('WM_DELETE_WINDOW',self.close)
-        self.topic=tk.StringVar(value='')
-        self.country=tk.StringVar(value='RU')
+        self.protocol("WM_DELETE_WINDOW",self.close)
+        self.topic=tk.StringVar(value="")
+        self.country=tk.StringVar(value="RU")
         self.web_enabled=tk.BooleanVar(value=False)
-        # Pro features are local and opt-in. Original clips are never changed.
+        self.scenario_mode=tk.StringVar(value="fast")
         self.pro_enabled=tk.BooleanVar(value=True)
-        self.pro_color=tk.StringVar(value='natural')
-        self.pro_transition=tk.StringVar(value='0.22')
-        self.pro_music=tk.StringVar(value='')
+        self.pro_color=tk.StringVar(value="natural")
+        self.pro_transition=tk.StringVar(value="0.22")
+        self.pro_music=tk.StringVar(value="")
         self.pro_semantic=tk.BooleanVar(value=False)
-        self.status=tk.StringVar(value='Начни с экспорта статистики своего канала (CSV). Без анализа канала сценарий не создаётся.')
-        header=ttk.Frame(self,padding=12)
-        header.pack(fill='x')
-        ttk.Label(header,text='Тема (можно оставить пустой: предложу из статистики канала):').grid(row=0,column=0,sticky='w')
-        ttk.Entry(header,textvariable=self.topic,width=60).grid(row=1,column=0,columnspan=3,sticky='ew',pady=6)
-        ttk.Label(header,text='Тренды страны:').grid(row=2,column=0,sticky='w')
-        ttk.Combobox(header,textvariable=self.country,values=['RU','DE','US','GB','UA','KZ'],width=7,state='readonly').grid(row=2,column=1,sticky='w')
-        ttk.Checkbutton(header,text='Искать свежие тренды Google (передаётся только страна)',variable=self.web_enabled).grid(row=3,column=0,columnspan=3,sticky='w',pady=7)
-        row=ttk.Frame(self,padding=(12,0,12,6))
-        row.pack(fill='x')
-        self.audience_button=ttk.Button(row,text='1. Анализ аудитории канала (CSV)',command=self.import_audience)
-        self.audience_button.pack(side='left',padx=(0,6))
-        self.make_button=ttk.Button(row,text='2. Сценарий под аудиторию',command=self.generate)
-        self.make_button.pack(side='left',padx=(0,6))
-        self.load_button=ttk.Button(row,text='Открыть сценарий',command=self.open_brief)
-        self.load_button.pack(side='left',padx=(0,6))
-        self.speak_button=ttk.Button(row,text='Показать план съёмки',command=self.read_shots)
-        self.speak_button.pack(side='left')
-        second=ttk.Frame(self,padding=(12,0,12,8));second.pack(fill='x')
-        self.edit_button=ttk.Button(second,text='3. Монтаж: мои или онлайн-кадры',command=self.montage)
-        self.edit_button.pack(side='left',padx=(0,8))
-        self.review_button=ttk.Button(second,text='4. Оценка просмотров и правок',command=self.review)
-        self.review_button.pack(side='left',padx=(0,8))
-        ttk.Button(second,text='Отменить текущую работу',command=self.cancel).pack(side='left')
-        auto_row=ttk.Frame(self,padding=(12,0,12,7))
-        auto_row.pack(fill='x')
-        self.auto_button=ttk.Button(auto_row,text='АВТОМОНТАЖ: тема → исходники → ролик',
-                                    command=self.auto_montage)
-        self.auto_button.pack(side='left')
-        pro_frame=ttk.LabelFrame(self,text='Профессиональный монтаж · локально',padding=(10,5))
-        pro_frame.pack(fill='x',padx=12,pady=(0,7))
-        options_row=ttk.Frame(pro_frame);options_row.pack(fill='x')
-        ttk.Checkbutton(options_row,text='Плавные переходы + анимация титров',
-                        variable=self.pro_enabled).pack(side='left',padx=(0,9))
-        ttk.Label(options_row,text='Цвет:').pack(side='left')
-        ttk.Combobox(options_row,textvariable=self.pro_color,
-                     values=['natural','cinematic','none'],width=10,
-                     state='readonly').pack(side='left',padx=(4,9))
-        ttk.Label(options_row,text='Переход, с:').pack(side='left')
-        ttk.Combobox(options_row,textvariable=self.pro_transition,
-                     values=['0','0.16','0.22','0.32'],width=5,
-                     state='readonly').pack(side='left',padx=(4,0))
-        soundtrack_row=ttk.Frame(pro_frame);soundtrack_row.pack(fill='x',pady=(5,0))
-        ttk.Label(soundtrack_row,text='Музыка:').pack(side='left',padx=(0,5))
-        ttk.Entry(soundtrack_row,textvariable=self.pro_music,width=37).pack(
-            side='left',fill='x',expand=True,padx=(0,5))
-        ttk.Button(soundtrack_row,text='Выбрать',command=self._choose_music).pack(side='left')
-        ttk.Button(soundtrack_row,text='Очистить',command=lambda:self.pro_music.set('')).pack(side='left',padx=3)
-        ttk.Checkbutton(pro_frame,
-            text='Подбирать кадры по сюжету через локальную Qwen (может быть медленно)',
-            variable=self.pro_semantic).pack(anchor='w')
-        film_row=ttk.Frame(self,padding=(12,0,12,6))
-        film_row.pack(fill='x')
+        self.status=tk.StringVar(
+            value="Укажи тему и создай сценарий. CSV аудитории необязателен.")
+        header=tk.Frame(self,bg=BG)
+        header.pack(fill="x",padx=18,pady=(14,10))
+        ttk.Label(header,text="▣  ВИДЕО-СТУДИЯ NOVA",
+                  style="Studio.Heading.TLabel").pack(anchor="w")
+        ttk.Label(header,
+            text="Сценарий → план съёмки → монтаж → ручная доработка FilmCraft",
+            style="Studio.Small.TLabel").pack(anchor="w",pady=(2,0))
+        # Scroll just the options, not the script: buttons remain available on
+        # small screens and the generated output gets most of the window.
+        controls_box=tk.Frame(self,bg=BG)
+        controls_box.pack(fill="x",padx=15,pady=(0,6))
+        self.controls_canvas=tk.Canvas(controls_box,height=330,bg=BG,
+                                        highlightthickness=0,bd=0)
+        controls_scroll=ttk.Scrollbar(
+            controls_box,orient="vertical",
+            command=self.controls_canvas.yview,style="Studio.Vertical.TScrollbar")
+        self.controls_canvas.pack(side="left",fill="x",expand=True)
+        controls_scroll.pack(side="right",fill="y")
+        self.controls_canvas.configure(yscrollcommand=controls_scroll.set)
+        controls=ttk.Frame(self.controls_canvas,style="Studio.TFrame")
+        self._controls_window=self.controls_canvas.create_window(
+            (0,0),window=controls,anchor="nw")
+        controls.bind("<Configure>",lambda e:self.controls_canvas.configure(
+            scrollregion=self.controls_canvas.bbox("all")),add="+")
+        self.controls_canvas.bind("<Configure>",lambda e:self.controls_canvas.itemconfigure(
+            self._controls_window,width=e.width),add="+")
+        self.controls_canvas.bind("<MouseWheel>",lambda e:self.controls_canvas.yview_scroll(
+            -1 if e.delta>0 else 1,"units"),add="+")
+        # Topic + country + speed controls
+        setup=ttk.LabelFrame(controls,text="01 / СЦЕНАРИЙ",
+                              padding=(12,9),style="Studio.TLabelframe")
+        setup.pack(fill="x",pady=(0,9))
+        setup.columnconfigure(0,weight=1)
+        ttk.Label(setup,text="Тема ролика",style="Studio.Card.TLabel").grid(
+            row=0,column=0,sticky="w",pady=(0,4))
+        ttk.Label(setup,text="Страна",style="Studio.Card.TLabel").grid(
+            row=0,column=1,sticky="w",padx=(12,0))
+        ttk.Entry(setup,textvariable=self.topic,style="Studio.TEntry").grid(
+            row=1,column=0,sticky="ew",pady=(0,8))
+        ttk.Combobox(setup,textvariable=self.country,
+            values=["RU","DE","US","GB","UA","KZ"],width=7,
+            state="readonly",style="Studio.TCombobox").grid(
+            row=1,column=1,sticky="w",padx=(12,0),pady=(0,8))
+        ttk.Label(setup,text="Скорость:",style="Studio.Card.TLabel").grid(
+            row=2,column=0,sticky="w")
+        speed=ttk.Frame(setup,style="Studio.Card.TFrame")
+        speed.grid(row=3,column=0,columnspan=2,sticky="w",pady=(1,3))
+        for value,label in (
+            ("fast","⚡ Быстро · без ожидания ИИ"),
+            ("standard","AI · стандарт"),
+            ("deep","AI · подробно"),
+        ):
+            ttk.Radiobutton(speed,text=label,value=value,
+                variable=self.scenario_mode,style="Studio.TRadiobutton").pack(
+                side="left",padx=(0,10))
+        ttk.Checkbutton(setup,text="Дополнить публичными трендами Google (интернет, с разрешением)",
+                        variable=self.web_enabled,
+                        style="Studio.TCheckbutton").grid(
+            row=4,column=0,columnspan=2,sticky="w",pady=(3,1))
+        # Actual interactive actions arranged in a grid, not a row clipping
+        # off the right side of a 790px studio window.
+        actions=ttk.LabelFrame(controls,text="02 / ДЕЙСТВИЯ",padding=(12,9),
+                               style="Studio.TLabelframe")
+        actions.pack(fill="x",pady=(0,9))
+        for col in (0,1):
+            actions.columnconfigure(col,weight=1,uniform="actions")
+        def action(row,col,label,command,primary=False):
+            button=ttk.Button(actions,text=label,command=command,
+                style=("Studio.Primary.TButton" if primary else "Studio.TButton"))
+            button.grid(row=row,column=col,sticky="ew",padx=4,pady=4)
+            return button
+        self.audience_button=action(0,0,"1. Загрузить статистику CSV",self.import_audience)
+        self.make_button=action(0,1,"2. СОЗДАТЬ СЦЕНАРИЙ",self.generate,True)
+        self.load_button=action(1,0,"Открыть сохранённый сценарий",self.open_brief)
+        self.speak_button=action(1,1,"Показать план съёмки",self.read_shots)
+        self.edit_button=action(2,0,"3. Монтаж · мои или онлайн-видео",self.montage)
+        self.review_button=action(2,1,"4. Проверить монтаж и оценку",self.review)
+        self.auto_button=action(3,0,"АВТОМОНТАЖ · СОБРАТЬ MP4",self.auto_montage,True)
+        action(3,1,"Отменить текущую работу",self.cancel)
+        # Pro options and music remain available, but no crowded single row.
+        pro=ttk.LabelFrame(controls,text="03 / ПРОФЕССИОНАЛЬНЫЙ МОНТАЖ",
+                            style="Studio.TLabelframe",padding=(12,9))
+        pro.pack(fill="x",pady=(0,9))
+        ttk.Checkbutton(pro,text="Плавные переходы, анимированные титры",
+            variable=self.pro_enabled,style="Studio.TCheckbutton").pack(anchor="w")
+        selectors=ttk.Frame(pro,style="Studio.Card.TFrame")
+        selectors.pack(fill="x",pady=(4,6))
+        ttk.Label(selectors,text="Цвет",style="Studio.Card.TLabel").pack(side="left")
+        ttk.Combobox(selectors,textvariable=self.pro_color,
+            values=["natural","cinematic","none"],width=11,state="readonly",
+            style="Studio.TCombobox").pack(side="left",padx=(7,16))
+        ttk.Label(selectors,text="Переход, сек",style="Studio.Card.TLabel").pack(side="left")
+        ttk.Combobox(selectors,textvariable=self.pro_transition,
+            values=["0","0.16","0.22","0.32"],width=6,state="readonly",
+            style="Studio.TCombobox").pack(side="left",padx=(7,0))
+        soundtrack=ttk.Frame(pro,style="Studio.Card.TFrame")
+        soundtrack.pack(fill="x",pady=(0,5))
+        ttk.Label(soundtrack,text="Музыка",style="Studio.Card.TLabel").pack(
+            side="left",padx=(0,8))
+        ttk.Entry(soundtrack,textvariable=self.pro_music,
+                  style="Studio.TEntry").pack(side="left",fill="x",expand=True)
+        ttk.Button(soundtrack,text="Выбрать",command=self._choose_music,
+                   style="Studio.TButton").pack(side="left",padx=(7,0))
+        ttk.Button(soundtrack,text="Очистить",command=lambda:self.pro_music.set(""),
+                   style="Studio.TButton").pack(side="left",padx=(6,0))
+        ttk.Checkbutton(pro,text="Подбор кадров через Qwen Vision (медленнее)",
+            variable=self.pro_semantic,style="Studio.TCheckbutton").pack(anchor="w")
+        tools=ttk.LabelFrame(controls,text="04 / ИНСТРУМЕНТЫ",padding=(12,9),
+                             style="Studio.TLabelframe")
+        tools.pack(fill="x",pady=(0,7))
+        tools.columnconfigure(0,weight=1)
+        tools.columnconfigure(1,weight=1)
         self.filmcraft_button=ttk.Button(
-            film_row,text='🎬 FILMCRAFT — СКАЧАТЬ И ОТКРЫТЬ',
-            command=self.open_filmcraft)
-        self.filmcraft_button.pack(side='left',padx=(0,9))
-        ttk.Label(film_row,text='При первом нажатии скачает FilmCraft автоматически').pack(side='left')
-        guide_row=ttk.Frame(self,padding=(12,0,12,6))
-        guide_row.pack(fill='x')
-        ttk.Button(guide_row,text='Изучить официальную справку FFmpeg',
-                   command=self.study_editing).pack(side='left')
-        self.viewer=tk.Text(self,wrap='word',font=('Segoe UI',10))
-        self.viewer.pack(fill='both',expand=True,padx=12,pady=(2,8))
-        self.viewer.insert('end','JARVIS подготовит оригинальный сценарий и пронумерованный список кадров.\n'
-                      'После съёмки положи видео в одну папку: 01.mp4, 02.mp4 и т. д.\n'
-                      'Монтаж работает локально. Онлайн-поиск видео доступен только после разрешения.\n')
-        self.viewer.configure(state='disabled')
-        ttk.Label(self,textvariable=self.status,wraplength=690).pack(fill='x',padx=12,pady=(0,10))
+            tools,text="FILMCRAFT · СКАЧАТЬ И ОТКРЫТЬ",
+            command=self.open_filmcraft,style="Studio.Primary.TButton")
+        self.filmcraft_button.grid(row=0,column=0,sticky="ew",padx=4,pady=4)
+        ttk.Button(tools,text="Справка FFmpeg",
+            command=self.study_editing,style="Studio.TButton").grid(
+            row=0,column=1,sticky="ew",padx=4,pady=4)
+        # Results should stay readable while tool options scroll separately.
+        resultbar=tk.Frame(self,bg=BG)
+        resultbar.pack(fill="x",padx=17,pady=(5,5))
+        tk.Label(resultbar,text="РЕЗУЛЬТАТ И СЦЕНАРИЙ",bg=BG,fg=CYAN,
+                 font=("Segoe UI",11,"bold")).pack(side="left")
+        ttk.Button(resultbar,text="Сохранить текст",command=self.save_result,
+                   style="Studio.TButton").pack(side="right",padx=(6,0))
+        ttk.Button(resultbar,text="Копировать",command=self.copy_result,
+                   style="Studio.TButton").pack(side="right")
+        output=tk.Frame(self,bg=ALT,highlightbackground=EDGE,highlightthickness=1)
+        output.pack(fill="both",expand=True,padx=16,pady=(0,7))
+        self.viewer=tk.Text(output,wrap="word",font=("Segoe UI",10),
+            bg=ALT,fg=TEXT,insertbackground=CYAN,selectbackground="#215D75",
+            relief="flat",bd=0,padx=14,pady=12,spacing1=3,spacing3=5)
+        self.viewer.pack(side="left",fill="both",expand=True)
+        bar=ttk.Scrollbar(output,orient="vertical",command=self.viewer.yview,
+                           style="Studio.Vertical.TScrollbar")
+        bar.pack(side="right",fill="y")
+        self.viewer.configure(yscrollcommand=bar.set)
+        self.viewer.insert("end","Напиши тему и нажми «СОЗДАТЬ СЦЕНАРИЙ».\n"
+                           "⚡ Быстрый режим создаёт сценарий без ожидания модели.\n"
+                           "AI-режимы доступны для более подробной версии.\n\n"
+                           "После съёмки положи кадры 01.mp4, 02.mp4... в одну папку.\n"
+                           "JARVIS не публикует видео без твоего решения.")
+        self.viewer.configure(state="disabled")
+        footer=tk.Frame(self,bg=BG)
+        footer.pack(fill="x",padx=17,pady=(0,8))
+        self.status_label=tk.Label(footer,textvariable=self.status,bg=BG,
+                                   fg=MUTED,font=("Segoe UI",9),
+                                   anchor="w",justify="left")
+        self.status_label.pack(fill="x")
         self.focus_set()
         self.after(100,self._pump_notifications)
+
+    def copy_result(self):
+        content=self.viewer.get("1.0","end-1c").strip()
+        if content:
+            self.clipboard_clear()
+            self.clipboard_append(content)
+            self.status.set("Текст результата скопирован.")
+
+    def save_result(self):
+        content=self.viewer.get("1.0","end-1c").strip()
+        if not content:
+            self.status.set("Нет результата для сохранения.")
+            return
+        filename=filedialog.asksaveasfilename(parent=self,
+            title="Сохранить сценарий",defaultextension=".txt",
+            filetypes=[("Текст","*.txt"),("Markdown","*.md")])
+        if not filename:
+            return
+        try:
+            # Do not overwrite files that may contain personal notes.
+            with Path(filename).open("x",encoding="utf-8") as output:
+                output.write(content+"\n")
+        except FileExistsError:
+            messagebox.showwarning("Файл уже есть",
+                "Файл не перезаписан. Выбери новое имя.",parent=self)
+            return
+        except OSError as exc:
+            messagebox.showerror("Сохранение",str(exc),parent=self)
+            return
+        self.status.set("Текст сохранён: "+str(filename))
 
     def open_filmcraft(self):
         """One click: auto-download verified FilmCraft if needed, then open."""
@@ -216,8 +338,8 @@ class ViralStudioWindow(tk.Toplevel):
         """Navigate without triggering filesystem dialogs, web requests or rendering."""
         descriptions={
             'audience':('1. Анализ аудитории: импортируй свою статистику CSV.',self.audience_button),
-            'script':('2. Сценарий: сначала нужен анализ аудитории канала.',self.make_button),
-            'shoot':('3. Съёмка: открой сценарий и озвучь список кадров.',self.speak_button),
+            'script':('2. Сценарий: введи тему и выбери быстрый или AI режим.',self.make_button),
+            'shoot':('3. Съёмка: открой текстовый список кадров.',self.speak_button),
             'edit':('4. Монтаж: выбери отснятые кадры и подтверди обработку.',self.edit_button),
             'review':('5. Оценка: проверь готовый MP4 относительно данных аудитории.',self.review_button),
             'auto':('Автомонтаж: введи тему и разреши поиск свободных видеоматериалов.',self.auto_button),
@@ -247,7 +369,8 @@ class ViralStudioWindow(tk.Toplevel):
         try:
             while True:
                 callback=self._notifications.get_nowait()
-                if not self.parent._closing:callback()
+                if self.winfo_exists() and not getattr(self.parent,"_closing",False):
+                    callback()
         except queue.Empty:
             pass
         self.after(100,self._pump_notifications)
@@ -301,50 +424,74 @@ class ViralStudioWindow(tk.Toplevel):
         self._spawn(work)
 
     def generate(self):
-        if self.profile is None:
-            messagebox.showwarning('Сначала аудитория',
-                'Сначала импортируй статистику своего канала (CSV), чтобы сценарий опирался на реальных зрителей.',
-                parent=self)
-            return
+        from quick_video_brief import select_brief
         topic=self.topic.get().strip()
         if not topic:
-            try:topic=recommend_topic(self.profile)
-            except ValueError:
-                messagebox.showwarning('Тема','Статистика не выявила повторяющейся темы. Напиши свою.',parent=self)
+            if self.profile is None:
+                messagebox.showwarning("Нужна тема",
+                    "Введи тему ролика или загрузи статистику CSV.",
+                    parent=self)
                 return
-        online=self.web_enabled.get()
-        if online and not messagebox.askyesno('Разрешение на интернет',
-            'Получить публичные поисковые тренды Google Trends по выбранной стране? '\
-            'Видео, аудио и личные файлы не отправляются.',parent=self):return
-        geo=self.country.get()
-        self.status.set('Подбираю идею и сценарий…')
-        def work():
-            trends=[];note=''
-            if online:
-                try: trends=research_trends(geo=geo,consent=True)
-                except Exception as exc:
-                    note=f'Источник трендов недоступен ({str(exc)[:120]}). Будет сценарий без свежих трендов.\n'
-            if self.stop_event.is_set():return
             try:
-                brief=create_local_brief(topic,trends,audience=self.profile)
-            except Exception as exc:
-                note+=f'Локальная AI-модель сейчас недоступна ({str(exc)[:160]}). Используется подписанный шаблон.\n'
-                brief=template_brief(topic,trends)
-            if self.stop_event.is_set():return
-            project=_home()/('video_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
+                topic=recommend_topic(self.profile)
+            except ValueError:
+                messagebox.showwarning("Тема",
+                    "Не удалось выделить тему из CSV. Укажи её вручную.",
+                    parent=self)
+                return
+        if not 2<=len(topic)<=100:
+            messagebox.showwarning("Тема",
+                "Тема должна содержать от 2 до 100 символов.",parent=self)
+            return
+        online=self.web_enabled.get()
+        if online and not messagebox.askyesno("Разрешить поиск трендов?",
+            "Получить публичные поисковые тренды по указанной стране? "
+            "Личные файлы не передаются.",parent=self):
+            return
+        geo=self.country.get()
+        mode=self.scenario_mode.get()
+        runtime=getattr(self.parent,"runtime",None)
+        self.status.set("⚡ Готовлю быстрый сценарий…" if mode=="fast"
+                        else "Qwen готовит сценарий · можно отменить…")
+        def work():
+            trends=[]
+            note=""
+            if online:
+                try:
+                    trends=research_trends(geo=geo,consent=True)
+                except Exception as exc:
+                    note="Тренды недоступны ("+str(exc)[:100]+").\n"
+            if self.stop_event.is_set():
+                return
+            brief,message=select_brief(
+                topic,trends,mode=mode,audience=self.profile,runtime=runtime)
+            if self.stop_event.is_set():
+                return
+            project=_home()/("video_"+datetime.now().strftime("%Y%m%d_%H%M%S")
+                              +"_"+uuid4().hex[:6])
             save_brief(brief,project)
-            (project/'AUDIENCE_EXPERTS_RU.md').write_text(expert_report(self.profile,topic),encoding='utf-8')
-            text=note+f'Заголовок: {brief.title}\nЗацепка: {brief.hook}\n\nСценарий:\n{brief.script}\n\n'
+            if self.profile is not None:
+                (project/"AUDIENCE_EXPERTS_RU.md").write_text(
+                    expert_report(self.profile,topic),encoding="utf-8")
+            text=(note+message+"\n\n"
+                  +"Заголовок: "+brief.title+"\n"
+                  +"Зацепка: "+brief.hook+"\n\n"
+                  +"СЦЕНАРИЙ:\n"+brief.script+"\n\n"
+                  +"ПЛАН СЪЁМКИ:\n")
             for i,shot in enumerate(brief.shots,1):
-                text+=f'{i:02d}. [{shot.seconds:g} сек] {shot.film}\n   НА ЭКРАНЕ: {shot.caption}\n'
-            text+=f'\nФинал: {brief.call_to_action}\n\nСоздано: {project}\nРежим: {brief.generator}\n'
+                text+=f"{i:02d}. [{shot.seconds:g} сек] {shot.film}\n"
+                text+="    НА ЭКРАНЕ: "+shot.caption+"\n"
+            text+="\nФинал: "+brief.call_to_action+"\n"
+            text+="\nПроект: "+str(project)+"\n"
+            text+="Режим: "+brief.generator+"\n"
             if trends:
-                text+='\nТренды ПОИСКА (не вирусные видео):\n'+'\n'.join(t.title+' — '+t.traffic for t in trends)
+                text+="\nТренды ПОИСКА:\n"+"\n".join(
+                    item.title+" — "+item.traffic for item in trends)
             def done():
-                self.brief=brief;self.project=project
+                self.brief=brief
+                self.project=project
                 self._show(text)
-                self.status.set('План готов. Отсними кадры 01.mp4, 02.mp4… и нажми «Смонтировать».')
-                self._speak('Сценарий готов. Первый кадр: '+brief.shots[0].film)
+                self.status.set("Сценарий готов. Посмотри план съёмки или переходи к монтажу.")
             self._notify(done)
         self._spawn(work)
 
@@ -366,15 +513,19 @@ class ViralStudioWindow(tk.Toplevel):
         self._spawn(work)
 
     def read_shots(self):
+        """Show the complete shot plan: the app has NO speech hardware."""
         if not self.brief:
-            messagebox.showinfo('Сценарий','Сначала создай или открой сценарий.',parent=self);return
-        # Speak ALL shots in sequence, rather than truncating the plan.
-        shots=tuple(self.brief.shots)
-        def speak_plan():
-            for i,shot in enumerate(shots,1):
-                if self.stop_event.is_set() or self.parent._closing:return
-                if self.speaker:self.speaker.say(f'Кадр {i}. {shot.film}')
-        threading.Thread(target=speak_plan,daemon=True,name='jarvis-viral-voice-guide').start()
+            messagebox.showinfo("План съёмки",
+                "Сначала создай или открой сценарий.",parent=self)
+            return
+        lines=["ПЛАН СЪЁМКИ: "+self.brief.title,""]
+        for index,shot in enumerate(self.brief.shots,1):
+            lines.append(f"{index:02d}. {shot.seconds:g} сек — {shot.film}")
+            lines.append("     Титр: "+shot.caption)
+            lines.append("")
+        lines.append("Финал: "+self.brief.call_to_action)
+        self._show("\n".join(lines))
+        self.status.set("План съёмки открыт. Все кадры показаны текстом.")
 
     def open_brief(self):
         path=filedialog.askopenfilename(parent=self,title='Открыть brief.json',filetypes=[('JSON сценарий','*.json')])
@@ -413,14 +564,13 @@ class ViralStudioWindow(tk.Toplevel):
         except (ValueError,OSError) as exc:
             messagebox.showerror('Профессиональный монтаж',str(exc),parent=self)
             return
+        from quick_video_brief import select_brief
+        mode=self.scenario_mode.get()
+        runtime=getattr(self.parent,"runtime",None)
         self.status.set('Автомонтаж: создаю сценарий по теме…')
         def work():
-            note=''
-            try:
-                brief=create_local_brief(topic,audience=self.profile)
-            except Exception as exc:
-                note='Локальная Qwen недоступна; использован шаблон: '+str(exc)[:120]
-                brief=template_brief(topic)
+            brief,note=select_brief(
+                topic,mode=mode,audience=self.profile,runtime=runtime)
             if self.stop_event.is_set():return
             project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
             save_brief(brief,project)

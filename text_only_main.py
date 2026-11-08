@@ -106,56 +106,26 @@ class TextJarvis(BaseJarvis):
         self.bind("<Map>", self._main_mapped, add="+")
         self.bind("<Control-Shift-O>", lambda e:(self.toggle_overlay(), "break")[1])
 
-        menu = tk.Menu(self)
-        permissions = tk.Menu(menu, tearoff=False)
-        permissions.add_command(label="Разрешить управление ПК", command=self.grant_control)
-        permissions.add_command(label="Разрешить зрение", command=self.grant_vision)
-        permissions.add_command(label="Отозвать разрешения", command=self.revoke)
-        menu.add_cascade(label="Разрешения", menu=permissions)
-        menu.add_command(label="Описать экран текстом…", command=lambda:self.request_trimodal("screen"))
-        modes = tk.Menu(menu, tearoff=False)
-        self._selected_mode = tk.StringVar(value="neutral")
-        for key, label in (
-            ("neutral","Обычный"),("gaming","Игры"),("work","Работа"),
-            ("office","Офис"),("study","Учёба"),
-            ("videos","Ролики"),("video_shoot","Съёмка"),
-            ("video_edit","Монтаж"),("video_review","Оценка ролика")
-        ):
-            modes.add_radiobutton(label=label, variable=self._selected_mode,
-                value=key, command=lambda value=key:self.activate_mode(value))
-        modes.add_command(label="Начать режим", command=self.start_mode_apps)
-        modes.add_command(label="Выбрать игру…", command=self.ask_game)
-        modes.add_command(label="Настроить приложения…", command=self.configure_mode_apps)
-        modes.add_command(label="Таймер 25 минут", command=lambda:
-            self.handle_mode_command(ModeCommand("timer_start","Таймер 25 минут",minutes=25)))
-        modes.add_command(label="Остановить таймер", command=self.stop_focus_timer)
-        menu.add_cascade(label="Режимы", menu=modes)
-        ai = tk.Menu(menu, tearoff=False)
-        for label, value in (
-            ("Локальная Qwen","bundled"),("Только команды","none"),
-            ("Внешняя Ollama","ollama"),("FreeLLM · несколько ИИ","freellm"),
-            ("OpenAI API","openai"),
-            ("Claude API","anthropic")
-        ):
-            ai.add_command(label=label, command=lambda v=value:self.set_engine(v))
-        menu.add_cascade(label="AI", menu=ai)
-        menu.add_command(label="Программирование · 20 языков и Roblox 3D…", command=self.open_code_assistant)
-        menu.add_command(label="Видео-студия…", command=self.open_viral_studio)
-        menu.add_command(label="FilmCraft — открыть редактор",
-                         command=self.open_filmcraft)
-        menu.add_command(label="Самовосстановление настроек…", command=self.self_repair_now)
-        menu.add_command(label="Проверить локальную модель", command=self.check_models)
-        menu.add_command(label="Возможности", command=self.show_capabilities)
-        menu.add_command(label="Свернуть в мини-чат", command=self.hide_main)
-        menu.add_command(label="Выход", command=self.close)
-        self.nova_settings_menu = menu
+        # The stock Tk menu was light, clipped on compact displays and
+        # inconsistent with the dark JARVIS design. Use a bounded dark palette.
+        self._command_palette = None
         self.hud_settings_button.configure(command=self.show_settings_menu)
-        self.bind("<F10>", lambda e:self.show_settings_menu())
+        self.bind("<F10>", self.show_settings_menu)
 
         self.log("Система", "Только текст: напиши сообщение и нажми Enter. Микрофон и озвучивание отключены.")
         self.after(100, self.pump)
         self.after(20000, self._check_auto_update)
         self.after(150, self.entry.focus_set)
+
+    def show_settings_menu(self, event=None):
+        from nova_command_palette import show_palette
+        if not self._closing:
+            show_palette(self)
+        return "break"
+
+    def _palette_start_focus_timer(self):
+        self.handle_mode_command(
+            ModeCommand("timer_start", "Таймер 25 минут", minutes=25))
 
     def set_engine(self, engine):
         if engine == "freellm":
@@ -273,6 +243,9 @@ class TextJarvis(BaseJarvis):
         except Exception:
             pass
         self._closing = True
+        palette = getattr(self, "_command_palette", None)
+        if palette is not None:
+            palette.close()
         self._shutdown.set()
         overlay = getattr(self, "overlay", None)
         if overlay is not None:
