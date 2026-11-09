@@ -7,6 +7,9 @@ on:
       - text_only_ui.py
       - screenshot_review.py
       - tests/test_screenshot_review.py
+      - self_development.py
+      - self_development_ui.py
+      - tests/test_self_development.py
       - nova_command_palette.py
       - viral_studio_ui.py
       - studio_theme.py
