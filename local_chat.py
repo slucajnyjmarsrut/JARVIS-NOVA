@@ -55,7 +55,8 @@ class LocalChat:
         parts = urlsplit(endpoint)
         if (parts.scheme != "http" or parts.hostname != "127.0.0.1"
                 or not (1 <= (parts.port or 0) <= 65535) or
-                parts.path or parts.query or parts.fragment or parts.username):
+                parts.path or parts.query or parts.fragment or
+                parts.username is not None or parts.password is not None):
             raise LocalChatError("Локальная модель должна отвечать только с 127.0.0.1")
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({}), _NoExternalRedirect())
