@@ -37,10 +37,15 @@ def installed_edition(assets: Path) -> str:
 def active_model_store(assets: Path, *, user_store: Path | None=None) -> Path:
     assets=Path(assets)
     bundled=model_store_in_assets(assets)
-    from bundled_vision_runtime import _model_manifest
-    if _model_manifest(bundled,MODEL_NAME).is_file():
+    from bundled_vision_runtime import validate_offline_model_store, BundledRuntimeError
+    # An incomplete bundled download must not mask a usable per-user cache.
+    # Validation checks manifest structure and blob sizes, without hashing
+    # multi-GB weights on every app launch.
+    try:
+        validate_offline_model_store(assets,model_store=bundled)
         return bundled
-    return Path(user_store) if user_store is not None else user_model_store()
+    except (BundledRuntimeError,OSError,ValueError):
+        return Path(user_store) if user_store is not None else user_model_store()
 
 
 def local_model_available(assets: Path, *, user_store: Path | None=None) -> bool:
