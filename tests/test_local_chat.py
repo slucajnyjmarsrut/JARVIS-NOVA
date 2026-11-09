@@ -2,9 +2,11 @@ import unittest
 from pathlib import Path
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch
+import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from local_chat import LocalChat, LocalChatError, explain_local_model_failure
+from local_chat import LocalChat, LocalChatError, _NoExternalRedirect, explain_local_model_failure
 from bundled_vision_runtime import BundledRuntimeError
 
 
@@ -74,6 +76,36 @@ class LocalChatTests(unittest.TestCase):
                      "http://example.com:1234", "http://127.0.0.1:1234/path"):
             with self.subTest(host=host),self.assertRaises(LocalChatError):
                 LocalChat._request(host, {"messages":[]})
+
+    def test_model_http_redirect_never_leaks_local_chat_to_external_host(self):
+        handler = _NoExternalRedirect()
+        for url in (
+            "https://attacker.example/collect",
+            "http://127.0.0.1:3000/elsewhere",
+            "http://localhost:11434/api/chat",
+        ):
+            with self.subTest(url=url), self.assertRaises(LocalChatError):
+                handler.redirect_request(None, None, 307, "redirect", {}, url)
+
+        # Verify the real requester actually registers the no-redirect handler.
+        recorded = []
+        class FakeReply:
+            def __enter__(self): return self
+            def __exit__(self, *_): pass
+            def read(self, _): return b'{"message":{"content":"OK"}}'
+        class FakeOpener:
+            def open(self, request, timeout):
+                self.url = request.full_url
+                return FakeReply()
+        def opener(*handlers):
+            recorded.extend(handlers)
+            return FakeOpener()
+        with patch.object(urllib.request, "build_opener", side_effect=opener):
+            response = LocalChat._request("http://127.0.0.1:11434", {"messages":[]})
+        self.assertEqual(response["message"]["content"], "OK")
+        self.assertTrue(any(isinstance(h, _NoExternalRedirect) for h in recorded))
+        self.assertTrue(any(isinstance(h, urllib.request.ProxyHandler)
+                            and not h.proxies for h in recorded))
 
     def test_rejects_empty_and_unreasonably_long_prompts(self):
         chat = LocalChat(FakeRuntime(), requester=lambda *_: None)
