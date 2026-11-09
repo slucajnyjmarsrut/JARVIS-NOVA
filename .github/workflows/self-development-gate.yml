@@ -1,0 +1,54 @@
+name: NOVA self-development review and rollback gate
+on:
+  push:
+    branches: [jarvis]
+    paths:
+      - self_development.py
+      - self_development_ui.py
+      - self_fix_review.py
+      - screenshot_review.py
+      - code_edits.py
+      - code_checks.py
+      - code_workspace.py
+      - tests/test_self_development.py
+      - tests/test_screenshot_review.py
+      - tests/test_code_edits.py
+      - .github/workflows/self-development-gate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: jarvis-self-development-gate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  review-and-rollback:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install text-only test dependencies
+        run: python -m pip install pillow numpy
+      - name: Compile relevant source without running proposed code
+        run: python -m compileall -q self_development.py self_development_ui.py self_fix_review.py screenshot_review.py text_only_main.py
+      - name: Confirm branch is jarvis
+        shell: python
+        run: |
+          import os
+          assert os.environ["GITHUB_REF"] == "refs/heads/jarvis", "This workflow must never run on main"
+      - name: Test offline proposals, diff audit, consent and rollback
+        run: python -m unittest discover -s tests -p test_self_development.py -v
+      - name: Test local screenshot annotation and explicit sending
+        run: python -m unittest discover -s tests -p test_screenshot_review.py -v
+      - name: Test code backup and race-safe replacement
+        run: python -m unittest discover -s tests -p test_code_edits.py -v
+      - name: Test safe update rollback contract
+        run: python -m unittest discover -s tests -p test_auto_update.py -v
