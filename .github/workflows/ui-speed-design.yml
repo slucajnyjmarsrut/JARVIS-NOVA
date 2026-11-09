@@ -7,6 +7,8 @@ on:
       - nova_command_palette.py
       - viral_studio_ui.py
       - studio_theme.py
+      - windows_titlebar.py
+      - tests/test_windows_titlebar.py
       - viral_studio.py
       - quick_video_brief.py
       - jarvis_nova.spec
@@ -38,5 +40,7 @@ jobs:
         run: python -m unittest discover -s tests -p test_viral_studio.py -v
       - name: Check text-only window and no microphone regression
         run: python -m unittest discover -s tests -p test_text_only_mode.py -v
+      - name: Check native Windows titlebar integration
+        run: python -m unittest discover -s tests -p test_windows_titlebar.py -v
       - name: Check studio integration
         run: python -m unittest discover -s tests -p test_viral_integration.py -v
