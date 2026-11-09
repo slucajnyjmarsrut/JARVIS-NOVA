@@ -46,6 +46,7 @@ hiddenimports=[
     'text_only_overlay','nova_command_palette','studio_theme','quick_video_brief',
     'screenshot_review','PIL.ImageTk','windows_titlebar',
     'self_development','self_development_ui','self_fix_review',
+    'publisher_trust',
     'update_preferences','update_center','model_storage',
     'optional_model_downloader','update_idle_guard',
     'freellm_client','pro_montage','filmcraft_bridge',
