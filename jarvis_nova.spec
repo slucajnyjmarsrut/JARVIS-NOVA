@@ -45,6 +45,7 @@ hiddenimports=[
     'pyautogui','pygetwindow','text_only_main','text_only_ui',
     'text_only_overlay','nova_command_palette','studio_theme','quick_video_brief',
     'screenshot_review','PIL.ImageTk','windows_titlebar',
+    'self_development','self_development_ui',
     'update_preferences','update_center','model_storage',
     'optional_model_downloader','update_idle_guard',
     'freellm_client','pro_montage','filmcraft_bridge',
