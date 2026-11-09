@@ -15,6 +15,20 @@ class LocalChatError(RuntimeError):
     pass
 
 
+def explain_local_model_failure(error: Exception) -> str:
+    """Give the user a repair action, not an internal absolute model path."""
+    from bundled_vision_runtime import BundledRuntimeError
+
+    detail = str(error)
+    if isinstance(error, BundledRuntimeError) and any(marker in detail for marker in (
+        "model manifest", "model blob", "blob digest", "blob SHA256",
+        "manifest JSON", "manifest structure", "model blob size",
+    )):
+        return ("Локальная Qwen не установлена или её файлы повреждены. "
+                "Открой ⚙ → «Проверить локальную модель» и подтверди загрузку.")
+    return "Локальная модель недоступна: " + detail[:160]
+
+
 class LocalChat:
     def __init__(self, runtime, requester=None):
         self.runtime = runtime
