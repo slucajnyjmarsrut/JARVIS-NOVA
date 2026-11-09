@@ -43,6 +43,19 @@ class FakeOpener:
 
 
 class UpdaterTests(unittest.TestCase):
+    def setUp(self):
+        # Existing tests exercise the download/rollback mechanics with small,
+        # deliberately UNSIGNED MZ fixtures. Patch publisher trust only for
+        # those mechanics; tests/test_publisher_trust.py tests the real gate.
+        for target in (
+            "auto_update.require_publisher_ready",
+            "auto_update.verify_installer_publisher",
+            "updater_worker.verify_installer_publisher",
+        ):
+            patcher = mock.patch(target)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
     def test_stable_version_comparison_and_no_release(self):
         self.assertEqual(version_tuple("v0.5.19"),(0,5,19))
         self.assertIsNone(parse_release(release_data("0.5.18")))
