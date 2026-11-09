@@ -54,6 +54,22 @@ class LiteStorageTests(unittest.TestCase):
             self.assertEqual(installed_edition(assets),"offline")
             self.assertEqual(BundledRuntimeConfig(assets).model_store,None)
 
+    def test_incomplete_embedded_weights_do_not_hide_valid_user_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            assets=root/"assets"
+            assets.mkdir()
+            bundled=assets/"models"/"ollama"
+            cached=root/"userdata"/"Models"/"ollama"
+            self.fake_store(bundled)
+            self.fake_store(cached)
+            # A stale/corrupt built-in manifest cannot force the app into
+            # a broken store if a working user model is already available.
+            for blob in (bundled/"blobs").iterdir():
+                blob.unlink()
+            self.assertEqual(active_model_store(assets,user_store=cached),cached)
+            self.assertTrue(local_model_available(assets,user_store=cached))
+
     def test_user_store_is_separate_from_program_installation(self):
         with tempfile.TemporaryDirectory() as tmp:
             app=Path(tmp)/"program"/"assets"
