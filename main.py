@@ -28,7 +28,7 @@ from self_repair import repair_configs, inspect_configs
 from auto_update import installed_application, check_and_download, stage_helper
 from work_modes import ModeManager, ModeCommand, MODES, VIDEO_STAGES
 from game_catalog import GameCatalog
-from local_chat import LocalChat
+from local_chat import LocalChat, explain_local_model_failure
 from nova_compact_ui import build_interface, compact_geometry
 from nova_window_state import load_layout, save_layout, safe_window_geometry
 from nova_overlay import NovaOverlay, dock_geometry
@@ -900,8 +900,10 @@ class Jarvis(tk.Tk):
                     client=self.freellm_chat if provider=="freellm" else self.local_chat
                     result=(True,client.ask(text))
                 except Exception as exc:
-                    name="FreeLLM" if provider=="freellm" else "Локальная модель"
-                    result=(False,name+" недоступен: "+str(exc)[:200])
+                    if provider=="freellm":
+                        result=(False,"FreeLLM недоступен: "+str(exc)[:200])
+                    else:
+                        result=(False,explain_local_model_failure(exc))
                 self.q.put(("chat_result",(*result,request_style)))
             threading.Thread(target=chat_worker,daemon=True,name="jarvis-text-chat").start()
         else:
@@ -1087,7 +1089,7 @@ class Jarvis(tk.Tk):
                     if len(val)>=3:
                         self._answer_style=normalize_style(val[2])
                     if success:self.reply(answer)
-                    else:self.reply(answer+" Проверь установку моделей.")
+                    else:self.reply(answer)
                 elif op=="tts_error":
                     self.status.set("Ошибка озвучивания: "+str(val)[:140])
                 elif op=="transcript":
