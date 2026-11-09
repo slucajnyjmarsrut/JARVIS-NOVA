@@ -12,6 +12,7 @@ TESTS=(
        "test_audience_pipeline.py",
        "test_audience_review_files.py",
        "test_auto_update.py",
+       "test_publisher_trust.py",
        "test_update_center.py",
        "test_lite_edition.py",
        "test_autonomous_montage.py",
