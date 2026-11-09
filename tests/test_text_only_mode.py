@@ -57,6 +57,17 @@ class TextModeTests(unittest.TestCase):
         self.assertNotIn("mic_toggle_button",source)
         self.assertNotIn("LevelMeter(",source)
 
+    def test_qwen_badge_matches_actual_model_state(self):
+        from text_only_ui import engine_badge, build_text_interface
+        missing,missing_color=engine_badge("bundled",False)
+        ready,ready_color=engine_badge("bundled",True)
+        self.assertIn("НЕ УСТАНОВЛЕНА",missing)
+        self.assertEqual(ready,"QWEN · ЛОКАЛЬНО")
+        self.assertNotEqual(missing_color,ready_color)
+        self.assertIn("_local_model_ready", inspect.getsource(build_text_interface))
+        self.assertIn("_local_model_ready", inspect.getsource(TextJarvis.check_models))
+        self.assertIn("_local_model_ready", inspect.getsource(TextJarvis._pump_model_download))
+
     def test_real_text_panel_without_devices(self):
         import tkinter as tk
         from contextlib import ExitStack
