@@ -73,7 +73,10 @@ class LocalChatTests(unittest.TestCase):
 
     def test_chat_refuses_external_hosts(self):
         for host in ("https://127.0.0.1:1234", "http://localhost:1234",
-                     "http://example.com:1234", "http://127.0.0.1:1234/path"):
+                     "http://example.com:1234", "http://127.0.0.1:1234/path",
+                     "http://:password@127.0.0.1:1234",
+                     "http://@127.0.0.1:1234",
+                     "http://user:pass@127.0.0.1:1234"):
             with self.subTest(host=host),self.assertRaises(LocalChatError):
                 LocalChat._request(host, {"messages":[]})
 
