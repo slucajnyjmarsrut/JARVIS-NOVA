@@ -115,6 +115,23 @@ class PublisherTrustTests(unittest.TestCase):
             self.assertEqual(installer.read_bytes(),blob)
 
     @unittest.skipUnless(sys.platform == "win32", "Windows Authenticode only")
+    def test_signature_verifier_ignores_systemroot_override(self):
+        from publisher_trust import _read_windows_authenticode_signer
+        with tempfile.TemporaryDirectory() as directory:
+            fake_root = Path(directory) / "fake-systemroot"
+            bad_exe = Path(directory) / "Unsigned.exe"
+            bad_exe.write_bytes(b"MZfake")
+            with mock.patch.dict("os.environ", {"SystemRoot":str(fake_root)}):
+                with mock.patch("publisher_trust.subprocess.run") as runner:
+                    runner.return_value.returncode=12
+                    runner.return_value.stdout=b""
+                    with self.assertRaises(PublisherTrustError):
+                        _read_windows_authenticode_signer(bad_exe)
+                    runner.assert_called_once()
+                    self.assertNotIn(str(fake_root).lower(),
+                                     str(runner.call_args.args[0][0]).lower())
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows Authenticode only")
     def test_windows_rejects_fake_exe_even_if_attacker_knows_fingerprint(self):
         from publisher_trust import _read_windows_authenticode_signer
         with tempfile.TemporaryDirectory() as directory:
