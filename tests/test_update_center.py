@@ -161,6 +161,22 @@ class AutoUpdateControllerTests(unittest.TestCase):
 
 
 class UpdateCenterGuiTests(unittest.TestCase):
+    def test_untrusted_publisher_disables_manual_install_and_check(self):
+        from update_center import UpdateCenter
+        app=SimpleNamespace(
+            _auto_update_pending=(object(), Path("C:/updates/fake.exe")),
+            _check_auto_update=mock.Mock(),
+            _finish_auto_update=mock.Mock())
+        fake=SimpleNamespace(app=app,status=SimpleNamespace(set=mock.Mock()),
+                             refresh=mock.Mock())
+        with mock.patch("update_center.publisher_is_configured",return_value=False):
+            UpdateCenter.check(fake)
+            UpdateCenter.install(fake)
+        app._check_auto_update.assert_not_called()
+        app._finish_auto_update.assert_not_called()
+        fake.status.set.assert_called()
+        fake.refresh.assert_not_called()
+
     def test_dark_center_controls_callbacks(self):
         from update_center import UpdateCenter
         try:
@@ -178,6 +194,7 @@ class UpdateCenterGuiTests(unittest.TestCase):
             app._check_auto_update=mock.Mock()
             app._finish_auto_update=mock.Mock()
             with tempfile.TemporaryDirectory() as tmp, \
+                 mock.patch("update_center.publisher_is_configured", return_value=True), \
                  mock.patch("update_center.save_preferences",
                      side_effect=lambda value:save_preferences(value,
                          Path(tmp)/"choices.json")):
