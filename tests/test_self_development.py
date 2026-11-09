@@ -60,7 +60,7 @@ class SelfDevelopmentTests(unittest.TestCase):
             apply_self_fix(proposal)
         self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
         changed = apply_self_fix(proposal, confirmed=True)
-        self.assertEqual(changed,[str(self.file)])
+        self.assertEqual([Path(p).resolve() for p in changed],[self.file.resolve()])
         self.assertEqual(self.file.read_text(encoding="utf-8"), NEW)
         copies = list((self.checkout/".jarvis_code_backups").glob("revision-*/text_only_ui.py"))
         self.assertEqual(len(copies),1)
