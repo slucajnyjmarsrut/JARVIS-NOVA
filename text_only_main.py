@@ -96,6 +96,8 @@ class TextJarvis(BaseJarvis):
         self._model_download_busy=False
         self._model_download_queue=queue.Queue()
         self._model_download_cancel=threading.Event()
+        self._last_screenshot_report=""
+        self._self_development_window=None
         self.runtime = BundledVisionRuntime(BundledRuntimeConfig(
             root=assets,model_store=active_model_store(assets)))
         self.trimodal.runtime = self.runtime
@@ -287,6 +289,32 @@ class TextJarvis(BaseJarvis):
         self._viral_window.focus_stage(stage)
         return self._viral_window
 
+    def open_self_development(self, task=""):
+        """Guided, review-first source fixes. Installed EXE is never modified."""
+        if self._closing:
+            return None
+        from self_development_ui import SelfDevelopmentWindow
+        report=task or getattr(self, "_last_screenshot_report", "")
+        old=getattr(self, "_self_development_window", None)
+        if old is not None and old.winfo_exists():
+            old.prefill(report)
+            return old
+        self._self_development_window=SelfDevelopmentWindow(self, task=report)
+        return self._self_development_window
+
+    def handle_text(self, text):
+        from self_development import is_self_fix_command
+        if self._closing:
+            return
+        if is_self_fix_command(text):
+            self.log("Вы", text)
+            self.open_self_development()
+            self.reply("Открыл самоисправление. Выбери исходники в ветке jarvis, "
+                       "проверь предложенный код и подтверди запись. "
+                       "Обновление EXE выполняется только через проверенный релиз.")
+            return
+        return super().handle_text(text)
+
     def open_screenshot_review(self):
         """User selects and marks an image; nothing is captured automatically."""
         if self._closing:
@@ -328,7 +356,11 @@ class TextJarvis(BaseJarvis):
                     "проблемные области. Опиши, что видно, какие возможны "
                     "ошибки и что стоит проверить в коде. Не утверждай, что "
                     "исправления уже сделаны. Задача: " + question, jpeg)
-                result = (True, answer, "normal")
+                self._last_screenshot_report=(
+                    "Задача пользователя: " + question + "\n"
+                    "Результат анализа изображения (может содержать ошибки): " + answer)[:2600]
+                result = (True, answer + "\n\nДля подготовки исправления напиши "
+                          "«исправь себя» или открой «Самоисправление» в меню ⚙.", "normal")
             except Exception as exc:
                 from local_chat import explain_local_model_failure
                 result = (False, explain_local_model_failure(exc), "normal")
