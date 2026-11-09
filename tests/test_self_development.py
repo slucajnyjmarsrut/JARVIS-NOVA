@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """Bounded self-fixes require correct Git origin, jarvis HEAD and user approval."""
 import json
+from dataclasses import replace
 from pathlib import Path
 import tempfile
 import unittest
 
 from self_development import (
     EDITABLE, is_self_fix_command, suggest_target, validate_checkout,
-    prepare_self_fix, apply_self_fix,
+    prepare_self_fix, apply_self_fix, undo_self_fix,
 )
-from code_workspace import WorkspaceError
+from code_workspace import WorkspaceError, ChangePlan, ProposedFile
+from self_fix_review import audit_source_change, show_diff
 
 
 OLD = "def status():\n    return 'old'\n"
@@ -79,6 +81,77 @@ class SelfDevelopmentTests(unittest.TestCase):
         copies = list((self.checkout/".jarvis_code_backups").glob("revision-*/text_only_ui.py"))
         self.assertEqual(len(copies),1)
         self.assertEqual(copies[0].read_text(encoding="utf-8"),OLD)
+
+    def test_full_diff_includes_original_and_new_code(self):
+        proposal = self.prepare()
+        self.assertIn("--- jarvis/до/text_only_ui.py", proposal.diff_text)
+        self.assertIn("+++ jarvis/после/text_only_ui.py", proposal.diff_text)
+        self.assertIn("-    return 'old'", proposal.diff_text)
+        self.assertIn("+    return 'fixed'", proposal.diff_text)
+        self.assertTrue(proposal.review_notes)
+        self.assertEqual(proposal.diff_text, show_diff("text_only_ui.py", OLD, NEW))
+
+    def test_risky_new_code_is_refused_before_any_write(self):
+        examples = (
+            "import subprocess\ndef status():\n    subprocess.run(['cmd'])\n",
+            "import os\ndef status():\n    return os.system('bad')\n",
+            "def status():\n    return eval('3 + 7')\n",
+            "from pathlib import Path\ndef status():\n    Path('x').write_text('secret')\n",
+            "def status():\n    return globals()\n",
+        )
+        for code in examples:
+            with self.subTest(code=code), self.assertRaises(WorkspaceError):
+                self.prepare(content=code)
+            self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
+
+    def test_risky_existing_call_cannot_change_arguments_undetected(self):
+        before = "import os\ndef env():\n    return os.getenv('A')\n"
+        after = "import os\ndef env():\n    return os.getenv('SECRET')\n"
+        with self.assertRaises(WorkspaceError):
+            audit_source_change(before, after)
+        self.assertTrue(audit_source_change(before, before))
+
+    def test_proposal_bytes_cannot_change_after_preview(self):
+        proposal = self.prepare()
+        tampered = replace(
+            proposal,
+            plan=ChangePlan("python", (
+                ProposedFile("text_only_ui.py", NEW + "print('not approved')\n"),
+            )),
+        )
+        with self.assertRaises(WorkspaceError):
+            apply_self_fix(tampered, confirmed=True)
+        self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
+
+    def test_undo_restores_exact_original_and_keeps_new_backup(self):
+        proposal = self.prepare()
+        with self.assertRaises(PermissionError):
+            undo_self_fix(proposal)
+        apply_self_fix(proposal, confirmed=True)
+        restored = undo_self_fix(proposal, confirmed=True)
+        self.assertEqual(Path(restored).resolve(), self.file.resolve())
+        self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
+        backups = list((self.checkout / ".jarvis_code_backups").glob(
+            "undo-*/text_only_ui.py"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(encoding="utf-8"), NEW)
+        with self.assertRaises(WorkspaceError):
+            undo_self_fix(proposal, confirmed=True)
+
+    def test_undo_rejects_modified_code_or_other_branch(self):
+        proposal = self.prepare()
+        apply_self_fix(proposal, confirmed=True)
+        self.file.write_text(NEW + "print('other developer change')\n",
+                             encoding="utf-8")
+        with self.assertRaises(WorkspaceError):
+            undo_self_fix(proposal, confirmed=True)
+        self.assertIn("other developer", self.file.read_text(encoding="utf-8"))
+        self.file.write_text(NEW, encoding="utf-8")
+        (self.checkout / ".git" / "HEAD").write_text(
+            "ref: refs/heads/main\n", encoding="utf-8")
+        with self.assertRaises(WorkspaceError):
+            undo_self_fix(proposal, confirmed=True)
+        self.assertEqual(self.file.read_text(encoding="utf-8"), NEW)
 
     def test_other_branches_and_wrong_repository_are_blocked(self):
         head=self.checkout/".git"/"HEAD"
