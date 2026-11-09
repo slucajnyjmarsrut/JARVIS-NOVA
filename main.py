@@ -696,6 +696,14 @@ class Jarvis(tk.Tk):
                                          "установленном Windows-приложении.")
                 self.status.set(self._auto_update_state)
             return
+        from publisher_trust import publisher_is_configured
+        if not publisher_is_configured():
+            self._auto_update_state=(
+                "Автообновления заблокированы: сертификат издателя "
+                "пока не закреплён. Неподписанные EXE не устанавливаются.")
+            if force:
+                self.status.set(self._auto_update_state)
+            return
         self._auto_update_busy=True
         self._auto_update_progress=0
         self._auto_update_state="Проверяю официальные стабильные релизы…"
