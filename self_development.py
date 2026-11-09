@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import os
 from pathlib import Path
 import re
 import tempfile
@@ -214,3 +215,61 @@ def apply_self_fix(proposal: ProposedSelfFix, *, confirmed: bool = False) -> lis
         proposal.plan, checkout,
         {proposal.filename: proposal.original_sha256}, confirmed=True
     )
+
+
+
+def undo_self_fix(proposal: ProposedSelfFix, *, confirmed: bool = False) -> str:
+    """Restore the exact pre-edit file, but only if nothing changed afterward.
+
+    This works for a single previously approved fix. It NEVER rolls back a
+    Git branch, changes the EXE, invokes Git, or deletes user project data.
+    The replaced current version is itself backed up before restoration.
+    """
+    if not confirmed:
+        raise PermissionError("Отмена исправления требует отдельного подтверждения.")
+    checkout = validate_checkout(proposal.folder)
+    if (proposal.filename not in EDITABLE or proposal.plan.language != "python"
+            or len(proposal.plan.files) != 1
+            or proposal.plan.files[0].path != proposal.filename):
+        raise WorkspaceError("Нельзя отменить неизвестное изменение.")
+    updated = proposal.plan.files[0].content
+    if hashlib.sha256(updated.encode("utf-8")).hexdigest() != proposal.updated_sha256:
+        raise WorkspaceError("Содержимое исправления изменилось.")
+    file, current = _source(checkout, proposal.filename)
+    if hashlib.sha256(current.encode("utf-8")).hexdigest() != proposal.updated_sha256:
+        raise WorkspaceError(
+            "Файл изменён после этого исправления. Автоматическая отмена запрещена.")
+    backups = checkout / ".jarvis_code_backups"
+    if backups.is_symlink() or not backups.is_dir():
+        raise WorkspaceError("Резервные копии недоступны.")
+    originals = []
+    for revision in backups.glob("revision-*"):
+        if revision.is_symlink() or not revision.is_dir():
+            raise WorkspaceError("Неожиданная ссылка среди резервных копий.")
+        candidate = revision / proposal.filename
+        if candidate.is_symlink():
+            raise WorkspaceError("Резервная копия не должна быть ссылкой.")
+        if candidate.is_file():
+            data = candidate.read_bytes()
+            if hashlib.sha256(data).hexdigest() == proposal.original_sha256:
+                originals.append(data)
+    if not originals:
+        raise WorkspaceError(
+            "Исходная резервная копия не найдена. Ничего не изменено.")
+    original = originals[0]
+    if len(original) > MAX_FILE_BYTES:
+        raise WorkspaceError("Резервная копия слишком большая.")
+    with tempfile.TemporaryDirectory(prefix=".jarvis-undo-", dir=str(checkout)) as temp:
+        stage = Path(temp) / proposal.filename
+        stage.write_bytes(original)
+        if not validate_checkout(checkout).samefile(checkout):
+            raise WorkspaceError("Исходный проект изменился.")
+        if hashlib.sha256(file.read_bytes()).hexdigest() != proposal.updated_sha256:
+            raise WorkspaceError("Файл изменился во время восстановления.")
+        # Preserve the version being rolled back; the operation is reversible.
+        saved = Path(tempfile.mkdtemp(prefix="undo-", dir=str(backups)))
+        (saved / proposal.filename).write_bytes(current.encode("utf-8"))
+        if hashlib.sha256(file.read_bytes()).hexdigest() != proposal.updated_sha256:
+            raise WorkspaceError("Файл изменился во время восстановления.")
+        os.replace(stage, file)
+    return str(file)
