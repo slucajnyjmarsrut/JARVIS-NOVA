@@ -14,6 +14,10 @@ on:
       - tests/test_self_development.py
       - bundled_vision_runtime.py
       - model_storage.py
+      - publisher_trust.py
+      - tests/test_publisher_trust.py
+      - update_preferences.py
+      - tests/test_update_center.py
       - update_idle_guard.py
       - optional_model_downloader.py
       - scripts/prepare_ollama.ps1
