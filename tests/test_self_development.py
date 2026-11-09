@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 from self_development import (
-    EDITABLE, is_self_fix_command, validate_checkout,
+    EDITABLE, is_self_fix_command, suggest_target, validate_checkout,
     prepare_self_fix, apply_self_fix,
 )
 from code_workspace import WorkspaceError
@@ -43,6 +43,20 @@ class SelfDevelopmentTests(unittest.TestCase):
             self.checkout, "text_only_ui.py",
             "Исправь отображение статуса интерфейса",
             generator=lambda *_: model_output(**kwargs))
+
+    def test_screenshot_automatically_suggests_only_safe_ui_files(self):
+        cases = (
+            ("На скриншоте белые заголовки окон", "windows_titlebar.py"),
+            ("Ошибка в видео-студии", "viral_studio_ui.py"),
+            ("Не открывается меню настроек", "nova_command_palette.py"),
+            ("Кнопка отправки скриншота", "screenshot_review.py"),
+            ("Плохой текст в интерфейсе", "text_only_ui.py"),
+        )
+        for report, target in cases:
+            with self.subTest(report=report):
+                self.assertEqual(suggest_target(report), target)
+                self.assertIn(target, EDITABLE)
+        self.assertNotEqual(suggest_target("Измени auto_update.py"),"auto_update.py")
 
     def test_command_is_explicit_and_cannot_capture_coding_chat(self):
         for command in ("Исправь себя", "Джарвис, исправь себя!",
