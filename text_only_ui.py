@@ -93,6 +93,8 @@ def build_text_interface(app):
         highlightthickness=1,highlightbackground=EDGE,highlightcolor=CYAN)
     app.entry.pack(side="left",fill="x",expand=True,ipady=9,padx=(0,6))
     _action(writer,"ОТПРАВИТЬ",app.enter,primary=True,compact=True).pack(side="right")
+    _action(writer,"СКРИН",app.open_screenshot_review,compact=True).pack(
+        side="right",padx=(0,6))
     app.entry.bind("<Return>",app.enter)
     app.bind("<Control-l>",lambda e:(app.entry.focus_set(),"break")[1])
     app.bind("<F9>",app.f9)
