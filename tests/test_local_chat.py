@@ -4,7 +4,8 @@ import sys
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from local_chat import LocalChat, LocalChatError
+from local_chat import LocalChat, LocalChatError, explain_local_model_failure
+from bundled_vision_runtime import BundledRuntimeError
 
 
 class FakeRuntime:
@@ -45,6 +46,28 @@ class LocalChatTests(unittest.TestCase):
         chat.close()
         with self.assertRaises(LocalChatError):
             chat.ask("Новый вопрос")
+
+    def test_text_greetings_never_claim_audio_listening(self):
+        runtime = FakeRuntime()
+        chat = LocalChat(runtime)
+        for greeting in ("Привет!", "Здравствуй!", "Добрый день", "Добрый вечер"):
+            answer = chat.ask(greeting)
+            self.assertIn("помо", answer.casefold())
+            self.assertNotIn("слушаю", answer.casefold())
+        self.assertEqual(runtime.calls, 0)
+
+    def test_missing_model_error_is_actionable_without_private_path(self):
+        error = BundledRuntimeError(
+            "Missing offline Vision model manifest: C:/Users/test/Models/ollama/manifests/foo")
+        message = explain_local_model_failure(error)
+        self.assertIn("Проверить локальную модель", message)
+        self.assertNotIn("C:/Users", message)
+        self.assertNotIn("manifest", message)
+
+    def test_non_model_error_is_not_misreported_as_missing_weights(self):
+        message = explain_local_model_failure(RuntimeError("Connection refused"))
+        self.assertIn("Connection refused", message)
+        self.assertNotIn("файлы повреждены", message)
 
     def test_chat_refuses_external_hosts(self):
         for host in ("https://127.0.0.1:1234", "http://localhost:1234",
