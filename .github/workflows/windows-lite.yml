@@ -9,6 +9,9 @@ on:
       - text_only_ui.py
       - screenshot_review.py
       - tests/test_screenshot_review.py
+      - self_development.py
+      - self_development_ui.py
+      - tests/test_self_development.py
       - bundled_vision_runtime.py
       - model_storage.py
       - update_idle_guard.py
