@@ -115,6 +115,47 @@ class SelfDevelopmentTests(unittest.TestCase):
             audit_source_change(before, after)
         self.assertTrue(audit_source_change(before, before))
 
+    def test_risky_call_cannot_move_to_unguarded_function(self):
+        original = (
+            "import os\n"
+            "def guarded(approved):\n"
+            "    if approved:\n"
+            "        os.system('cmd')\n"
+            "def ordinary():\n"
+            "    pass\n"
+        )
+        moved = (
+            "import os\n"
+            "def guarded(approved):\n"
+            "    pass\n"
+            "def ordinary():\n"
+            "    os.system('cmd')\n"
+        )
+        with self.assertRaisesRegex(WorkspaceError, "чувствительные"):
+            audit_source_change(original, moved)
+
+    def test_existing_sensitive_function_must_keep_same_structure(self):
+        original = (
+            "import os\n"
+            "def dangerous(approved):\n"
+            "    if approved:\n"
+            "        os.system('cmd')\n"
+        )
+        changed = original.replace("if approved:", "if True:")
+        with self.assertRaisesRegex(WorkspaceError, "чувствительные"):
+            audit_source_change(original, changed)
+
+    def test_banned_alias_calls_and_new_imports(self):
+        original = "import os as tools\ndef normal():\n    return 1\n"
+        with self.assertRaises(WorkspaceError):
+            audit_source_change(
+                original, original.replace("return 1", "return tools.system('cmd')"))
+        with self.assertRaisesRegex(WorkspaceError, "импорт"):
+            audit_source_change(
+                "def normal():\n    return 1\n",
+                "import harmless_extra_module\ndef normal():\n    return 1\n")
+        self.assertTrue(audit_source_change(original, original))
+
     def test_proposal_bytes_cannot_change_after_preview(self):
         proposal = self.prepare()
         tampered = replace(
