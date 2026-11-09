@@ -44,6 +44,7 @@ TESTS=(
        "test_self_repair.py",
        "test_smart_montage.py",
        "test_text_only_mode.py",
+       "test_windows_titlebar.py",
        "test_universal_code_engine.py",
        "test_video_quality_modules.py",
        "test_viral_integration.py",
