@@ -176,7 +176,8 @@ class SelfDevelopmentWindow(tk.Toplevel):
         if self._busy or self.proposal is None:
             return
         proposal = self.proposal
-        if self.folder.get().strip() != str(proposal.folder) or self.filename.get() != proposal.filename:
+        if (Path(self.folder.get().strip()).resolve() != proposal.folder
+                or self.filename.get() != proposal.filename):
             messagebox.showerror("Самоисправление",
                 "Путь или файл изменился. Подготовь предложение заново.",parent=self)
             return
