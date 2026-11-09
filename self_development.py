@@ -37,6 +37,29 @@ MAX_REPORT_CHARS = 2600
 MAX_RESPONSE_CHARS = 90_000
 
 
+def suggest_target(report: str) -> str:
+    """Suggest an editable UI module without trusting screenshot instructions."""
+    subject = str(report or "").casefold().replace("ё", "е")[:2600]
+    rules = (
+        (("заголовк", "белые полосы", "белая полоса", "рамка окна"),
+         "windows_titlebar.py"),
+        (("видео-студ", "видеостуд", "filmcraft", "монтаж", "сценар"),
+         "viral_studio_ui.py"),
+        (("меню", "палитра", "настройк", "шестерен"),
+         "nova_command_palette.py"),
+        (("мини-чат", "мини панел", "мини-панел"),
+         "text_only_overlay.py"),
+        (("скриншот", "красные отмет", "обведен", "картинк"),
+         "screenshot_review.py"),
+        (("цвет кноп", "тема", "темный фон", "цвет фона"),
+         "studio_theme.py"),
+    )
+    for keywords, filename in rules:
+        if any(word in subject for word in keywords):
+            return filename
+    return "text_only_ui.py"
+
+
 def is_self_fix_command(message: str) -> bool:
     """Conservative explicit text intent: not ordinary coding or support chat."""
     value = " ".join(str(message or "").casefold().replace("ё", "е").split())
