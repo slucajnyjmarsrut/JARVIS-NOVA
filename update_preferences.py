@@ -19,7 +19,7 @@ MAX_SETTINGS_BYTES = 2048
 @dataclass(frozen=True)
 class UpdatePreferences:
     automatic_checks: bool = True
-    automatic_restart: bool = True
+    automatic_restart: bool = False
 
 
 def default_preferences_path() -> Path | None:
@@ -40,10 +40,13 @@ def load_preferences(path: Path | None = None) -> UpdatePreferences:
         if not isinstance(raw,dict):
             return UpdatePreferences(False,False)
         checks=raw.get("automatic_checks",True)
-        restart=raw.get("automatic_restart",True)
+        restart=raw.get("automatic_restart",False)
         if type(checks) is not bool or type(restart) is not bool:
             return UpdatePreferences(False,False)
-        return UpdatePreferences(checks,restart)
+        # Version 1 enabled silent restarts by default, not via opt-in.
+        # Preserve the explicit network-check preference, but require new
+        # consent to automatic installation on version 2.
+        return UpdatePreferences(checks, restart if raw.get("schema")==2 else False)
     except FileNotFoundError:
         return UpdatePreferences()
     except (OSError,ValueError,UnicodeError,TypeError):
@@ -62,7 +65,7 @@ def save_preferences(prefs: UpdatePreferences, path: Path | None = None) -> Path
     folder.mkdir(parents=True,exist_ok=True)
     content=json.dumps({"automatic_checks":prefs.automatic_checks,
                         "automatic_restart":prefs.automatic_restart,
-                        "schema":1},separators=(",",":"))
+                        "schema":2},separators=(",",":"))
     if len(content.encode("utf-8"))>MAX_SETTINGS_BYTES:
         raise ValueError("Oversized preferences")
     temp=None
