@@ -6,6 +6,9 @@ on:
       - jarvis_nova.spec
       - bootstrap.py
       - text_only_main.py
+      - text_only_ui.py
+      - screenshot_review.py
+      - tests/test_screenshot_review.py
       - bundled_vision_runtime.py
       - model_storage.py
       - update_idle_guard.py
