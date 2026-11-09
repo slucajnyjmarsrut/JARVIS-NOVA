@@ -7,7 +7,9 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from self_development import EDITABLE, prepare_self_fix, apply_self_fix, suggest_target
+from self_development import (
+    EDITABLE, prepare_self_fix, apply_self_fix, undo_self_fix, suggest_target,
+)
 
 
 class SelfDevelopmentWindow(tk.Toplevel):
@@ -25,6 +27,7 @@ class SelfDevelopmentWindow(tk.Toplevel):
         install_dark_titlebar(self, background=BG)
         self._busy = False
         self.proposal = None
+        self._last_applied = None
         self.folder = tk.StringVar(master=self)
         self.filename = tk.StringVar(master=self, value=suggest_target(task))
         self.status = tk.StringVar(master=self, value=(
@@ -68,6 +71,10 @@ class SelfDevelopmentWindow(tk.Toplevel):
             buttons, text="2. Подтвердить запись в jarvis",
             command=self.apply, style="Studio.TButton", state="disabled")
         self.apply_button.pack(side="right")
+        self.undo_button = ttk.Button(
+            buttons, text="3. Отменить последнее исправление",
+            command=self.undo, style="Studio.TButton", state="disabled")
+        self.undo_button.pack(side="right", padx=(0,8))
         ttk.Label(frame, textvariable=self.status, style="Studio.Small.TLabel",
                   wraplength=850).pack(fill="x", pady=(3,7))
         preview = ttk.Frame(frame, style="Studio.TFrame")
@@ -169,8 +176,11 @@ class SelfDevelopmentWindow(tk.Toplevel):
         self.proposal = proposal
         self._display(
             "Файл: " + proposal.filename + "\n" +
-            proposal.diagnostics + "\n\n" +
-            "НОВАЯ ВЕРСИЯ ФАЙЛА (проверь перед записью):\n\n" +
+            proposal.diagnostics + "\n" +
+            "\n".join(proposal.review_notes) +
+            "\n\nОТЛИЧИЯ (+ добавлено, - удалено):\n\n" +
+            proposal.diff_text +
+            "\n\nПОЛНЫЙ КОД НОВОГО ФАЙЛА:\n\n" +
             proposal.plan.files[0].content)
         self.status.set("Предложение готово. Исправление НЕ тестировалось на реальном Windows ПК.")
         self.apply_button.configure(state="normal")
@@ -195,6 +205,8 @@ class SelfDevelopmentWindow(tk.Toplevel):
             return
         try:
             changed = apply_self_fix(proposal, confirmed=True)
+            self._last_applied = proposal
+            self.undo_button.configure(state="normal")
             self.proposal = None
             self.apply_button.configure(state="disabled")
             self.status.set(
@@ -204,3 +216,28 @@ class SelfDevelopmentWindow(tk.Toplevel):
                           "\n".join(changed) + "\n\nВетка main не изменена.")
         except Exception as exc:
             messagebox.showerror("Самоисправление",str(exc),parent=self)
+
+
+    def undo(self):
+        """Confirm and restore exactly the last applied change in this session."""
+        proposal = self._last_applied
+        if self._busy or proposal is None:
+            return
+        if not messagebox.askyesno(
+            "Отменить последнее самоисправление?",
+            "Вернуть предыдущую версию файла " + proposal.filename +
+            " в локальном клоне ветки jarvis?\n"
+            "Новая версия останется в резервных копиях. "
+            "Ни GitHub, ни установленная программа не изменятся.\n\n"
+            "Продолжить?", parent=self):
+            return
+        try:
+            restored = undo_self_fix(proposal, confirmed=True)
+            self._last_applied = None
+            self.undo_button.configure(state="disabled")
+            self.proposal = None
+            self.apply_button.configure(state="disabled")
+            self.status.set("Предыдущая версия исходника восстановлена. Копия исправления сохранена.")
+            self._display("Отмена подтверждена. Восстановлен файл:\n" + restored)
+        except Exception as exc:
+            messagebox.showerror("Отмена самоисправления", str(exc), parent=self)
