@@ -90,6 +90,10 @@ class SelfDevelopmentTests(unittest.TestCase):
         self.assertIn("+    return 'fixed'", proposal.diff_text)
         self.assertTrue(proposal.review_notes)
         self.assertEqual(proposal.diff_text, show_diff("text_only_ui.py", OLD, NEW))
+        self.assertEqual(
+            show_diff("text_only_ui.py", OLD.replace("\n", "\r\n"), NEW),
+            show_diff("text_only_ui.py", OLD, NEW),
+        )
 
     def test_risky_new_code_is_refused_before_any_write(self):
         examples = (
@@ -124,6 +128,7 @@ class SelfDevelopmentTests(unittest.TestCase):
         self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
 
     def test_undo_restores_exact_original_and_keeps_new_backup(self):
+        original_bytes = self.file.read_bytes()
         proposal = self.prepare()
         with self.assertRaises(PermissionError):
             undo_self_fix(proposal)
@@ -131,6 +136,7 @@ class SelfDevelopmentTests(unittest.TestCase):
         restored = undo_self_fix(proposal, confirmed=True)
         self.assertEqual(Path(restored).resolve(), self.file.resolve())
         self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
+        self.assertEqual(self.file.read_bytes(), original_bytes)
         backups = list((self.checkout / ".jarvis_code_backups").glob(
             "undo-*/text_only_ui.py"))
         self.assertEqual(len(backups), 1)
