@@ -16,6 +16,7 @@ import tempfile
 from code_workspace import WorkspaceError, parse_model_proposal
 from code_checks import check_project
 from code_edits import write_reviewed_update
+from self_fix_review import audit_source_change, show_diff
 
 EXPECTED_ORIGIN = frozenset({
     "https://github.com/slucajnyjmarsrut/JARVIS-NOVA.git",
@@ -135,6 +136,9 @@ class ProposedSelfFix:
     plan: object
     original_sha256: str
     diagnostics: str
+    diff_text: str
+    review_notes: tuple[str, ...]
+    updated_sha256: str
 
 
 def prepare_self_fix(
@@ -178,7 +182,14 @@ def prepare_self_fix(
         checks = check_project("python", Path(work))
     if checks.get("status") != "passed":
         raise WorkspaceError("Проверка Python-кода не прошла: " + str(checks)[:400])
-    return ProposedSelfFix(checkout, filename, plan, digest, "Синтаксис Python проверен. Поведение и Windows GUI не тестировались.")
+    proposed = plan.files[0].content
+    review_notes = audit_source_change(source, proposed)
+    diff_text = show_diff(filename, source, proposed)
+    updated_digest = hashlib.sha256(proposed.encode("utf-8")).hexdigest()
+    return ProposedSelfFix(
+        checkout, filename, plan, digest,
+        "Синтаксис Python проверен. Поведение и Windows GUI не тестировались.",
+        diff_text, review_notes, updated_digest)
 
 
 def apply_self_fix(proposal: ProposedSelfFix, *, confirmed: bool = False) -> list[str]:
@@ -193,6 +204,11 @@ def apply_self_fix(proposal: ProposedSelfFix, *, confirmed: bool = False) -> lis
     file, source = _source(checkout, proposal.filename)
     if hashlib.sha256(source.encode("utf-8")).hexdigest() != proposal.original_sha256:
         raise WorkspaceError("Исходник изменился после анализа. Подготовь исправление снова.")
+    proposed = proposal.plan.files[0].content
+    if hashlib.sha256(proposed.encode("utf-8")).hexdigest() != proposal.updated_sha256:
+        raise WorkspaceError("Предложенный код изменился после предпросмотра.")
+    # Check both the original and proposal again before the final write.
+    audit_source_change(source, proposed)
     # Atomic write with existing code_edits backup and race protection.
     return write_reviewed_update(
         proposal.plan, checkout,
