@@ -8,6 +8,21 @@ from nova_ui import BG, SURFACE, SURFACE_ALT, EDGE, CYAN, CYAN_DIM
 from nova_ui import GREEN, MUTED, TEXT, AMBER, VIOLET, Reactor, _label, _action
 
 
+def engine_badge(engine: str, model_ready: bool):
+    """Keep the HUD truthful: selecting local Qwen does not install it."""
+    if engine == "bundled":
+        return (("QWEN · ЛОКАЛЬНО", GREEN) if model_ready
+                else ("QWEN · НЕ УСТАНОВЛЕНА", AMBER))
+    labels = {
+        "none": ("КОМАНДЫ · ОФЛАЙН", GREEN),
+        "ollama": ("OLLAMA · ЛОКАЛЬНО", AMBER),
+        "freellm": ("FREELLM · МОДЕЛИ", AMBER),
+        "openai": ("OPENAI · СЕТЬ", AMBER),
+        "anthropic": ("CLAUDE · СЕТЬ", AMBER),
+    }
+    return labels.get(engine, ("AI · НЕ ВЫБРАН", AMBER))
+
+
 def build_text_interface(app):
     app.configure(bg=BG)
     app.status = tk.StringVar(master=app, value="Готов к переписке.")
@@ -35,9 +50,9 @@ def build_text_interface(app):
     app.hud_mode.pack(side="left")
     from model_storage import local_model_available
     loaded=local_model_available(app._asset_root)
-    app.hud_engine = _label(bar,
-        "QWEN · ЛОКАЛЬНО" if loaded else "QWEN · НЕ УСТАНОВЛЕНА",
-        fg=GREEN if loaded else AMBER, size=8)
+    app._local_model_ready = loaded
+    engine_label,engine_color=engine_badge(getattr(app,"engine","bundled"),loaded)
+    app.hud_engine = _label(bar,engine_label,fg=engine_color,size=8)
     app.hud_engine.pack(side="right")
     app.hud_reactor = Reactor(hub)
     app.hud_reactor.configure(height=105)
@@ -99,12 +114,9 @@ def build_text_interface(app):
             app.hud_mode.configure(text=label,fg=color)
             app.hud_clock.configure(text=time.strftime("%H:%M"))
             engine=getattr(app,"engine","bundled")
-            app.hud_engine.configure(text={
-                "bundled":"QWEN · ЛОКАЛЬНО","none":"КОМАНДЫ · ОФЛАЙН",
-                "ollama":"OLLAMA · ЛОКАЛЬНО","freellm":"FREELLM · МОДЕЛИ",
-                "openai":"OPENAI · СЕТЬ",
-                "anthropic":"CLAUDE · СЕТЬ"}.get(engine,"AI"),
-                fg=GREEN if engine in ("bundled","none") else AMBER)
+            engine_label,engine_color=engine_badge(
+                engine,getattr(app,"_local_model_ready",False))
+            app.hud_engine.configure(text=engine_label,fg=engine_color)
             selected=getattr(getattr(app,"modes",None),"mode","neutral")
             if getattr(app,"_hud_selected",None)!=selected:
                 app._hud_selected=selected
