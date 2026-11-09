@@ -64,6 +64,7 @@ def entries(app, section="main"):
         ("◈", "Режимы работы", None, "modes"),
         ("◆", "Выбрать AI", None, "ai"),
         ("⌘", "Программирование · 20 языков", app.open_code_assistant, None),
+        ("🛠", "Самоисправление · только jarvis", app.open_self_development, None),
         ("▤", "Видео-студия", app.open_viral_studio, None),
         ("▶", "FilmCraft · открыть редактор", app.open_filmcraft, None),
         None,
