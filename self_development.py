@@ -84,8 +84,9 @@ def validate_checkout(folder: str | Path) -> Path:
     config = checkout / ".git" / "config"
     if config.is_symlink() or not config.is_file() or config.stat().st_size > 30_000:
         raise WorkspaceError("Не удалось проверить удалённый репозиторий Git.")
-    if not _origin_urls(config.read_text(encoding="utf-8")).intersection(EXPECTED_ORIGIN):
-        raise WorkspaceError("Разрешён только официальный origin JARVIS-NOVA.")
+    origins = _origin_urls(config.read_text(encoding="utf-8"))
+    if len(origins) != 1 or not origins.issubset(EXPECTED_ORIGIN):
+        raise WorkspaceError("Разрешён только один официальный origin JARVIS-NOVA.")
     return checkout
 
 
