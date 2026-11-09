@@ -24,12 +24,28 @@ class PreferencesTests(unittest.TestCase):
     def test_defaults_and_persistent_user_choices(self):
         with tempfile.TemporaryDirectory() as directory:
             path=Path(directory)/"prefs"/"update_preferences.json"
-            self.assertEqual(load_preferences(path),UpdatePreferences(True,True))
+            self.assertEqual(load_preferences(path),UpdatePreferences(True,False))
             saved=UpdatePreferences(False,False)
             self.assertEqual(save_preferences(saved,path),path)
             self.assertEqual(load_preferences(path),saved)
             self.assertEqual(list(path.parent.glob("*.tmp")),[])
             self.assertTrue(path.read_text().startswith("{"))
+
+    def test_legacy_preferences_cannot_silently_enable_restarts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/"update_preferences.json"
+            path.write_text(
+                '{"schema":1,"automatic_checks":true,"automatic_restart":true}',
+                encoding="utf-8")
+            self.assertEqual(load_preferences(path), UpdatePreferences(True,False))
+            path.write_text(
+                '{"automatic_checks":true,"automatic_restart":true}',
+                encoding="utf-8")
+            self.assertEqual(load_preferences(path), UpdatePreferences(True,False))
+            explicit=UpdatePreferences(True,True)
+            save_preferences(explicit,path)
+            self.assertEqual(load_preferences(path), explicit)
+            self.assertIn('"schema":2', path.read_text(encoding="utf-8"))
 
     def test_untrusted_settings_do_not_enable_network(self):
         with tempfile.TemporaryDirectory() as directory:
