@@ -41,7 +41,7 @@ def is_self_fix_command(message: str) -> bool:
     """Conservative explicit text intent: not ordinary coding or support chat."""
     value = " ".join(str(message or "").casefold().replace("ё", "е").split())
     value = value.strip(" .!?,")
-    prefixes = ("джарвис ", "jarvis ", "nova ")
+    prefixes = ("джарвис, ", "джарвис ", "jarvis, ", "jarvis ", "nova, ", "nova ")
     if value.startswith(prefixes):
         value = value.split(" ", 1)[1]
     return value.startswith((
