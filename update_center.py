@@ -10,6 +10,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 from auto_update import APP_VERSION, installed_application
 from update_preferences import UpdatePreferences, save_preferences
+from publisher_trust import publisher_is_configured
 
 BG="#081421"
 CARD="#10253A"
@@ -70,9 +71,9 @@ class UpdateCenter(tk.Toplevel):
         self.later_button=self._button(frame,"Отложить до следующего запуска",
                                        self.later)
         self.later_button.pack(anchor="w",pady=(4,2))
-        tk.Label(frame,text="Только официальные стабильные GitHub Releases. "
-            "Размер и SHA256 проверяются перед установкой. "
-            "Исходные файлы, проекты и личные настройки не перезаписываются.",
+        tk.Label(frame,text="Только стабильные GitHub Releases. "
+            "Для установки необходимы SHA256, действующая подпись Windows "
+            "и закреплённый сертификат издателя. Без них обновление запрещено.",
             bg=BG,fg=MUTED,font=("Segoe UI",9),justify="left",
             wraplength=450).pack(anchor="w",pady=(5,0))
         self.after(250,self.refresh)
@@ -123,8 +124,13 @@ class UpdateCenter(tk.Toplevel):
             if not self.winfo_exists():
                 return
             active=installed_application() is not None
+            trusted=publisher_is_configured()
             if not active:
                 label="Автообновления доступны только в установленном Windows-приложении."
+            elif not trusted:
+                label=("Автоустановка заблокирована: разработчик ещё не "
+                       "закрепил проверенный сертификат подписи EXE. "
+                       "Твои файлы и текущая версия защищены.")
             else:
                 label=getattr(self.app,"_auto_update_state",
                               "Готово к проверке стабильных обновлений.")
@@ -132,9 +138,11 @@ class UpdateCenter(tk.Toplevel):
             progress=getattr(self.app,"_auto_update_progress",0)
             self.progress["value"]=max(0,min(100,int(progress)))
             busy=bool(getattr(self.app,"_auto_update_busy",False))
-            self.check_button.configure(state="disabled" if busy or not active else "normal")
+            self.check_button.configure(
+                state="disabled" if busy or not active or not trusted else "normal")
             pending=bool(getattr(self.app,"_auto_update_pending",None))
-            self.install_button.configure(state="normal" if pending and active else "disabled")
+            self.install_button.configure(
+                state="normal" if pending and active and trusted else "disabled")
             self.after(400,self.refresh)
         except tk.TclError:
             return
