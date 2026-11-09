@@ -198,18 +198,9 @@ class Jarvis(tk.Tk):
         threading.Thread(target=self.init_voice,daemon=True).start()
 
     def _set_native_dark_titlebar(self):
-        """Windows 10/11: dark caption and native controls; safe fallback."""
-        try:
-            import ctypes
-            if __import__("sys").platform!="win32" or not self.winfo_exists():
-                return
-            handle=ctypes.windll.user32.GetParent(self.winfo_id())
-            flag=ctypes.c_int(1)
-            dwm=ctypes.windll.dwmapi.DwmSetWindowAttribute
-            if dwm(handle,20,ctypes.byref(flag),ctypes.sizeof(flag))!=0:
-                dwm(handle,19,ctypes.byref(flag),ctypes.sizeof(flag))
-        except (OSError,AttributeError,ValueError):
-            pass  # older Windows builds keep normal titlebar
+        """Apply DwmSetWindowAttribute to the full native Tk window safely."""
+        from windows_titlebar import install_dark_titlebar
+        install_dark_titlebar(self, background="#070D17")
 
     def open_code_assistant(self, language="java", task=""):
         """Open an integrated coding dialog; user approves changes explicitly."""
