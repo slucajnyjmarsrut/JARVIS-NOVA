@@ -35,6 +35,9 @@ class ViralStudioWindow(tk.Toplevel):
         apply_video_theme(self)
         self.configure(bg=BG)
         self.title("JARVIS NOVA — Видео-студия")
+        # Match the dark studio with its native Windows caption and controls.
+        from windows_titlebar import install_dark_titlebar
+        install_dark_titlebar(self, background=BG)
         screen_w=self.winfo_screenwidth()
         screen_h=self.winfo_screenheight()
         width=min(1050,max(650,screen_w-70))
