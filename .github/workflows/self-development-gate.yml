@@ -3,6 +3,12 @@ on:
   push:
     branches: [jarvis]
     paths:
+      - publisher_trust.py
+      - tests/test_publisher_trust.py
+      - local_chat.py
+      - tests/test_local_chat.py
+      - update_preferences.py
+      - tests/test_update_center.py
       - self_development.py
       - self_development_ui.py
       - self_fix_review.py
