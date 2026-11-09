@@ -130,6 +130,9 @@ class TextJarvis(BaseJarvis):
         self.bind("<F10>", self.show_settings_menu)
 
         self.log("Система", "Только текст: напиши сообщение и нажми Enter. Микрофон и озвучивание отключены.")
+        if not self._local_model_ready:
+            self.log("Система", "Qwen не установлена. Для полноценного чата открой ⚙ → "
+                     "«Проверить локальную модель». Загрузка только с твоего разрешения.")
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
@@ -142,6 +145,7 @@ class TextJarvis(BaseJarvis):
             validate_offline_model_store(
                 self._asset_root,model_store=self.runtime.config.model_store)
         except Exception:
+            self._local_model_ready=False
             if self._model_download_busy:
                 messagebox.showinfo("Локальная Qwen",
                     "Загрузка модели уже идёт. Прогресс отображается в чате.",
@@ -156,6 +160,7 @@ class TextJarvis(BaseJarvis):
                 "Начать загрузку?",parent=self):
                 self.download_local_model()
             return
+        self._local_model_ready=True
         messagebox.showinfo("Локальная модель готова",
             "Qwen установлена и может отвечать без интернета. "
             "Модель находится в "+str(self.runtime.config.model_store),parent=self)
@@ -194,12 +199,14 @@ class TextJarvis(BaseJarvis):
                         f"{value/1_000_000_000:.2f} ГБ загружено")
                 elif kind=="done":
                     self._model_download_busy=False
+                    self._local_model_ready=True
                     self.hud_engine.configure(text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
                     self.log("Система","Локальная Qwen установлена и проверена. "
                              "Теперь чат и анализ экрана работают офлайн.")
                     self.status.set("Локальная Qwen установлена и готова")
                 elif kind=="error":
                     self._model_download_busy=False
+                    self._local_model_ready=False
                     self.log("Система","Модель не установлена: "+str(value))
                     self.status.set("Не удалось скачать Qwen — можно повторить через ⚙")
         except queue.Empty:
