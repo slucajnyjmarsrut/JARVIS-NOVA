@@ -58,3 +58,9 @@ jobs:
         run: python -m unittest discover -s tests -p test_code_edits.py -v
       - name: Test safe update rollback contract
         run: python -m unittest discover -s tests -p test_auto_update.py -v
+      - name: Refuse unsigned and foreign-signed installer updates
+        run: python -m unittest discover -s tests -p test_publisher_trust.py -v
+      - name: Verify chat never follows HTTP redirects outside local Qwen
+        run: python -m unittest discover -s tests -p test_local_chat.py -v
+      - name: Require consent for unattended restarts
+        run: python -m unittest discover -s tests -p test_update_center.py -v
