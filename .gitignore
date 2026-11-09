@@ -26,3 +26,5 @@ assets/ollama/
 *.pfx
 *.key
 secrets/
+# Local review backups must never be pushed with source commits
+.jarvis_code_backups/
