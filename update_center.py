@@ -99,16 +99,23 @@ class UpdateCenter(tk.Toplevel):
                 type(exc).__name__,parent=self)
             return
         self.app.update_preferences=preferences
-        if preferences.automatic_restart and self.app._auto_update_pending:
+        if (preferences.automatic_restart and self.app._auto_update_pending
+                and publisher_is_configured()):
             self.app.after(500,self.app._finish_auto_update)
         if preferences.automatic_checks and not before.automatic_checks:
             self.app.after(500,self.app._check_auto_update)
 
     def check(self):
+        if not publisher_is_configured():
+            self.status.set("Проверка обновлений заблокирована: нет доверенной подписи издателя.")
+            return
         self.app._check_auto_update(force=True)
         self.refresh()
 
     def install(self):
+        if not publisher_is_configured():
+            self.status.set("Установка запрещена: издатель EXE ещё не подтверждён.")
+            return
         if not self.app._auto_update_pending:
             self.status.set("Обновление ещё не загружено.")
             return
