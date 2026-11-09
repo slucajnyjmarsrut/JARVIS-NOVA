@@ -20,6 +20,7 @@ from time import time
 from auto_update import (API_URL, APP_VERSION, Release, UpdateError,
                          _check_download, cache_dir, latest_release,
                          version_tuple)
+from publisher_trust import verify_installer_publisher
 
 MAX_INSTALL_SECONDS = 1200
 
@@ -101,6 +102,9 @@ def apply_update(installer: Path, application: Path, expected_version: str,
                 or release.size<100_000):
             raise UpdateError("Официальный релиз изменился; установка запрещена")
         _check_download(installer,release)
+        # Hash from GitHub Releases proves integrity but not publisher identity.
+        # Recheck signed publisher immediately before the OS runs the installer.
+        verify_installer_publisher(installer)
         # Never forcibly close a second JARVIS instance with unsaved work.
         # Inno AppMutex prevents updating occupied files; a failed upgrade
         # will reopen the existing app and retry later.
