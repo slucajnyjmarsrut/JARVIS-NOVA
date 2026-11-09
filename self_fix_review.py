@@ -107,10 +107,16 @@ def audit_source_change(original: str, proposed: str) -> tuple[str, ...]:
 
 
 def show_diff(filename: str, original: str, proposed: str) -> str:
-    """Full unified diff, never hide changes at the bottom of the preview."""
+    """Full unified diff with normalized Windows CRLF for a readable preview.
+
+    Only presentation is normalized. Hash checks and backup bytes retain
+    their original line endings for faithful restoration.
+    """
+    before = original.replace("\r\n", "\n").replace("\r", "\n")
+    after = proposed.replace("\r\n", "\n").replace("\r", "\n")
     return "".join(unified_diff(
-        original.splitlines(keepends=True),
-        proposed.splitlines(keepends=True),
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
         fromfile="jarvis/до/" + filename,
         tofile="jarvis/после/" + filename,
         n=4,
