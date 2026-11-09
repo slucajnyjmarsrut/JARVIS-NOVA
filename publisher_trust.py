@@ -51,8 +51,18 @@ def _read_windows_authenticode_signer(installer: Path) -> bytes:
     """
     if sys.platform != "win32":
         raise PublisherTrustError("Подпись EXE должна проверяться на Windows.")
-    system = Path(os.environ.get("SystemRoot", r"C:\Windows"))
-    powershell = system / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    # Determine the trusted Windows system directory through kernel32,
+    # never through a user-controlled SystemRoot or PATH variable.
+    import ctypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    get_system_dir = kernel32.GetSystemDirectoryW
+    get_system_dir.argtypes = (ctypes.c_wchar_p, ctypes.c_uint)
+    get_system_dir.restype = ctypes.c_uint
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = get_system_dir(buffer, len(buffer))
+    if not (0 < length < len(buffer)):
+        raise PublisherTrustError("Невозможно определить системный каталог Windows.")
+    powershell = Path(buffer.value) / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     if not powershell.is_file() or powershell.is_symlink():
         raise PublisherTrustError("Системная проверка цифровой подписи недоступна.")
     script = (
