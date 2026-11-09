@@ -399,8 +399,11 @@ def stage_helper(release: Release, installer: Path, application: Path,
     if application.name.casefold()!="jarvisnova.exe":
         raise UpdateError("Обновлять разрешено только JARVIS NOVA")
     helper=application.parent/"JarvisNovaUpdater.exe"
-    if not helper.is_file():
+    if not helper.is_file() or helper.is_symlink():
         raise UpdateError("Отдельный процесс обновления не установлен")
+    # The detached updater is an executable too: it needs exactly the
+    # same pinned trusted publisher as the installer it will launch.
+    verify_installer_publisher(helper)
     folder=Path(folder)
     _prepare_cache(folder)
     # The helper must run outside Inno Setup's installation directory.
@@ -411,6 +414,9 @@ def stage_helper(release: Release, installer: Path, application: Path,
     try:
         with helper.open("rb") as source, detached.open("xb") as target:
             shutil.copyfileobj(source,target,length=BUFFER)
+        # Catch substitution/corruption between checking the installed
+        # helper and copying its detached executable, before executing.
+        verify_installer_publisher(detached)
         flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
         launcher([str(detached),"--apply",str(installer),"--sha256",release.sha256,
                   "--version",release.version,"--parent-pid",str(os.getpid()),
