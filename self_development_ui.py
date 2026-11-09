@@ -7,7 +7,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from self_development import EDITABLE, prepare_self_fix, apply_self_fix
+from self_development import EDITABLE, prepare_self_fix, apply_self_fix, suggest_target
 
 
 class SelfDevelopmentWindow(tk.Toplevel):
@@ -26,7 +26,7 @@ class SelfDevelopmentWindow(tk.Toplevel):
         self._busy = False
         self.proposal = None
         self.folder = tk.StringVar(master=self)
-        self.filename = tk.StringVar(master=self, value="text_only_ui.py")
+        self.filename = tk.StringVar(master=self, value=suggest_target(task))
         self.status = tk.StringVar(master=self, value=(
             "Рабочий процесс: предложить код → проверить синтаксис → "
             "просмотреть → подтвердить запись в jarvis. GitHub и EXE не изменяются."))
@@ -99,6 +99,9 @@ class SelfDevelopmentWindow(tk.Toplevel):
         if task:
             self.task.delete("1.0", "end")
             self.task.insert("1.0", task[:2600])
+            self.filename.set(suggest_target(task))
+            self.proposal = None
+            self.apply_button.configure(state="disabled")
         self.lift()
 
     def _generator(self, prompt, language):
