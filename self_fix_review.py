@@ -62,8 +62,81 @@ def _qualified_name(expr: ast.AST) -> str:
     return ""
 
 
+def _import_aliases(parsed: ast.AST) -> dict[str, str]:
+    """Resolve direct aliases used to disguise sensitive module calls."""
+    aliases = {}
+    for node in ast.walk(parsed):
+        if isinstance(node, ast.Import):
+            for item in node.names:
+                aliases[item.asname or item.name.split(".")[0]] = (
+                    item.name if item.asname else item.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for item in node.names:
+                if node.module:
+                    aliases[item.asname or item.name] = node.module + "." + item.name
+    return aliases
+
+
+def _canonical_call(node: ast.Call, aliases: dict[str, str]) -> str:
+    name = _qualified_name(node.func)
+    root, separator, rest = name.partition(".")
+    if root in aliases:
+        return aliases[root] + (separator + rest if separator else "")
+    return name
+
+
+def _risky_node(node: ast.AST, aliases: dict[str, str]) -> bool:
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        names = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                 else [node.module or ""])
+        return any(name == sensitive or name.startswith(sensitive + ".")
+                   for name in names for sensitive in SENSITIVE_IMPORTS)
+    if isinstance(node, ast.Call):
+        name = _canonical_call(node, aliases)
+        return (name in DANGEROUS_CALLS or
+                any(name.endswith(suffix) for suffix in DANGEROUS_SUFFIXES) or
+                name.startswith(("subprocess.", "socket.", "requests.",
+                                 "httpx.", "urllib.", "importlib.")))
+    return isinstance(node, ast.Attribute) and node.attr in DANGEROUS_ACCESS
+
+
+def _import_inventory(parsed: ast.AST) -> Counter:
+    return Counter(ast.unparse(node) for node in ast.walk(parsed)
+                   if isinstance(node, (ast.Import, ast.ImportFrom)))
+
+
+def _protected_scope_inventory(parsed: ast.AST) -> Counter:
+    """Freeze functions containing sensitive operations at their AST location."""
+    aliases = _import_aliases(parsed)
+    result = Counter()
+
+    class Walk(ast.NodeVisitor):
+        def __init__(self):
+            self.stack = []
+
+        def _visit_scope(self, node):
+            path = "::".join((*self.stack, node.name))
+            if any(_risky_node(child, aliases) for child in ast.walk(node)):
+                result[(path, ast.dump(node, include_attributes=False))] += 1
+            self.stack.append(node.name)
+            self.generic_visit(node)
+            self.stack.pop()
+
+        def visit_ClassDef(self, node):
+            self.stack.append(node.name)
+            self.generic_visit(node)
+            self.stack.pop()
+
+        visit_FunctionDef = _visit_scope
+        visit_AsyncFunctionDef = _visit_scope
+
+    Walk().visit(parsed)
+    return result
+
+
 def _dangerous_inventory(text: str) -> Counter:
     parsed = ast.parse(text)
+    aliases = _import_aliases(parsed)
     found = Counter()
     for node in ast.walk(parsed):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -75,11 +148,7 @@ def _dangerous_inventory(text: str) -> Counter:
                    for n in names for prefix in SENSITIVE_IMPORTS):
                 found["import: " + ast.unparse(node)] += 1
         elif isinstance(node, ast.Call):
-            name = _qualified_name(node.func)
-            if (name in DANGEROUS_CALLS or
-                    any(name.endswith(suffix) for suffix in DANGEROUS_SUFFIXES) or
-                    name.startswith(("subprocess.", "socket.", "requests.",
-                                     "httpx.", "urllib.", "importlib."))):
+            if _risky_node(node, aliases):
                 found["call: " + ast.unparse(node)] += 1
         elif isinstance(node, ast.Attribute) and node.attr in DANGEROUS_ACCESS:
             found["access: " + ast.unparse(node)] += 1
@@ -88,6 +157,15 @@ def _dangerous_inventory(text: str) -> Counter:
 
 def audit_source_change(original: str, proposed: str) -> tuple[str, ...]:
     """Reject new risky AST operations; never execute user/model Python."""
+    old_tree = ast.parse(original)
+    new_tree = ast.parse(proposed)
+    # Any newly imported module may execute arbitrary code at import time.
+    # For self-modification, adding even a benign import needs human review.
+    imports_added = _import_inventory(new_tree) - _import_inventory(old_tree)
+    if imports_added:
+        raise WorkspaceError(
+            "Предложение добавляет импорт модуля: " +
+            next(iter(imports_added))[:160] + ". Нужна ручная проверка.")
     old = _dangerous_inventory(original)
     new = _dangerous_inventory(proposed)
     additions = new - old
@@ -96,6 +174,14 @@ def audit_source_change(original: str, proposed: str) -> tuple[str, ...]:
         raise WorkspaceError(
             "Предложение добавляет или изменяет потенциально опасную операцию: "
             + first + ". Для таких изменений нужен ручной разбор разработчиком.")
+    # A risky call can be moved without changing the global inventory.
+    # Forbid changed or relocated functions containing any such operation.
+    before_scopes = _protected_scope_inventory(old_tree)
+    after_scopes = _protected_scope_inventory(new_tree)
+    if before_scopes != after_scopes:
+        raise WorkspaceError(
+            "Изменена функция, содержащая чувствительные операции. "
+            "Эти изменения требуют отдельного ручного аудита.")
     if len(proposed.encode("utf-8")) > 44_000:
         raise WorkspaceError("Предложенная версия файла слишком большая.")
     return (
