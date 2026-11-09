@@ -31,6 +31,7 @@ TESTS=(
        "test_installer_appearance.py",
        "test_installer_contract.py",
        "test_local_chat.py",
+       "test_screenshot_review.py",
        
        "test_nova_window_state.py",
        "test_online_media.py",
