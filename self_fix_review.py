@@ -37,15 +37,15 @@ DANGEROUS_CALLS = frozenset({
 })
 DANGEROUS_SUFFIXES = frozenset({
     ".open", ".write_text", ".write_bytes", ".unlink",
-    ".rmdir", ".rename", ".replace", ".chmod",
-    ".request", ".post", ".put", ".delete", ".get",
-    ".connect", ".send", ".sendall", ".load_library",
+    ".rmdir", ".chmod",
+    ".request", ".connect", ".send", ".sendall", ".load_library",
     ".eval", ".exec", ".system", ".popen",
 })
 SENSITIVE_IMPORTS = frozenset({
     "subprocess", "socket", "requests", "httpx", "ctypes",
     "importlib", "pickle", "marshal", "multiprocessing", "webbrowser",
     "shutil", "urllib.request", "urllib3", "ftplib", "smtplib",
+    "os", "pathlib", "builtins", "sys", "zipfile", "tarfile",
 })
 DANGEROUS_ACCESS = frozenset({
     "__dict__", "__class__", "__bases__", "__subclasses__",
