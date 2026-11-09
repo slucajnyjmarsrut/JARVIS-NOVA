@@ -287,6 +287,57 @@ class TextJarvis(BaseJarvis):
         self._viral_window.focus_stage(stage)
         return self._viral_window
 
+    def open_screenshot_review(self):
+        """User selects and marks an image; nothing is captured automatically."""
+        if self._closing:
+            return None
+        old = getattr(self, "_screenshot_review", None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from screenshot_review import ScreenshotReview
+        self._screenshot_review = ScreenshotReview(self)
+        return self._screenshot_review
+
+    def screenshot_ready(self):
+        """Never send an image to FreeLLM or any external provider."""
+        return (not self._closing and self.engine == "bundled"
+                and bool(getattr(self, "_local_model_ready", False)))
+
+    def submit_screenshot(self, question, jpeg):
+        """Request a read-only local Vision explanation, never edit application code."""
+        if not self.screenshot_ready() or self.executing:
+            return False
+        if not isinstance(jpeg, bytes) or not 32 <= len(jpeg) <= 4_000_000:
+            return False
+        question = str(question or "").strip()
+        if not 1 <= len(question) <= 900:
+            return False
+        self.executing = True
+        self.log("Вы", "[Размеченный скриншот] " + question)
+        self.status.set("Анализирую красные отметки локальной Qwen…")
+
+        def work():
+            try:
+                from vision_engine import LocalOllamaVision, VisionConfig
+                endpoint = self.runtime.start()
+                vision = LocalOllamaVision(VisionConfig(endpoint=endpoint))
+                vision.initialize()
+                answer = vision.describe(
+                    "Это скриншот приложения. Красным пользователь отметил "
+                    "проблемные области. Опиши, что видно, какие возможны "
+                    "ошибки и что стоит проверить в коде. Не утверждай, что "
+                    "исправления уже сделаны. Задача: " + question, jpeg)
+                result = (True, answer, "normal")
+            except Exception as exc:
+                from local_chat import explain_local_model_failure
+                result = (False, explain_local_model_failure(exc), "normal")
+            if not self._shutdown.is_set():
+                self.q.put(("chat_result", result))
+        threading.Thread(target=work, daemon=True,
+                         name="jarvis-local-screenshot-review").start()
+        return True
+
     def request_trimodal(self, source="screen", audio_pcm=None):
         """Text question + user-approved screenshot; never record audio."""
         if self._closing or self.executing:
