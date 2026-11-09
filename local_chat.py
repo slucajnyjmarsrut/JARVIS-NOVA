@@ -15,6 +15,13 @@ class LocalChatError(RuntimeError):
     pass
 
 
+class _NoExternalRedirect(urllib.request.HTTPRedirectHandler):
+    """Never follow a redirect from a local model, even to another loopback URL."""
+
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        raise LocalChatError("Локальная модель попыталась перенаправить запрос")
+
+
 def explain_local_model_failure(error: Exception) -> str:
     """Give the user a repair action, not an internal absolute model path."""
     from bundled_vision_runtime import BundledRuntimeError
@@ -50,7 +57,8 @@ class LocalChat:
                 or not (1 <= (parts.port or 0) <= 65535) or
                 parts.path or parts.query or parts.fragment or parts.username):
             raise LocalChatError("Локальная модель должна отвечать только с 127.0.0.1")
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), _NoExternalRedirect())
         req = urllib.request.Request(
             endpoint + "/api/chat",
             data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
