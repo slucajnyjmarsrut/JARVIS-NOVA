@@ -31,6 +31,8 @@ from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
 
+from publisher_trust import require_publisher_ready, verify_installer_publisher
+
 APP_VERSION = "0.5.18"
 OWNER = "slucajnyjmarsrut"
 REPO = "JARVIS-NOVA"
@@ -388,7 +390,11 @@ def stage_helper(release: Release, installer: Path, application: Path,
     """Detach a LOCAL packaged helper; caller then closes JARVIS gracefully."""
     if not isinstance(release,Release):
         raise UpdateError("Некорректная версия")
+    require_publisher_ready()
     _check_download(Path(installer),release)
+    # A release digest alone does not establish who produced this binary.
+    # Verify Authenticode BEFORE closing the running application.
+    verify_installer_publisher(Path(installer))
     application=Path(application).resolve(strict=True)
     if application.name.casefold()!="jarvisnova.exe":
         raise UpdateError("Обновлять разрешено только JARVIS NOVA")
@@ -434,6 +440,9 @@ def _recent_failed_version(folder: Path, version: str, now: float | None=None) -
 def check_and_download(*, requester=None, opener=None,
                        cancel=None, folder=None, progress=None,
                        on_release=None) -> tuple[Release,Path] | None:
+    # No network downloads while we do not have a vetted publisher signer.
+    # Untrusted unsigned installers cannot become auto-updates.
+    require_publisher_ready()
     from model_storage import installed_edition
     installed=installed_application()
     edition=(installed_edition(installed.parent/"_internal"/"assets")
