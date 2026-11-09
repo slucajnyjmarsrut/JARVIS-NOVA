@@ -53,7 +53,9 @@ class UpdaterTests(unittest.TestCase):
             "updater_worker.verify_installer_publisher",
         ):
             patcher = mock.patch(target)
-            patcher.start()
+            mocked = patcher.start()
+            if target == "auto_update.verify_installer_publisher":
+                self.signature_verify = mocked
             self.addCleanup(patcher.stop)
 
     def test_stable_version_comparison_and_no_release(self):
@@ -306,6 +308,13 @@ class UpdaterTests(unittest.TestCase):
                 self.assertNotIn("powershell",str(args).lower())
             stage_helper(r,candidate,app,cache,launcher=capture)
             self.assertEqual(len(spawned),1)
+            verified = [Path(c.args[0]).resolve()
+                        for c in self.signature_verify.call_args_list]
+            self.assertEqual(len(verified),3,
+                "verify installer, installed worker, and detached worker")
+            self.assertEqual(verified[0],candidate.resolve())
+            self.assertEqual(verified[1],worker.resolve())
+            self.assertEqual(verified[2],Path(spawned[0][0][0]).resolve())
 
     def test_partial_helper_copy_does_not_leave_executable_in_cache(self):
         blob=b"MZ"+b"x"*120_000
