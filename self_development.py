@@ -163,6 +163,10 @@ def apply_self_fix(proposal: ProposedSelfFix, *, confirmed: bool = False) -> lis
     if not confirmed:
         raise PermissionError("Подтверди запись исправления вручную.")
     checkout = validate_checkout(proposal.folder)
+    if (proposal.plan.language != "python" or len(proposal.plan.files) != 1
+            or proposal.plan.files[0].path != proposal.filename
+            or proposal.filename not in EDITABLE):
+        raise WorkspaceError("Предложение изменилось после проверки.")
     file, source = _source(checkout, proposal.filename)
     if hashlib.sha256(source.encode("utf-8")).hexdigest() != proposal.original_sha256:
         raise WorkspaceError("Исходник изменился после анализа. Подготовь исправление снова.")
