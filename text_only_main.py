@@ -308,7 +308,9 @@ class TextJarvis(BaseJarvis):
             return
         if is_self_fix_command(text):
             self.log("Вы", text)
-            self.open_self_development()
+            previous=getattr(self, "_last_screenshot_report", "")
+            task=(str(text).strip() + ("\n" + previous if previous else ""))[:2600]
+            self.open_self_development(task=task)
             self.reply("Открыл самоисправление. Выбери исходники в ветке jarvis, "
                        "проверь предложенный код и подтверди запись. "
                        "Обновление EXE выполняется только через проверенный релиз.")
