@@ -109,7 +109,8 @@ class PublisherTrustTests(unittest.TestCase):
                     release_lookup=lambda:release,wait=lambda pid:None,
                     installer_run=runner,relaunch=restart,folder=folder)
             runner.assert_not_called()
-            restart.assert_called_once_with(app)
+            restart.assert_called_once()
+            self.assertEqual(Path(restart.call_args.args[0]).resolve(), app.resolve())
             self.assertEqual(app.read_bytes(),b"MZold")
             self.assertEqual(installer.read_bytes(),blob)
 
