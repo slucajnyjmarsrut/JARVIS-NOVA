@@ -210,10 +210,11 @@ class SelfDevelopmentTests(unittest.TestCase):
             "def danger():\n"
             "    os.system('echo THIS_MUST_NOT_EXECUTE')\n"
         )
-        proposal=self.prepare(content=generated)
-        self.assertIn("os.system",proposal.plan.files[0].content)
+        # The new defense-in-depth audit must REFUSE this risky change
+        # before approval. It must also never execute the generated code.
+        with self.assertRaises(WorkspaceError):
+            self.prepare(content=generated)
         self.assertEqual(self.file.read_text(encoding="utf-8"), OLD)
-        # Deliberately no commit: syntax-only check is NOT a security proof.
         self.assertFalse((self.checkout/"THIS_MUST_NOT_EXECUTE").exists())
 
 
