@@ -357,10 +357,12 @@ class ViralStudioWindow(tk.Toplevel):
         if not output:
             return
         soundtrack=self.pro_music.get().strip()
+        music_label=(Path(soundtrack).name[:90] if soundtrack else "нет")
         if not messagebox.askyesno(
             "Разрешить офлайн-монтаж",
             f"Стиль: {chosen.label} ({chosen.size[0]}×{chosen.size[1]})\n"
-            f"Видео: {len(selected)}\nФайл: {output}\n\n"
+            f"Видео: {len(selected)}\nМузыка: {music_label}\n"
+            f"Файл: {output}\n\n"
             "Монтировать только твои файлы? Оригиналы не меняются. "
             "Проверь права на видео и музыку перед публикацией. "
             "Автоматической публикации нет.",
