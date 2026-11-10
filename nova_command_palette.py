@@ -56,7 +56,7 @@ def entries(app, section="main"):
           ("◷","Таймер 25 минут",lambda:app._palette_start_focus_timer(),None),
           ("×","Остановить таймер",app.stop_focus_timer,None)]
         return items
-    return [
+    items=[
         ("⟳", "Автообновления · проверить версию", app.show_update_center, None),
         ("▣", "Разрешения", None, "permissions"),
         ("◎", "Описать экран текстом", lambda: app.request_trimodal("screen"), None),
@@ -75,6 +75,12 @@ def entries(app, section="main"):
         ("▣", "Свернуть в мини-чат", app.hide_main, None),
         ("⏻", "Выход", app.close, None),
     ]
+    if getattr(app, "_model_download_busy", False):
+        row=("×", "Отменить загрузку Qwen", app.cancel_local_model_download, None)
+        anchor=next(i for i,item in enumerate(items)
+                    if item is not None and item[1]=="Проверить локальную модель")
+        items.insert(anchor+1,row)
+    return items
 
 
 class CommandPalette:
