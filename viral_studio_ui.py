@@ -65,6 +65,7 @@ class ViralStudioWindow(tk.Toplevel):
         self.pro_transition=tk.StringVar(value="0.22")
         self.pro_music=tk.StringVar(value="")
         self.pro_semantic=tk.BooleanVar(value=False)
+        self.edit_style=tk.StringVar(value="YouTube Shorts")
         self.status=tk.StringVar(
             value="Укажи тему и создай сценарий. CSV аудитории необязателен.")
         header=tk.Frame(self,bg=BG)
@@ -174,6 +175,27 @@ class ViralStudioWindow(tk.Toplevel):
                    style="Studio.TButton").pack(side="left",padx=(6,0))
         ttk.Checkbutton(pro,text="Подбор кадров через Qwen Vision (медленнее)",
             variable=self.pro_semantic,style="Studio.TCheckbutton").pack(anchor="w")
+        # Real, independent FFmpeg quick edits using the user's own clips.
+        # No AI model, web account, or storyboard is required.
+        from popular_edits import STYLES
+        edits=ttk.LabelFrame(controls,text="04 / ЭДИТЫ · 16 ПОПУЛЯРНЫХ СТИЛЕЙ",
+                             padding=(12,9),style="Studio.TLabelframe")
+        edits.pack(fill="x",pady=(0,9))
+        ttk.Label(edits,text="Выбери монтаж для Shorts, TikTok, Reels, AMV, игр, влогов и кино.",
+                  style="Studio.Card.TLabel").pack(anchor="w",pady=(0,5))
+        ttk.Combobox(edits,textvariable=self.edit_style,
+                     values=[style.label for style in STYLES],
+                     state="readonly",width=36,
+                     style="Studio.TCombobox").pack(fill="x",pady=(0,6))
+        buttons=ttk.Frame(edits,style="Studio.Card.TFrame")
+        buttons.pack(fill="x")
+        self.quick_edit_button=ttk.Button(
+            buttons,text="СОБРАТЬ ЭДИТ ИЗ СВОИХ КЛИПОВ",
+            command=self.quick_montage,style="Studio.Primary.TButton")
+        self.quick_edit_button.pack(side="left",padx=(0,8))
+        ttk.Button(buttons,text="YouTube / TikTok / Instagram",
+                   command=self.open_creator_accounts,
+                   style="Studio.TButton").pack(side="left")
         tools=ttk.LabelFrame(controls,text="04 / ИНСТРУМЕНТЫ",padding=(12,9),
                              style="Studio.TLabelframe")
         tools.pack(fill="x",pady=(0,7))
@@ -299,6 +321,78 @@ class ViralStudioWindow(tk.Toplevel):
             self._notify(done)
         self._spawn(worker)
 
+    def open_creator_accounts(self):
+        """Only open fixed official sites in the owner's regular browser."""
+        old=getattr(self,"_creator_window",None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from creator_accounts_ui import CreatorAccountsWindow
+        self._creator_window=CreatorAccountsWindow(self)
+        return self._creator_window
+
+    def quick_montage(self):
+        """A complete offline edit of owned footage, without an AI dependency."""
+        if self.running:
+            return
+        from popular_edits import STYLES, source_clips, PopularEditError
+        labels={entry.label: entry for entry in STYLES}
+        chosen=labels.get(self.edit_style.get())
+        if chosen is None:
+            messagebox.showerror("Стиль эдита","Выбери один из готовых стилей.",parent=self)
+            return
+        folder=filedialog.askdirectory(
+            parent=self,title="Выбери папку со своими видеоклипами")
+        if not folder:
+            return
+        try:
+            selected=source_clips(Path(folder))
+        except (PopularEditError,OSError) as exc:
+            messagebox.showerror("Исходные видео",str(exc),parent=self)
+            return
+        output=filedialog.asksaveasfilename(
+            parent=self,title="Новый MP4 (не в папке исходников)",
+            defaultextension=".mp4",filetypes=[("MP4 video","*.mp4")],
+            initialfile="JARVIS_EDIT_"+chosen.name+".mp4")
+        if not output:
+            return
+        soundtrack=self.pro_music.get().strip()
+        if not messagebox.askyesno(
+            "Разрешить офлайн-монтаж",
+            f"Стиль: {chosen.label} ({chosen.size[0]}×{chosen.size[1]})\n"
+            f"Видео: {len(selected)}\nФайл: {output}\n\n"
+            "Монтировать только твои файлы? Оригиналы не меняются. "
+            "Проверь права на видео и музыку перед публикацией. "
+            "Автоматической публикации нет.",
+            parent=self):
+            return
+        self.status.set("Монтаж "+chosen.label+" — локальный FFmpeg, без облака.")
+        def work():
+            from popular_edits import render_popular_edit
+            result=render_popular_edit(
+                Path(folder),Path(output),style=chosen.name,
+                music_path=Path(soundtrack) if soundtrack else None,
+                cancel=self.stop_event)
+            def done():
+                self.rendered_video=Path(result["output"])
+                # The social edit uses a different, explicitly saved EDL
+                # schema. FilmCraft can open its MP4, not fake native metadata.
+                self.rendered_info=None
+                self._show(
+                    "ЭДИТ ГОТОВ!\n\n"
+                    "Стиль: "+chosen.label+"\n"
+                    "Видео: "+result["output"]+"\n"
+                    "Формат: "+str(result["size"][0])+" × "+str(result["size"][1])+"\n"
+                    "Длительность: "+str(round(result["duration"],2))+" сек.\n"
+                    "Исходных клипов: "+str(len(result["segments"]))+"\n"
+                    "Монтажный лист: "+str(Path(result["output"]).with_name(
+                        Path(result["output"]).stem+"_EDL.json"))+"\n\n"
+                    "Проверь звук, монтаж и права перед публикацией. "
+                    "JARVIS ничего не отправлял в интернет.")
+                self.status.set("Эдит готов, MP4 и монтажный лист сохранены.")
+            self._notify(done)
+        self._spawn(work)
+
     def _choose_music(self):
         folder=filedialog.askopenfilename(
             parent=self,title='Выбери собственную музыку',
@@ -364,7 +458,7 @@ class ViralStudioWindow(tk.Toplevel):
         state='disabled' if value else 'normal'
         for widget in (self.make_button,self.edit_button,self.load_button,self.audience_button,
                        self.review_button,self.auto_button,
-                       self.filmcraft_button):
+                       self.filmcraft_button,self.quick_edit_button):
             widget.configure(state=state)
 
     def _pump_notifications(self):
