@@ -81,12 +81,12 @@ class OllamaStreamTests(unittest.TestCase):
 
     def test_real_server_byte_counters_override_preallocated_blob_sizes(self):
         with tempfile.TemporaryDirectory() as root:
-            # The previous implementation misreported this as 1.11 GB even
-            # though it could be an allocated, not yet transferred file.
+            # A preallocated file may be far larger than actual bytes.
+            # Keep test disk usage small; the discrepancy is what matters.
             path = Path(root) / "blobs" / "sha256-preallocated-partial"
             path.parent.mkdir()
             with path.open("wb") as f:
-                f.truncate(1_110_000_000)
+                f.truncate(1_110_000)
             progress = []
             stages = []
             ledger = ProgressLedger()
