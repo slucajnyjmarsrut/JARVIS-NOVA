@@ -14,6 +14,8 @@ on:
       - 'tests/test_update_center.py'
       - 'tests/test_lite_edition.py'
       - 'tests/test_optional_model_downloader.py'
+      - 'tests/test_ollama_pull_client.py'
+      - 'ollama_pull_client.py'
       - 'optional_model_downloader.py'
       - 'model_storage.py'
       - 'optional_model_downloader.py'
