@@ -186,7 +186,9 @@ class TextJarvis(BaseJarvis):
                     self._asset_root,target=self.runtime.config.model_store,
                     confirm=True,cancel=self._model_download_cancel,
                     progress=lambda size:self._model_download_queue.put(
-                        ("progress",int(size))))
+                        ("progress",int(size))),
+                    stage=lambda text:self._model_download_queue.put(
+                        ("stage",str(text)[:240])))
                 self._model_download_queue.put(("done",str(store)))
             except Exception as exc:
                 self._model_download_queue.put(
@@ -225,6 +227,10 @@ class TextJarvis(BaseJarvis):
                     else:
                         self.status.set("Скачивание локальной Qwen: "+
                             f"{bytes_received/1_000_000_000:.2f} ГБ загружено")
+                elif kind=="stage":
+                    if not self._model_download_cancel.is_set():
+                        self.log("Система",str(value)[:240])
+                        self.status.set(str(value)[:240])
                 elif kind=="done":
                     self._model_download_busy=False
                     self._local_model_ready=True
@@ -237,8 +243,7 @@ class TextJarvis(BaseJarvis):
                     self._local_model_ready=False
                     self.log("Система","Модель не установлена: "+str(value))
                     self.status.set(
-                        "Qwen не скачана: "+str(value)[:210]+
-                        " (частичные данные не удалены).")
+                        "Qwen: "+str(value)[:195])
         except queue.Empty:
             pass
         self.after(250,self._pump_model_download)
