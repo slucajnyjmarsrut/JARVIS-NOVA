@@ -495,6 +495,18 @@ class Jarvis(tk.Tk):
         lines.append("Это проверка файлов, а не реальный запуск нейросетей.")
         messagebox.showinfo("Проверка движков","\n".join(lines),parent=self)
 
+    def open_creator_accounts(self):
+        """User-led registration at official YouTube, TikTok or Instagram sites."""
+        if self._closing:
+            return None
+        from creator_accounts_ui import CreatorAccountsWindow
+        previous=getattr(self, "_creator_accounts_window", None)
+        if previous is not None and previous.winfo_exists():
+            previous.lift()
+            return previous
+        self._creator_accounts_window=CreatorAccountsWindow(self)
+        return self._creator_accounts_window
+
     def open_viral_studio(self,stage="audience"):
         """One in-app window for trend research, a shot list and local video editing."""
         if self._closing:return
