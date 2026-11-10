@@ -231,5 +231,51 @@ class PopularEditTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(clip.read_bytes()).hexdigest(),digest)
 
 
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
+                         "Actual FFmpeg and FFprobe required")
+    def test_real_two_clips_wide_vertical_velocity_and_fades(self):
+        """Cover multiple real render paths, including silent inputs and speed."""
+        ffmpeg=shutil.which("ffmpeg")
+        ffprobe=shutil.which("ffprobe")
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            folder=root/"originals"
+            folder.mkdir()
+            for name,color,audio in (
+                ("01.mp4","red",True),("02.mp4","blue",False)):
+                cmd=[ffmpeg,"-hide_banner","-loglevel","error","-y",
+                     "-f","lavfi","-i",
+                     f"color=c={color}:s=320x180:r=30:d=3.8"]
+                if audio:
+                    cmd+=["-f","lavfi","-i",
+                          "sine=frequency=440:sample_rate=48000:duration=3.8"]
+                cmd+=["-c:v","libx264","-pix_fmt","yuv420p"]
+                if audio:
+                    cmd+=["-c:a","aac"]
+                cmd+=["-t","3.8",str(folder/name)]
+                result=subprocess.run(cmd,capture_output=True,timeout=50)
+                if result.returncode:
+                    self.skipTest("FFmpeg test input encode not supported")
+            digests={
+                p.name:hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in folder.iterdir()}
+            for style in ("velocity","gaming","retro","reels"):
+                with self.subTest(style=style):
+                    out=root/(style+".mp4")
+                    info=render_popular_edit(folder,out,style=style,
+                                             tools=(ffmpeg,ffprobe))
+                    self.assertTrue(out.is_file())
+                    self.assertEqual(len(info["segments"]),2)
+                    self.assertEqual(tuple(info["size"]),
+                                     select_style(style).size)
+                    self.assertTrue(info["technical_quality"]["quality_checked"])
+                    self.assertEqual(info["segments"][1]["audio"],"silence")
+                    data=json.loads(out.with_name(
+                        out.stem+"_EDL.json").read_text(encoding="utf-8"))
+                    self.assertFalse(data["published"])
+            for p in folder.iterdir():
+                self.assertEqual(
+                    hashlib.sha256(p.read_bytes()).hexdigest(),digests[p.name])
+
 if __name__ == "__main__":
     unittest.main()
