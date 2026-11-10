@@ -74,6 +74,36 @@ class CreatorAccountTests(unittest.TestCase):
             with self.assertRaises(CreatorSignupError):
                 suggest_creator_handles(unsafe)
 
+    def test_real_signup_window_scrolls_and_keeps_buttons_accessible(self):
+        import tkinter as tk
+        from creator_accounts_ui import CreatorAccountsWindow
+        try:
+            root=tk.Tk()
+        except tk.TclError:
+            self.skipTest("Graphical Tk display unavailable on this runner")
+        root.withdraw()
+        window=None
+        try:
+            window=CreatorAccountsWindow(root)
+            window.geometry("500x510")
+            window.update_idletasks()
+            self.assertIsNotNone(window._scroll_canvas.bbox("all"))
+            self.assertEqual(len(window._wrap_targets),5)
+            canvas=window._scroll_canvas
+            self.assertGreaterEqual(
+                canvas.bbox("all")[3],int(canvas.winfo_height()))
+            self.assertEqual(canvas.winfo_manager(),"pack")
+            # Ensure actual controls are present even when panel content
+            # is taller than the available screen area.
+            self.assertEqual(len(window._scroll_panel.winfo_children()),9)
+            canvas.yview_moveto(1.0)
+            window.update_idletasks()
+            self.assertTrue(0<=canvas.yview()[0]<=1)
+        finally:
+            if window is not None:
+                window.destroy()
+            root.destroy()
+
     def test_ui_never_collects_passwords_sms_cookies_or_post_videos(self):
         from creator_accounts_ui import CreatorAccountsWindow
         source=inspect.getsource(CreatorAccountsWindow)
