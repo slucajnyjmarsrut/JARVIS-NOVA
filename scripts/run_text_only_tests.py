@@ -16,6 +16,7 @@ TESTS=(
        "test_update_center.py",
        "test_lite_edition.py",
        "test_optional_model_downloader.py",
+       "test_ollama_pull_client.py",
        "test_autonomous_montage.py",
        "test_bootstrap.py",
        "test_code_agent.py",
