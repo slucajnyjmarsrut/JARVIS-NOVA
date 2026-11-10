@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from code_languages import SUPPORTED, EXTENSIONS
 from code_workspace import (starter_project, preview, apply_plan,
@@ -41,6 +42,18 @@ class UniversalCodingTests(unittest.TestCase):
                 result=check_project(language,Path(tmp))
                 self.assertIn(result["status"],("passed","partial"), f"{language}: {result}")
                 self.assertTrue((Path(tmp)/"README.md").is_file())
+
+    def test_busy_rustfmt_timeout_is_unverified_not_false_syntax_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/"main.rs").write_text("fn main() {}\n",encoding="utf-8")
+            with mock.patch("code_checks.shutil.which",return_value="rustfmt"), \
+                 mock.patch("code_checks._syntax_process",
+                            return_value="Превышено время проверки"):
+                result=check_project("rust",root)
+            self.assertEqual(result["status"],"partial")
+            self.assertEqual(result["verification"],"structure_only")
+            self.assertIn("не подтверждён",result["reason"])
 
     def test_python_real_ast_rejects_syntax_error(self):
         with tempfile.TemporaryDirectory() as tmp:
