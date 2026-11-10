@@ -164,6 +164,10 @@ class Jarvis(tk.Tk):
         code_menu.add_command(label="Java / Roblox Luau — написать код…",
                               command=self.open_code_assistant)
         menu.add_cascade(label="Программирование",menu=code_menu)
+        menu.add_command(label="Эдиты: Shorts, TikTok, Reels, AMV…",
+                         command=lambda:self.open_viral_studio(stage="edits"))
+        menu.add_command(label="Аккаунты YouTube / TikTok / Instagram",
+                         command=self.open_creator_accounts)
         interface_menu=tk.Menu(menu,tearoff=False)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
         interface_menu.add_command(label="Свернуть → мини-диалог справа (Ctrl+Shift+O)",
