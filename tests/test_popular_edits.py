@@ -87,9 +87,9 @@ class PopularEditTests(unittest.TestCase):
                 path=source/f"{i:02d}.mp4"
                 path.write_bytes(b"x"*2500)
                 files.append(path)
-            self.assertEqual(
-                [p.resolve() for p in source_clips(source)],
-                [p.resolve() for p in files])
+            actual=source_clips(source)
+            self.assertEqual([p.name for p in actual],[p.name for p in files])
+            self.assertTrue(all(a.samefile(b) for a,b in zip(actual,files)))
             extra=source/"11.mp4"
             extra.write_bytes(b"x"*2500)
             with self.assertRaises(PopularEditError):
