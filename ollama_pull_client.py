@@ -151,19 +151,27 @@ class ProgressLedger:
 
 
 def _read_frames(response, events, closing):
-    """Read network stream on daemon thread; main downloader stays cancellable."""
+    """Read and bound network frames; main downloader stays cancellable."""
+    def offer(kind, value):
+        while not closing.is_set():
+            try:
+                events.put((kind, value), timeout=0.3)
+                return
+            except queue.Full:
+                continue
+
     try:
         while not closing.is_set():
             raw = response.readline(MAX_LINE + 1)
             if not raw:
-                events.put(("end", None))
+                offer("end", None)
                 return
             if len(raw) > MAX_LINE:
-                events.put(("bad", None))
+                offer("bad", None)
                 return
-            events.put(("line", raw))
+            offer("line", raw)
     except (OSError, ValueError, TimeoutError) as exc:
-        events.put(("error", _safe_hint(exc)))
+        offer("error", _safe_hint(exc))
 
 
 def _one_pull(endpoint, opener, cancel, ledger, *, progress=None, stage=None,
@@ -177,7 +185,8 @@ def _one_pull(endpoint, opener, cancel, ledger, *, progress=None, stage=None,
         with opener.open(_request(endpoint), timeout=READ_TIMEOUT) as response:
             if getattr(response, "status", 200) != 200:
                 raise PullAPIError("Локальная Ollama вернула ошибку HTTP.")
-            events = queue.Queue()
+            # Even a misbehaving local daemon cannot enqueue unbounded data.
+            events = queue.Queue(maxsize=128)
             worker = threading.Thread(
                 target=_read_frames, args=(response, events, closing),
                 daemon=True, name="jarvis-ollama-pull-stream")
