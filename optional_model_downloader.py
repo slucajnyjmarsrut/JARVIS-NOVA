@@ -168,6 +168,68 @@ def _loopback_tags(endpoint: str, timeout=2):
         raise ModelDownloadError("Ollama returned an invalid response")
 
 
+
+def pull_model_with_retries(exe: Path, store: Path, cancel: threading.Event, *,
+                            runner, server, env, flags=0, progress=None,
+                            stage=None, max_attempts=MAX_PULL_ATTEMPTS,
+                            waiter=None, pause=None):
+    """Retry only the consented official Qwen pull, preserving partial blobs.
+
+    This never contacts arbitrary URLs or executes any model-generated code.
+    """
+    waiter=waiter or wait_for_pull
+    pause=pause or cancel.wait
+    for attempt in range(1,max_attempts+1):
+        if cancel.is_set():
+            raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
+        if server.poll() is not None:
+            raise ModelDownloadError("Локальная Ollama неожиданно завершилась.")
+        needed=required_free_bytes(downloaded_blob_bytes(store))
+        if shutil.disk_usage(store).free<needed:
+            raise ModelDownloadError(
+                "На диске закончилось место для Qwen. Частичные файлы сохранены.")
+        if stage:
+            stage(f"Qwen: попытка {attempt} из {max_attempts}. "
+                  "Продолжаю с уже скачанных частей.")
+        pull=runner([str(exe),"pull",MODEL_NAME],
+              cwd=str(exe.parent),env=env,stdin=subprocess.DEVNULL,
+              stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+              creationflags=flags)
+        diagnostics=_ErrorTail(getattr(pull,"stderr",None))
+        failure=None
+        try:
+            waiter(pull,store,cancel,progress=progress)
+        except ModelDownloadError as exc:
+            failure=exc
+        finally:
+            if pull.poll() is None:
+                try:
+                    pull.terminate()
+                    pull.wait(timeout=5)
+                except (OSError,subprocess.TimeoutExpired):
+                    try:
+                        pull.kill()
+                        pull.wait(timeout=3)
+                    except (OSError,subprocess.TimeoutExpired):
+                        pass
+            hint=_pull_error_hint(diagnostics.finish())
+            pull=None
+        if failure is None:
+            break
+        if cancel.is_set() or "отменена" in str(failure).casefold():
+            raise failure
+        if "общий предел" in str(failure):
+            raise failure
+        if attempt==max_attempts:
+            raise ModelDownloadError(
+                f"Qwen не удалось скачать после {max_attempts} попыток. "
+                +hint+" Скачанные части сохранены.") from failure
+        if stage:
+            stage(f"Соединение прервалось ({hint}) "
+                  f"Повторяю загрузку: {attempt+1}/{max_attempts}.")
+        if pause(3*attempt):
+            raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
+
 def download_qwen(assets: Path, *, target: Path | None=None,
                   confirm: bool=False, cancel: threading.Event | None=None,
                   progress=None, popen=None, stage=None):
@@ -220,7 +282,6 @@ def download_qwen(assets: Path, *, target: Path | None=None,
     flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
     runner=popen or subprocess.Popen
     server=None
-    pull=None
     try:
         server=runner([str(exe),"serve"],cwd=str(exe.parent),env=env,
               stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
@@ -239,56 +300,8 @@ def download_qwen(assets: Path, *, target: Path | None=None,
                 time.sleep(.3)
         else:
             raise ModelDownloadError("Ollama не ответила в течение 65 секунд")
-        for attempt in range(1,MAX_PULL_ATTEMPTS+1):
-            if cancel.is_set():
-                raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
-            if server.poll() is not None:
-                raise ModelDownloadError("Локальная Ollama неожиданно завершилась.")
-            needed=required_free_bytes(downloaded_blob_bytes(store))
-            if shutil.disk_usage(store).free<needed:
-                raise ModelDownloadError(
-                    "На диске закончилось место для Qwen. Частичные файлы сохранены.")
-            if stage:
-                stage(f"Qwen: попытка {attempt} из {MAX_PULL_ATTEMPTS}. "
-                      "Продолжаю с уже скачанных частей.")
-            pull=runner([str(exe),"pull",MODEL_NAME],
-                  cwd=str(exe.parent),env=env,stdin=subprocess.DEVNULL,
-                  stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
-                  creationflags=flags)
-            diagnostics=_ErrorTail(getattr(pull,"stderr",None))
-            failure=None
-            try:
-                wait_for_pull(pull,store,cancel,progress=progress)
-            except ModelDownloadError as exc:
-                failure=exc
-            finally:
-                if pull.poll() is None:
-                    try:
-                        pull.terminate()
-                        pull.wait(timeout=5)
-                    except (OSError,subprocess.TimeoutExpired):
-                        try:
-                            pull.kill()
-                            pull.wait(timeout=3)
-                        except (OSError,subprocess.TimeoutExpired):
-                            pass
-                hint=_pull_error_hint(diagnostics.finish())
-                pull=None
-            if failure is None:
-                break
-            if cancel.is_set() or "отменена" in str(failure).casefold():
-                raise failure
-            if "общий предел" in str(failure):
-                raise failure
-            if attempt==MAX_PULL_ATTEMPTS:
-                raise ModelDownloadError(
-                    f"Qwen не удалось скачать после {MAX_PULL_ATTEMPTS} попыток. "
-                    +hint+" Скачанные части сохранены.") from failure
-            if stage:
-                stage(f"Соединение прервалось ({hint}) "
-                      f"Повторяю загрузку: {attempt+1}/{MAX_PULL_ATTEMPTS}.")
-            if cancel.wait(3*attempt):
-                raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
+        pull_model_with_retries(exe,store,cancel,runner=runner,server=server,
+                                env=env,flags=flags,progress=progress,stage=stage)
         # The registry manifest specifies every blob SHA256. Do NOT accept
         # partially downloaded files or a model with mismatched checksums.
         validate_offline_model_store(assets,model_store=store,verify_hashes=True)
@@ -296,7 +309,7 @@ def download_qwen(assets: Path, *, target: Path | None=None,
             progress(downloaded_blob_bytes(store))
         return store
     finally:
-        for proc in (pull,server):
+        for proc in (server,):
             if proc is None:
                 continue
             try:
