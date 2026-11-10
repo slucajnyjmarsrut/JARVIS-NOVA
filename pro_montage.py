@@ -22,12 +22,21 @@ class ProOptions:
     music_volume: float = 0.18
     beat_sync: bool = True
     semantic: bool = False
+    transition_style: str = "fade"
+
+SAFE_TRANSITIONS=frozenset({
+    "fade", "dissolve", "wipeleft", "wiperight", "slideleft",
+    "slideright", "circleopen", "fadeblack", "fadewhite", "smoothleft",
+})
 
 def validate_options(options):
     if not isinstance(options,ProOptions):
         raise ValueError('Некорректные параметры профи-монтажа')
     if (not math.isfinite(options.transition) or not 0<=options.transition<=.45
-        or options.color not in ('none','natural','cinematic')
+        or options.color not in (
+            'none','natural','cinematic','vibrant','noir','warm',
+            'cool','retro','dreamy','highcontrast')
+        or options.transition_style not in SAFE_TRANSITIONS
         or not math.isfinite(options.music_volume) or not 0<=options.music_volume<=.45
         or not isinstance(options.animated_titles,bool) or
         not isinstance(options.beat_sync,bool) or not isinstance(options.semantic,bool)):
@@ -44,6 +53,13 @@ def color_filter(style):
     if style=='none':return ''
     if style=='natural':return 'eq=contrast=1.04:brightness=0.007:saturation=1.08,'
     if style=='cinematic':return 'eq=contrast=1.09:brightness=-0.005:saturation=0.96:gamma=1.02,'
+    if style=='vibrant':return 'eq=contrast=1.13:brightness=0.012:saturation=1.27,'
+    if style=='noir':return 'hue=s=0,eq=contrast=1.20:brightness=-0.008,'
+    if style=='warm':return 'eq=contrast=1.06:saturation=1.10,colorbalance=rs=0.07:bs=-0.04,'
+    if style=='cool':return 'eq=contrast=1.07:saturation=1.06,colorbalance=bs=0.07:rs=-0.03,'
+    if style=='retro':return 'eq=contrast=0.96:saturation=0.79,colorbalance=rs=0.09:gs=0.03,'
+    if style=='dreamy':return 'eq=contrast=0.91:brightness=0.035:saturation=0.96,'
+    if style=='highcontrast':return 'eq=contrast=1.23:saturation=1.19,'
     raise ValueError('Неизвестный профиль цветокоррекции')
 
 def title_filters(length,animated):
@@ -156,7 +172,7 @@ def finish_video(parts,lengths,output,ffmpeg,*,options,executor,cancel=None):
     else:
         elapsed=lengths[0]
         for i in range(1,len(parts)):
-            filters.append(f'[{video}][v{i}]xfade=transition=fade:duration={fade:.3f}:'
+            filters.append(f'[{video}][v{i}]xfade=transition={options.transition_style}:duration={fade:.3f}:'
                            f'offset={elapsed-fade:.3f}[vx{i}]')
             filters.append(f'[{audio}][a{i}]acrossfade=d={fade:.3f}:c1=tri:c2=tri[ax{i}]')
             video,audio=f'vx{i}',f'ax{i}'
@@ -173,7 +189,7 @@ def finish_video(parts,lengths,output,ffmpeg,*,options,executor,cancel=None):
           '-r','30','-c:a','aac','-b:a','160k','-ar','48000','-ac','2',
           '-movflags','+faststart','-t',f'{total:.3f}',str(output)]
     executor(cmd,timeout=900,cancel=cancel)
-    return {'transition':'fade' if fade else 'none',
+    return {'transition':options.transition_style if fade else 'none',
             'transition_seconds':round(fade,3),
             'expected_seconds':round(total,3),'music_used':has_music,
             'color':options.color,'animated_screen_titles':options.animated_titles,
