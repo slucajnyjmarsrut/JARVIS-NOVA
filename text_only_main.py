@@ -96,6 +96,8 @@ class TextJarvis(BaseJarvis):
         self._model_download_busy=False
         self._model_download_queue=queue.Queue()
         self._model_download_cancel=threading.Event()
+        self._model_download_last_size=0
+        self._model_download_last_change=time.monotonic()
         self._last_screenshot_report=""
         self._self_development_window=None
         self.runtime = BundledVisionRuntime(BundledRuntimeConfig(
@@ -171,6 +173,8 @@ class TextJarvis(BaseJarvis):
         if self._model_download_busy or self._closing:
             return
         self._model_download_busy=True
+        self._model_download_last_size=0
+        self._model_download_last_change=time.monotonic()
         self.log("Система","Скачиваю Qwen после твоего разрешения. "
                  "Прогресс указан ниже. Текстовая программа остаётся открытой.")
         self.status.set("Загрузка Qwen: подключение к официальной Ollama…")
@@ -190,6 +194,14 @@ class TextJarvis(BaseJarvis):
         threading.Thread(target=worker,daemon=True,
                          name="jarvis-consented-qwen-download").start()
 
+    def cancel_local_model_download(self):
+        """User-initiated cancel; Ollama partial data remains in user cache."""
+        if not self._model_download_busy:
+            self.status.set("Загрузка Qwen сейчас не выполняется.")
+            return
+        self._model_download_cancel.set()
+        self.status.set("Останавливаю скачивание Qwen. Загруженные части сохраняются.")
+
     def _pump_model_download(self):
         if self._closing:
             return
@@ -197,8 +209,22 @@ class TextJarvis(BaseJarvis):
             while True:
                 kind,value=self._model_download_queue.get_nowait()
                 if kind=="progress":
-                    self.status.set("Скачивание локальной Qwen: "+
-                        f"{value/1_000_000_000:.2f} ГБ загружено")
+                    if self._model_download_cancel.is_set():
+                        continue
+                    now=time.monotonic()
+                    bytes_received=max(0,int(value))
+                    if bytes_received!=self._model_download_last_size:
+                        self._model_download_last_size=bytes_received
+                        self._model_download_last_change=now
+                    idle=int(now-self._model_download_last_change)
+                    if idle>=60:
+                        self.status.set(
+                            "Qwen: "+f"{bytes_received/1_000_000_000:.2f} ГБ; "
+                            +f"нет новых данных {idle//60} мин. "
+                            "Отмена через ⚙ → «Отменить загрузку Qwen».")
+                    else:
+                        self.status.set("Скачивание локальной Qwen: "+
+                            f"{bytes_received/1_000_000_000:.2f} ГБ загружено")
                 elif kind=="done":
                     self._model_download_busy=False
                     self._local_model_ready=True
@@ -210,7 +236,9 @@ class TextJarvis(BaseJarvis):
                     self._model_download_busy=False
                     self._local_model_ready=False
                     self.log("Система","Модель не установлена: "+str(value))
-                    self.status.set("Не удалось скачать Qwen — можно повторить через ⚙")
+                    self.status.set(
+                        "Qwen не скачана: "+str(value)[:210]+
+                        " (частичные данные не удалены).")
         except queue.Empty:
             pass
         self.after(250,self._pump_model_download)
