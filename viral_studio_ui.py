@@ -280,13 +280,28 @@ class ViralStudioWindow(tk.Toplevel):
         if video is not None and not Path(video).is_file():
             video=None
         metadata=(self.rendered_info if video is not None else None)
-        self.status.set('Проверяю, установлен ли FilmCraft…')
+        from filmcraft_bridge import find_filmcraft, FilmCraftError
+        try:
+            installed=find_filmcraft(getattr(self,"filmcraft_exe",None))
+        except FilmCraftError:
+            installed=None
+            if not messagebox.askyesno(
+                "Разрешить установку FilmCraft?",
+                "Редактор FilmCraft пока не найден. Скачать проверенный "
+                "архив с официального GitHub и распаковать его в папку "
+                "пользователя?\n\n"
+                "Это сетевое действие. Личные видео не отправляются. "
+                "Существующие проекты не перезаписываются.",
+                parent=self):
+                self.status.set("Загрузка FilmCraft отменена пользователем.")
+                return
+        self.status.set('Открываю FilmCraft…' if installed is not None
+                        else 'Скачиваю проверенный FilmCraft после разрешения…')
 
         def worker():
-            from filmcraft_bridge import find_filmcraft, FilmCraftError, open_in_filmcraft
-            try:
-                executable=find_filmcraft(getattr(self,'filmcraft_exe',None))
-            except FilmCraftError:
+            from filmcraft_bridge import open_in_filmcraft
+            executable=installed
+            if executable is None:
                 from filmcraft_installer import install_filmcraft
                 previous=[None]
                 def progress(phase,completed,total):
