@@ -20,7 +20,7 @@ import urllib.request
 from collections import deque
 from contextlib import contextmanager
 
-from bundled_vision_runtime import validate_offline_model_store
+from bundled_vision_runtime import BundledRuntimeError, validate_offline_model_store
 from model_storage import MODEL_NAME, user_model_store
 
 
@@ -362,7 +362,14 @@ def download_qwen(assets: Path, *, target: Path | None=None,
             # partially downloaded files or a model with mismatched checksums.
             if stage:
                 stage("Загрузка завершена. Проверяю SHA256 модели; файлы сохранены.")
-            validate_offline_model_store(assets,model_store=store,verify_hashes=True)
+            try:
+                validate_offline_model_store(
+                    assets,model_store=store,verify_hashes=True)
+            except (BundledRuntimeError,OSError,ValueError) as exc:
+                raise ModelDownloadError(
+                    "Ollama завершила скачивание, но проверка SHA256 модели "
+                    "или её манифеста не прошла. Qwen не будет запущена. "
+                    "Файлы сохранены для диагностики и повторной проверки.") from exc
             if cancel.is_set():
                 raise ModelDownloadError("Загрузка отменена. Модель сохранена на диске.")
             if progress is not None:
