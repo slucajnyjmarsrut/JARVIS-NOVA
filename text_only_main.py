@@ -348,6 +348,22 @@ class TextJarvis(BaseJarvis):
                        "проверь предложенный код и подтверди запись. "
                        "Обновление EXE выполняется только через проверенный релиз.")
             return
+        from popular_edits import is_popular_edit_request
+        from creator_accounts import is_creator_signup_request
+        if is_popular_edit_request(text):
+            self.log("Вы", text)
+            self.open_viral_studio(stage="edits")
+            self.reply("Открыл 16 стилей эдитов. Выбери стиль, папку "
+                       "с собственными клипами и новый MP4. "
+                       "Монтаж начнётся только после твоего подтверждения.")
+            return
+        if is_creator_signup_request(text):
+            self.log("Вы", text)
+            self.open_creator_accounts()
+            self.reply("Открыл помощник регистрации YouTube, TikTok и Instagram. "
+                       "Пароль, дату рождения и проверочные коды вводи "
+                       "самостоятельно на официальном сайте.")
+            return
         return super().handle_text(text)
 
     def open_screenshot_review(self):
