@@ -154,6 +154,46 @@ class PopularEditTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(clip.read_bytes()).hexdigest(),before)
             self.assertFalse((root/"out.mp4").exists())
 
+    def test_cancel_during_large_export_rolls_back_mp4_and_sidecar(self):
+        from popular_edits import _copy_export_with_cancel
+        with tempfile.TemporaryDirectory() as tmp:
+            base=Path(tmp)
+            original=base/"raw"
+            original.mkdir()
+            clip=original/"01.mp4"
+            clip.write_bytes(b"private source"*250)
+            before=hashlib.sha256(clip.read_bytes()).hexdigest()
+            out=base/"result.mp4"
+            event=threading.Event()
+
+            def segment_render(args, **_):
+                Path(args[-1]).write_bytes(b"video chunk"*300)
+
+            def final_render(parts,lengths,output,ffmpeg,**_):
+                Path(output).write_bytes(b"rendered-video"*400)
+                return {"expected_seconds":1.8}
+
+            def interrupt_during_video_copy(source, destination, **kwargs):
+                if Path(source.name).name=="finished.mp4":
+                    event.set()
+                return _copy_export_with_cancel(source,destination,**kwargs)
+
+            with mock.patch("viral_studio._probe",
+                            side_effect=[(2.5,True),(1.8,True)]), \
+                 mock.patch("popular_edits.finish_video",
+                            side_effect=final_render), \
+                 mock.patch("popular_edits.verify_edit_output_media",
+                            return_value={"quality_checked":True}), \
+                 mock.patch("popular_edits._copy_export_with_cancel",
+                            side_effect=interrupt_during_video_copy):
+                with self.assertRaisesRegex(PopularEditError,"Экспорт отменён"):
+                    render_popular_edit(
+                        original,out,style="shorts",cancel=event,
+                        tools=("ffmpeg","ffprobe"),executor=segment_render)
+            self.assertFalse(out.exists())
+            self.assertFalse(base.joinpath("result_EDL.json").exists())
+            self.assertEqual(hashlib.sha256(clip.read_bytes()).hexdigest(),before)
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
                          "Real FFmpeg not available to runner")
     def test_real_ffmpeg_exports_verified_mp4_with_original_untouched(self):
