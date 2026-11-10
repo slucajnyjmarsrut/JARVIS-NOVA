@@ -2,9 +2,12 @@
 """JARVIS Lite: no bundled 1.9GB weights, safe separate model installation."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 from bundled_vision_runtime import (
     BundledRuntimeConfig,BundledRuntimeError,validate_offline_model_store,
@@ -89,6 +92,53 @@ class LiteStorageTests(unittest.TestCase):
             if __import__("os").name!="nt":
                 with self.assertRaisesRegex(Exception,"Windows"):
                     download_qwen(assets,confirm=True)
+
+    @unittest.skipUnless(os.name=="nt", "Local Qwen installer runs on Windows")
+    def test_existing_qwen_does_not_need_extra_disk_space_or_network(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            assets=root/"assets"
+            (assets/"ollama").mkdir(parents=True)
+            (assets/"ollama"/"ollama.exe").write_bytes(b"MZ")
+            store=root/"user"/"ollama"
+            self.fake_store(store)
+            with mock.patch("optional_model_downloader.shutil.disk_usage",
+                            return_value=SimpleNamespace(free=0)):
+                progress=[]
+                result=download_qwen(
+                    assets,target=store,confirm=True,progress=progress.append)
+                self.assertEqual(result,store)
+                self.assertTrue(progress)
+
+    @unittest.skipUnless(os.name=="nt", "Local Qwen installer runs on Windows")
+    def test_new_download_goes_through_streaming_api_not_cli_pull(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            assets=root/"assets"
+            (assets/"ollama").mkdir(parents=True)
+            (assets/"ollama"/"ollama.exe").write_bytes(b"MZ")
+            store=root/"user"/"ollama"
+            class Server:
+                def __init__(self):self.stopped=False
+                def poll(self):return None
+                def terminate(self):self.stopped=True
+                def wait(self,timeout=None):return 0
+            processes=[]
+            def spawn(command, **kwargs):
+                self.assertEqual(command[1:],["serve"])
+                proc=Server()
+                processes.append(proc)
+                return proc
+            with mock.patch("optional_model_downloader.shutil.disk_usage",
+                            return_value=SimpleNamespace(free=10_000_000_000)), \
+                 mock.patch("optional_model_downloader._loopback_tags"), \
+                 mock.patch("ollama_pull_client.pull_via_api",return_value=250), \
+                 mock.patch("optional_model_downloader.validate_offline_model_store"):
+                from ollama_pull_client import pull_via_api
+                result=download_qwen(assets,target=store,confirm=True,popen=spawn)
+                self.assertEqual(result,store)
+                self.assertEqual(len(processes),1)
+                self.assertTrue(processes[0].stopped)
 
     def test_package_never_embeds_weights_in_lite(self):
         root=Path(__file__).resolve().parents[1]
