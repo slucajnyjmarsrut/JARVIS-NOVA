@@ -13,6 +13,14 @@ from creator_accounts import (
 
 
 class CreatorAccountTests(unittest.TestCase):
+    def test_signup_command_only_opens_manual_registration(self):
+        for question in ("создай аккаунт в ютубе", "зарегистрируй меня в TikTok",
+                         "создать аккаунт Instagram", "создай канал на YouTube"):
+            self.assertTrue(is_creator_signup_request(question),question)
+        for unrelated in ("придумай название для ютуба", "опубликуй на тикток",
+                          "отправь пароли в инстаграм", "создай эдит"):
+            self.assertFalse(is_creator_signup_request(unrelated),unrelated)
+
     def test_all_three_platforms_have_fixed_https_official_hosts(self):
         self.assertEqual({site.key for site in SITES},
                          {"youtube", "tiktok", "instagram"})
