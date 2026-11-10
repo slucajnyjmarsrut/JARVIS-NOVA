@@ -7,6 +7,16 @@ on:
       - bootstrap.py
       - text_only_main.py
       - text_only_ui.py
+      - main.py
+      - nova_command_palette.py
+      - viral_studio.py
+      - viral_studio_ui.py
+      - pro_montage.py
+      - smart_montage.py
+      - filmcraft_bridge.py
+      - studio_theme.py
+      - tests/test_pro_montage.py
+      - tests/test_filmcraft_bridge.py
       - screenshot_review.py
       - tests/test_screenshot_review.py
       - self_development.py
