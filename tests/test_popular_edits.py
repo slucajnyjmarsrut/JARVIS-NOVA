@@ -20,6 +20,14 @@ from pro_montage import ProOptions, validate_options, color_filter
 
 
 class PopularEditTests(unittest.TestCase):
+    def test_explicit_edit_commands_open_guided_studio_only(self):
+        for request in ("сделай эдит", "Джарвис, сделай эдит для тиктока",
+                        "хочу эдит", "смонтируй видео", "сделай монтаж"):
+            self.assertTrue(is_popular_edit_request(request),request)
+        for ordinary in ("как работает монтаж", "создай аккаунт в ютубе",
+                         "скачай мою модель", "закажи обед"):
+            self.assertFalse(is_popular_edit_request(ordinary),ordinary)
+
     def test_many_distinct_real_styles_and_platform_aspects(self):
         self.assertEqual(len(STYLES),16)
         self.assertEqual(len(STYLE_BY_NAME),16)
