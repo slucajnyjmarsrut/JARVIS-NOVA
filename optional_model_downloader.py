@@ -27,6 +27,11 @@ class ModelDownloadError(RuntimeError):
     pass
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        raise ModelDownloadError("Недопустимая переадресация локальной Ollama.")
+
+
 MIN_FREE_BYTES=3_000_000_000
 # Slow internet can require several hours; a separate no-progress guard detects stalls.
 MAX_WAIT_SECONDS=4*60*60
@@ -155,7 +160,8 @@ def wait_for_pull(pull, store: Path, cancel: threading.Event, *,
 
 
 def _loopback_tags(endpoint: str, timeout=2):
-    opener=urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener=urllib.request.build_opener(
+        urllib.request.ProxyHandler({}), _NoRedirect())
     with opener.open(endpoint+"/api/tags",timeout=timeout) as response:
         raw=response.read(65536)
     if not isinstance(json.loads(raw),dict):
@@ -164,7 +170,7 @@ def _loopback_tags(endpoint: str, timeout=2):
 
 def download_qwen(assets: Path, *, target: Path | None=None,
                   confirm: bool=False, cancel: threading.Event | None=None,
-                  progress=None, popen=None, stage=None, sleep=None):
+                  progress=None, popen=None, stage=None):
     """Explicitly approved local model install, with progress(bytes) callback.
 
     On success the per-user cache can be used by BundledVisionRuntime.
@@ -190,6 +196,8 @@ def download_qwen(assets: Path, *, target: Path | None=None,
             f"нужно ещё примерно {needed/1e9:.1f} ГБ. "
             "Уже скачанные части сохранены.")
     cancel=cancel or threading.Event()
+    if cancel.is_set():
+        raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
     from model_storage import local_model_available
     if local_model_available(assets,user_store=store):
         if progress:
@@ -213,7 +221,6 @@ def download_qwen(assets: Path, *, target: Path | None=None,
     runner=popen or subprocess.Popen
     server=None
     pull=None
-    pause=sleep or time.sleep
     try:
         server=runner([str(exe),"serve"],cwd=str(exe.parent),env=env,
               stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
