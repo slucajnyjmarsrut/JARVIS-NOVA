@@ -13,7 +13,7 @@ import unittest
 from popular_edits import (
     STYLES, STYLE_BY_NAME, PopularEditError,
     source_clips, select_style, speed_for,
-    _segment_filter, render_popular_edit,
+    _segment_filter, render_popular_edit, verify_edit_output_media,
 )
 from pro_montage import ProOptions, validate_options, color_filter
 
@@ -45,6 +45,26 @@ class PopularEditTests(unittest.TestCase):
         self.assertEqual(select_style("product").size,(864,1080))
         self.assertEqual(speed_for(select_style("velocity"),0),.65)
         self.assertEqual(speed_for(select_style("velocity"),1),1.8)
+
+    def test_verifier_accepts_wide_square_portrait_and_refuses_wrong_size(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            video=Path(tmp)/"rendered.mp4"
+            video.write_bytes(b"fake-mp4"*200)
+            for size in ((720,1280),(1280,720),(960,960),(864,1080)):
+                with self.subTest(size=size):
+                    payload={"format":{"duration":"3.1"},"streams":[
+                        {"codec_type":"video","codec_name":"h264",
+                         "width":size[0],"height":size[1]},
+                        {"codec_type":"audio","codec_name":"aac"}]}
+                    data=verify_edit_output_media(
+                        video,"ffprobe",size=size,expected_seconds=3.0,
+                        executor=lambda argv,**kwargs: json.dumps(payload).encode())
+                    self.assertEqual((data["width"],data["height"]),size)
+                    with self.assertRaises(PopularEditError):
+                        verify_edit_output_media(
+                            video,"ffprobe",size=(640,360),
+                            expected_seconds=3.0,
+                            executor=lambda argv,**kwargs: json.dumps(payload).encode())
 
     def test_invalid_or_model_injected_style_cannot_be_used_as_filter(self):
         for value in ("", "../danger", "tiktok;rm", "fade=evil", "glitch;upload"):
