@@ -88,6 +88,12 @@ jobs:
         run: |
           ./scripts/prepare_ffmpeg.ps1
           if ($LASTEXITCODE -ne 0) { throw 'FFmpeg preparation failed' }
+      - name: Render a real popular edit with bundled FFmpeg
+        shell: pwsh
+        run: |
+          $env:PATH = (Resolve-Path 'assets/bin').Path + [IO.Path]::PathSeparator + $env:PATH
+          python -m unittest discover -s tests -p test_popular_edits.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Popular-edit FFmpeg output verification failed' }
       - name: Generate original Windows icon and Lite installer artwork
         shell: pwsh
         run: |
