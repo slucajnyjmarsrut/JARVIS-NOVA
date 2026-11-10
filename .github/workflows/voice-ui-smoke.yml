@@ -13,6 +13,8 @@ on:
       - 'update_center.py'
       - 'tests/test_update_center.py'
       - 'tests/test_lite_edition.py'
+      - 'tests/test_optional_model_downloader.py'
+      - 'optional_model_downloader.py'
       - 'model_storage.py'
       - 'optional_model_downloader.py'
       - '.github/workflows/voice-ui-smoke.yml'
