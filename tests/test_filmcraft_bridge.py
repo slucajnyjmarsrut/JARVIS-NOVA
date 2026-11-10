@@ -70,6 +70,45 @@ class FilmCraftBridgeTests(unittest.TestCase):
             self.assertEqual(timeline["tracks"]["markers"][1]["comment"],
                              "Второй титр")
 
+    def test_popular_edits_simple_presets_preserve_editable_source_cuts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            movie,original=project_fixture(temp)
+            meta={
+                "output":str(movie),"duration":2.78,
+                "source_directory":original["source_directory"],
+                "style":"shorts",
+                "segments":[
+                    {"source":"01.mp4","start":.25,"duration":1.5,"speed":1.0},
+                    {"source":"02.mp4","start":2.0,"duration":1.5,"speed":1.0},
+                ],
+                "professional":{"transition":"fade","transition_seconds":.12},
+            }
+            movie.with_name(movie.stem+"_EDL.json").write_text(
+                json.dumps(meta),encoding="utf-8")
+            timeline,count=build_filmcraft_timeline(movie)
+            self.assertEqual(count,2)
+            clips=timeline["tracks"]["children"][0]["children"]
+            self.assertEqual(
+                [x["OTIO_SCHEMA"] for x in clips],
+                ["Clip.2","Transition.1","Clip.2"])
+            self.assertTrue(
+                clips[0]["media_references"]["DEFAULT_MEDIA"]["target_url"]
+                .endswith("01.mp4"))
+
+            # Do NOT pretend that a velocity curve or wipe is represented
+            # by a simple FilmCraft source-cut timeline.
+            meta["segments"][1]["speed"]=1.8
+            _,count=build_filmcraft_timeline(movie,meta)
+            self.assertEqual(count,0)
+            meta["segments"][1]["speed"]=1.
+            meta["professional"]["transition"]="wipeleft"
+            _,count=build_filmcraft_timeline(movie,meta)
+            self.assertEqual(count,0)
+            meta["professional"]["transition"]="dissolve"
+            meta["segments"][0]["source"]="../private.mp4"
+            _,count=build_filmcraft_timeline(movie,meta)
+            self.assertEqual(count,0)
+
     def test_missing_clips_reverts_to_rendered_mp4(self):
         with tempfile.TemporaryDirectory() as temp:
             video, meta = project_fixture(temp, originals=False)
