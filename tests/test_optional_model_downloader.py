@@ -11,7 +11,8 @@ from unittest import mock
 
 from optional_model_downloader import (
     ModelDownloadError, downloaded_blob_bytes, wait_for_pull,
-    pull_model_with_retries, required_free_bytes, _pull_error_hint, _NoRedirect,
+    pull_model_with_retries, required_free_bytes, model_download_lock,
+    _pull_error_hint, _NoRedirect,
 )
 
 
@@ -198,6 +199,30 @@ class ModelDownloadStallTests(unittest.TestCase):
             self.assertEqual(file.read_bytes(),b"safe model bytes")
             self.assertNotIn("C:/private",_pull_error_hint(
                 b"proxy connection broken at C:/private/folder"))
+
+    def test_concurrent_download_is_blocked_but_lock_auto_releases(self):
+        with tempfile.TemporaryDirectory() as root:
+            store=Path(root)
+            blob=store/"blobs"/"partial"
+            blob.parent.mkdir()
+            blob.write_bytes(b"previous download")
+            with model_download_lock(store):
+                with self.assertRaisesRegex(ModelDownloadError,"уже скачивается"):
+                    with model_download_lock(store):
+                        self.fail("concurrent model download lock was bypassed")
+                self.assertEqual(blob.read_bytes(),b"previous download")
+            # After the first process releases its OS lock, retry is possible.
+            with model_download_lock(store):
+                self.assertEqual(blob.read_bytes(),b"previous download")
+            self.assertTrue((store/".jarvis-qwen-download.lock").is_file())
+
+    def test_diagnostics_report_disk_and_tls_without_exposing_logs(self):
+        self.assertIn("места",_pull_error_hint(
+            b"no space left on device at C:/user/private"))
+        self.assertIn("TLS",_pull_error_hint(
+            b"x509: certificate signed by unknown authority"))
+        self.assertNotIn("C:/user",_pull_error_hint(
+            b"proxy connection reset at C:/user/private"))
 
     def test_resume_disk_space_does_not_need_three_gb_again(self):
         self.assertEqual(required_free_bytes(0),3_000_000_000)
