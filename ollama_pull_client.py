@@ -170,7 +170,6 @@ def _one_pull(endpoint, opener, cancel, ledger, *, progress=None, stage=None,
     clock = clock or time.monotonic
     start = clock()
     last_activity = start
-    last_progress = ledger.last_bytes
     closing = threading.Event()
     try:
         with opener.open(_request(endpoint), timeout=READ_TIMEOUT) as response:
@@ -204,14 +203,15 @@ def _one_pull(endpoint, opener, cancel, ledger, *, progress=None, stage=None,
                     item = json.loads(value)
                 except (UnicodeError, ValueError) as exc:
                     raise PullAPIError("Некорректный поток Ollama.", retryable=False) from exc
-                last_activity = clock()
-                previous = ledger.last_bytes
+                previous_bytes = ledger.last_bytes
+                previous_status = ledger.last_status
                 if ledger.update(item, progress=progress, stage=stage):
                     return
-                if ledger.last_bytes > previous:
-                    last_progress = ledger.last_bytes
-                # Status frames are valid liveness (checksum verification
-                # can take time); no-activity timeout covers silent hangs.
+                if (ledger.last_bytes > previous_bytes
+                        or ledger.last_status != previous_status):
+                    last_activity = clock()
+                # Repeated identical status frames must NOT hide a stall.
+                # A genuine phase change (e.g. hash verification) is progress.
     except urllib.error.HTTPError as exc:
         raise PullAPIError(
             _safe_hint(f"HTTP {exc.code}"), retryable=exc.code in
