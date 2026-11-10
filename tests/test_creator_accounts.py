@@ -104,6 +104,40 @@ class CreatorAccountTests(unittest.TestCase):
                 window.destroy()
             root.destroy()
 
+    def test_all_six_signup_and_help_button_paths_require_user_consent(self):
+        """Neither a signup nor a help click can silently open the browser."""
+        from types import SimpleNamespace
+        from creator_accounts_ui import CreatorAccountsWindow
+        target=SimpleNamespace(result=mock.Mock())
+        with mock.patch("creator_accounts_ui.messagebox.askyesno",
+                        return_value=False), \
+             mock.patch("creator_accounts_ui.open_creator_registration") as reg, \
+             mock.patch("creator_accounts_ui.open_creator_help") as help_open:
+            for site in SITES:
+                CreatorAccountsWindow._open(target,site.key)
+                CreatorAccountsWindow._help(target,site.key)
+            reg.assert_not_called()
+            help_open.assert_not_called()
+        with mock.patch("creator_accounts_ui.messagebox.askyesno",
+                        return_value=True), \
+             mock.patch("creator_accounts_ui.open_creator_registration",
+                        return_value=True) as reg, \
+             mock.patch("creator_accounts_ui.open_creator_help",
+                        return_value=True) as help_open:
+            for site in SITES:
+                CreatorAccountsWindow._open(target,site.key)
+                CreatorAccountsWindow._help(target,site.key)
+            self.assertEqual(
+                [call.args[0] for call in reg.call_args_list],
+                [site.key for site in SITES])
+            self.assertEqual(
+                [call.args[0] for call in help_open.call_args_list],
+                [site.key for site in SITES])
+            self.assertTrue(all(call.kwargs=={"confirmed":True}
+                                for call in reg.call_args_list))
+            self.assertTrue(all(call.kwargs=={"confirmed":True}
+                                for call in help_open.call_args_list))
+
     def test_ui_never_collects_passwords_sms_cookies_or_post_videos(self):
         from creator_accounts_ui import CreatorAccountsWindow
         source=inspect.getsource(CreatorAccountsWindow)
