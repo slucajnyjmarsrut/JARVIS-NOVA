@@ -55,6 +55,8 @@ jobs:
       - name: Verify Lite model storage and downloader contracts
         run: python -m unittest discover -s tests -p test_lite_edition.py -v
       - name: Run existing text-only application tests
+      - name: Test Qwen stall detection and safe cancellation
+        run: python -m unittest discover -s tests -p test_optional_model_downloader.py -v
         shell: pwsh
         run: |
           python scripts/run_text_only_tests.py
