@@ -147,6 +147,13 @@ def check_project(language:str,root:Path,*,timeout=30)->dict:
             # isolates the check from repo-specific build hooks as well.
             check_cwd=Path(tmp) if language=="typescript" else root
             err=_syntax_process(cmd,check_cwd,timeout=timeout)
+            if err=="Превышено время проверки":
+                # A busy Windows CI worker is not proof of invalid code.
+                # Never mark syntax verified if the compiler timed out.
+                return {"status":"partial","reason":
+                    f"{source.name}: компилятор не ответил за отведённое время. "
+                    "Синтаксис не подтверждён; повтори проверку.",
+                    "files":len(sources),"verification":"structure_only"}
             if err:
                 return {"status":"failed","reason":f"{source.name}: {err}",
                         "verification":"syntax_only"}
