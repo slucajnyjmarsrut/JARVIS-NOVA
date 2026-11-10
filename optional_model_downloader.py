@@ -348,8 +348,14 @@ def download_qwen(assets: Path, *, target: Path | None=None,
                     time.sleep(.3)
             else:
                 raise ModelDownloadError("Ollama не ответила в течение 65 секунд")
-            pull_model_with_retries(exe,store,cancel,runner=runner,server=server,
-                                    env=env,flags=flags,progress=progress,stage=stage)
+            # The CLI does not expose reliable machine-readable progress.
+            # Its cache files may be preallocated before bytes are downloaded.
+            # Prefer Ollama's official loopback streaming pull API instead.
+            from ollama_pull_client import PullAPIError, pull_via_api
+            try:
+                pull_via_api(endpoint,cancel,progress=progress,stage=stage)
+            except PullAPIError as exc:
+                raise ModelDownloadError(str(exc)) from exc
             # The registry manifest specifies every blob SHA256. Do NOT accept
             # partially downloaded files or a model with mismatched checksums.
             if stage:
