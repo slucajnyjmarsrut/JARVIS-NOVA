@@ -96,6 +96,11 @@ class CreatorAccountTests(unittest.TestCase):
             # Ensure actual controls are present even when panel content
             # is taller than the available screen area.
             self.assertEqual(len(window._scroll_panel.winfo_children()),8)
+            cards=window._scroll_panel.winfo_children()[2:5]
+            self.assertEqual(len(cards),3)
+            self.assertTrue(all(card.bind("<MouseWheel>") for card in cards))
+            self.assertTrue(all(card.winfo_children()[0].bind("<MouseWheel>")
+                                for card in cards))
             canvas.yview_moveto(1.0)
             window.update_idletasks()
             self.assertTrue(0<=canvas.yview()[0]<=1)
