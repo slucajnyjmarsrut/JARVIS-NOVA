@@ -46,8 +46,7 @@ class CreatorAccountsWindow(tk.Toplevel):
             scrollregion=canvas.bbox("all")), add="+")
         canvas.bind("<Configure>", lambda e: canvas.itemconfigure(
             self._scroll_window, width=e.width), add="+")
-        canvas.bind("<MouseWheel>", lambda e: canvas.yview_scroll(
-            -1 if e.delta>0 else 1, "units"), add="+")
+        canvas.bind("<MouseWheel>", self._scroll_wheel, add="+")
         # Dynamic wrapping keeps instructions readable at narrow widths.
         self._wrap_targets = []
         ttk.Label(panel, text="СОЗДАНИЕ АККАУНТОВ · ОФИЦИАЛЬНЫЕ САЙТЫ",
@@ -99,6 +98,21 @@ class CreatorAccountsWindow(tk.Toplevel):
         result_label.pack(anchor="w", pady=(8,0))
         self._wrap_targets.append((result_label,38))
         canvas.bind("<Configure>", self._resize_scroll_text, add="+")
+        # Most of the canvas is covered by cards. Tk mouse-wheel events go
+        # to the child under the cursor, not to the canvas underneath it.
+        # Bind locally to each child instead of using intrusive bind_all().
+        self._bind_card_wheel(panel)
+
+    def _bind_card_wheel(self, widget):
+        widget.bind("<MouseWheel>", self._scroll_wheel, add="+")
+        for child in widget.winfo_children():
+            self._bind_card_wheel(child)
+
+    def _scroll_wheel(self, event):
+        if event.delta:
+            self._scroll_canvas.yview_scroll(
+                -1 if event.delta>0 else 1, "units")
+        return "break"
 
     def _resize_scroll_text(self, event):
         width=max(220,int(event.width))
