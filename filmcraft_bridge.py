@@ -133,10 +133,20 @@ def _safe_edl(meta, movie):
         return []
     directory = meta.get("source_directory")
     parts = meta.get("segments")
+    popular = isinstance(meta.get("style"),str)
     if not isinstance(directory, str) or not isinstance(parts, list):
         return []
     if not 1 <= len(parts) <= 30:
         return []
+    if popular:
+        # Only reconstruct precise source cuts. FilmCraft's limited OTIO
+        # importer cannot reproduce velocity changes or wipe/slide effects.
+        # Such presets retain a single editable rendered-MP4 reference.
+        professional = meta.get("professional", {})
+        if not isinstance(professional,dict):
+            return []
+        if professional.get("transition") not in ("fade","dissolve","none"):
+            return []
     try:
         root = Path(directory).expanduser().resolve(strict=True)
         if not root.is_dir():
@@ -145,11 +155,16 @@ def _safe_edl(meta, movie):
         for item in parts:
             if not isinstance(item, dict):
                 return []
-            name = item.get("file")
+            name = item.get("source") if popular else item.get("file")
             if (not isinstance(name, str) or not 1 <= len(name) <= 200
                     or name in (".", "..") or "/" in name or "\\" in name):
                 return []
-            offset, seconds = float(item.get("start")), float(item.get("seconds"))
+            if popular:
+                speed=float(item.get("speed",1))
+                if not math.isfinite(speed) or abs(speed-1.0)>.0001:
+                    return []
+            offset = float(item.get("start"))
+            seconds = float(item.get("duration") if popular else item.get("seconds"))
             if (not math.isfinite(offset) or not math.isfinite(seconds)
                     or offset < 0 or not .7 <= seconds <= 15):
                 return []
