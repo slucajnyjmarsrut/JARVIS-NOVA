@@ -28,6 +28,11 @@ on:
       - scripts/verify_text_package_size.py
       - installer/JarvisNovaLite.iss
       - tests/test_lite_edition.py
+      - popular_edits.py
+      - creator_accounts.py
+      - creator_accounts_ui.py
+      - tests/test_popular_edits.py
+      - tests/test_creator_accounts.py
       - tests/test_optional_model_downloader.py
       - tests/test_ollama_pull_client.py
       - ollama_pull_client.py
