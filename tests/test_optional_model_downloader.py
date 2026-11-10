@@ -114,7 +114,7 @@ class ModelDownloadStallTests(unittest.TestCase):
         class FakePull:
             def __init__(self,code):
                 self.exit_code=code
-                self.stderr=BytesIO(failure_text)
+                self.stdout=BytesIO(failure_text)
                 self.terminated=False
 
             def poll(self):
