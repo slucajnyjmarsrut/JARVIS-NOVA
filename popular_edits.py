@@ -67,8 +67,11 @@ def select_style(name: str) -> EditStyle:
 
 
 def source_clips(folder: Path) -> list[Path]:
-    folder = Path(folder).resolve()
-    if not folder.is_dir() or folder.is_symlink():
+    folder = Path(folder)
+    if folder.is_symlink() or not folder.is_dir():
+        raise PopularEditError("Выбери существующую обычную папку с видео.")
+    folder = folder.resolve()
+    if not folder.is_dir():
         raise PopularEditError("Выбери существующую папку с собственными видео.")
     clips = sorted(
         (p for p in folder.iterdir()
@@ -130,7 +133,10 @@ def render_popular_edit(
 
     preset = select_style(style)
     clips = source_clips(footage_folder)
-    out = Path(out_file).expanduser().resolve()
+    requested_output=Path(out_file).expanduser()
+    if requested_output.is_symlink():
+        raise PopularEditError("Недопустимая ссылка вместо выходного MP4.")
+    out = requested_output.resolve()
     source = Path(footage_folder).resolve()
     if (out.suffix.casefold() != ".mp4" or out == source
             or source in out.parents or not out.parent.is_dir()
