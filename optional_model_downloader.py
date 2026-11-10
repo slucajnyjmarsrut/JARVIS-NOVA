@@ -324,8 +324,6 @@ def download_qwen(assets: Path, *, target: Path | None=None,
             "OLLAMA_MODELS":str(store),
             "OLLAMA_NO_CLOUD":"1",
             "OLLAMA_MAX_LOADED_MODELS":"1",
-            # Less concurrent range traffic is gentler on constrained VPN links.
-            "OLLAMA_DOWNLOAD_PARTS":"4",
         })
         flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
         runner=popen or subprocess.Popen
