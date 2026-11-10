@@ -231,6 +231,29 @@ class PopularEditTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(clip.read_bytes()).hexdigest(),digest)
 
 
+    @unittest.skipUnless(shutil.which("ffmpeg"),
+                         "Actual FFmpeg required to evaluate filter expressions")
+    def test_every_preset_filter_graph_is_accepted_by_real_ffmpeg(self):
+        """Exercise the color, crop and speed expressions of all 16 presets."""
+        ffmpeg=shutil.which("ffmpeg")
+        for style in STYLES:
+            with self.subTest(style=style.name):
+                command=[
+                    ffmpeg,"-hide_banner","-loglevel","error","-nostdin",
+                    "-f","lavfi","-i",
+                    "color=c=blue:s=320x180:r=30:d=0.4",
+                    "-f","lavfi","-i","anullsrc=r=48000:cl=stereo",
+                    "-filter_complex",_segment_filter(
+                        style,speed=speed_for(style,0),
+                        seconds=style.seconds,has_audio=False),
+                    "-map","[v]","-map","[a]",
+                    "-frames:v","1","-t","0.15","-f","null","-",
+                ]
+                result=subprocess.run(command,capture_output=True,timeout=40)
+                self.assertEqual(
+                    result.returncode,0,
+                    result.stderr.decode(errors="replace")[-500:])
+
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
                          "Real FFmpeg and FFprobe required")
     def test_every_transition_effect_renders_a_real_h264_mp4(self):
