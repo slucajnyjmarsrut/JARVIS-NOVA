@@ -29,6 +29,8 @@ on:
       - installer/JarvisNovaLite.iss
       - tests/test_lite_edition.py
       - tests/test_optional_model_downloader.py
+      - tests/test_ollama_pull_client.py
+      - ollama_pull_client.py
       - .github/workflows/windows-lite.yml
   workflow_dispatch:
 permissions:
