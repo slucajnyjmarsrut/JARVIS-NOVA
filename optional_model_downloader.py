@@ -293,6 +293,16 @@ def download_qwen(assets: Path, *, target: Path | None=None,
     store=Path(target) if target is not None else user_model_store()
     if store.is_symlink() or store.parent.is_symlink():
         raise ModelDownloadError("Недопустимая папка модели")
+    cancel=cancel or threading.Event()
+    if cancel.is_set():
+        raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
+    from model_storage import local_model_available
+    # An installed valid model requires NO additional disk space. Check
+    # readiness before applying the free-space reserve for new transfers.
+    if local_model_available(assets,user_store=store):
+        if progress:
+            progress(downloaded_blob_bytes(store))
+        return store
     store.mkdir(parents=True,exist_ok=True)
     existing=downloaded_blob_bytes(store)
     free=shutil.disk_usage(store).free
@@ -302,14 +312,6 @@ def download_qwen(assets: Path, *, target: Path | None=None,
             f"Недостаточно места для Qwen: свободно {free/1e9:.1f} ГБ, "
             f"нужно ещё примерно {needed/1e9:.1f} ГБ. "
             "Уже скачанные части сохранены.")
-    cancel=cancel or threading.Event()
-    if cancel.is_set():
-        raise ModelDownloadError("Загрузка отменена. Частичные файлы сохранены.")
-    from model_storage import local_model_available
-    if local_model_available(assets,user_store=store):
-        if progress:
-            progress(downloaded_blob_bytes(store))
-        return store
     with model_download_lock(store):
         # The Ollama server is exclusively owned by this operation on a random
         # 127.0.0.1 port. Never connect to a system-wide Ollama daemon.
