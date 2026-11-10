@@ -148,7 +148,7 @@ def verify_edit_output_media(file: Path, ffprobe: str, *,
 
 
 def render_popular_edit(
-    footage_folder: Path, out_file: Path, *
+    footage_folder: Path, out_file: Path, *,
     style: str, music_path: Path | None = None,
     cancel: threading.Event | None = None, tools=None,
     executor=None,
