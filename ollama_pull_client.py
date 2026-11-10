@@ -24,7 +24,9 @@ MAX_MODEL_BYTES = 12_000_000_000
 MAX_BLOBS = 128
 MAX_IDLE_SECONDS = 300
 MAX_TOTAL_SECONDS = 14400
-READ_TIMEOUT = 55
+# Long checksum verification can legitimately pause the stream; the
+# consumer enforces its own 5-minute no-activity limit and is cancellable.
+READ_TIMEOUT = MAX_IDLE_SECONDS + 15
 
 
 class PullAPIError(RuntimeError):
