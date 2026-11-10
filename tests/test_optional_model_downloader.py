@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Lite Qwen download stall reporting, safe cancellation, and partial retention."""
 from pathlib import Path
+from io import BytesIO
+from types import SimpleNamespace
 import queue
 import tempfile
 import threading
@@ -9,6 +11,7 @@ from unittest import mock
 
 from optional_model_downloader import (
     ModelDownloadError, downloaded_blob_bytes, wait_for_pull,
+    pull_model_with_retries, required_free_bytes, _pull_error_hint, _NoRedirect,
 )
 
 
@@ -104,6 +107,121 @@ class ModelDownloadStallTests(unittest.TestCase):
                     wait_for_pull(PullProcess(clock),folder,threading.Event(),
                                   clock=clock.monotonic,sleep=clock.sleep,
                                   max_wait=1,stall_wait=10)
+
+    @staticmethod
+    def mock_pull_retries(folder, codes, *, failure_text=b"proxy connection reset", waiter=None):
+        """No network, no Ollama installation or model weights required."""
+        class FakePull:
+            def __init__(self,code):
+                self.exit_code=code
+                self.stderr=BytesIO(failure_text)
+                self.terminated=False
+
+            def poll(self):
+                return self.exit_code
+
+            def terminate(self):
+                self.terminated=True
+                self.exit_code=-15
+
+            def wait(self,timeout=None):
+                return self.exit_code
+
+            def kill(self):
+                self.terminate()
+
+        attempts=[]
+        commands=[]
+        stage=[]
+        def runner(command, **kwargs):
+            commands.append(command)
+            item=FakePull(codes[len(attempts)])
+            attempts.append(item)
+            return item
+        def check(pull,store,cancel,progress=None):
+            if waiter is not None:
+                return waiter(pull,store,cancel,progress)
+            if pull.poll()!=0:
+                raise ModelDownloadError("Ollama не скачала модель")
+        with mock.patch("optional_model_downloader.shutil.disk_usage",
+                        return_value=SimpleNamespace(free=10_000_000_000)):
+            pull_model_with_retries(
+                Path(folder)/"ollama.exe",Path(folder),threading.Event(),
+                runner=runner,server=SimpleNamespace(poll=lambda:None),
+                env={"OLLAMA_NO_CLOUD":"1"},stage=stage.append,
+                waiter=check,pause=lambda seconds:False)
+        return attempts,commands,stage
+
+    def test_retry_two_failed_attempts_and_success_without_losing_cache(self):
+        with tempfile.TemporaryDirectory() as root:
+            store=Path(root)
+            blobs=store/"blobs"
+            blobs.mkdir()
+            partial=blobs/"sha256-chunk-partial"
+            partial.write_bytes(b"previously downloaded chunk")
+            before=partial.read_bytes()
+            processes,commands,messages=self.mock_pull_retries(store,[1,1,0])
+            self.assertEqual(len(processes),3)
+            self.assertTrue(all(cmd[1:] == ["pull","qwen3-vl:2b-instruct"]
+                                for cmd in commands))
+            self.assertIn("попытка 3 из 3"," ".join(messages))
+            self.assertIn("прокси"," ".join(messages))
+            self.assertEqual(partial.read_bytes(),before)
+
+    def test_stall_kills_old_pull_before_retrying_and_cancel_aborts(self):
+        with tempfile.TemporaryDirectory() as root:
+            store=Path(root)
+            store.joinpath("blobs").mkdir()
+            calls=0
+            def crash(pull, *_):
+                nonlocal calls
+                calls+=1
+                if calls==1:
+                    self.assertIsNone(pull.poll())
+                    raise ModelDownloadError("Загрузка Qwen остановилась")
+                self.assertEqual(calls,2)
+            processes,_,_=self.mock_pull_retries(
+                store,[None,0],waiter=crash)
+            self.assertTrue(processes[0].terminated)
+            self.assertFalse(processes[1].terminated)
+
+    def test_exhausted_retries_keep_partial_and_sanitize_errors(self):
+        with tempfile.TemporaryDirectory() as root:
+            store=Path(root)
+            directory=store/"blobs"
+            directory.mkdir()
+            file=directory/"partial"
+            file.write_bytes(b"safe model bytes")
+            with self.assertRaisesRegex(ModelDownloadError,"после 3 попыток"):
+                self.mock_pull_retries(store,[1,1,1],
+                    failure_text=b"proxy connection broken at C:/private/folder")
+            self.assertEqual(file.read_bytes(),b"safe model bytes")
+            self.assertNotIn("C:/private",_pull_error_hint(
+                b"proxy connection broken at C:/private/folder"))
+
+    def test_resume_disk_space_does_not_need_three_gb_again(self):
+        self.assertEqual(required_free_bytes(0),3_000_000_000)
+        self.assertEqual(required_free_bytes(1_110_000_000),1_890_000_000)
+        self.assertEqual(required_free_bytes(3_000_000_000),800_000_000)
+
+    def test_downloader_tags_reject_external_redirects(self):
+        import urllib.request
+        handler=_NoRedirect()
+        with self.assertRaises(ModelDownloadError):
+            handler.redirect_request(None,None,302,"Found",{},
+                                     "https://evil.example/collect")
+        captured=[]
+        class Reply:
+            def __enter__(self):return self
+            def __exit__(self,*a):return None
+            def read(self,limit):return b'{"models":[]}'
+        class Opener:
+            def open(self,url,timeout):return Reply()
+        with mock.patch.object(urllib.request,"build_opener",
+                 side_effect=lambda *args:(captured.extend(args),Opener())[1]):
+            from optional_model_downloader import _loopback_tags
+            _loopback_tags("http://127.0.0.1:12345")
+        self.assertTrue(any(isinstance(h,_NoRedirect) for h in captured))
 
     def test_ui_exposes_cancel_only_during_download(self):
         from nova_command_palette import entries
