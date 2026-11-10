@@ -214,6 +214,27 @@ class FilmCraftBridgeTests(unittest.TestCase):
             with self.assertRaises(FilmCraftError):
                 open_in_filmcraft(home/"random.exe")
 
+    def test_filmcraft_download_denial_never_starts_network_or_worker(self):
+        """An 'open editor' action cannot silently install a new executable."""
+        from viral_studio_ui import ViralStudioWindow
+        class FakeStatus:
+            def __init__(self): self.value=""
+            def set(self,text):self.value=text
+        status=FakeStatus()
+        dummy=SimpleNamespace(running=False,rendered_video=None,
+                              filmcraft_exe=None,status=status)
+        with patch("filmcraft_bridge.find_filmcraft",
+                   side_effect=FilmCraftError("not installed")), \
+             patch("viral_studio_ui.messagebox.askyesno",
+                   return_value=False) as confirm, \
+             patch.object(ViralStudioWindow,"_spawn") as spawn, \
+             patch("filmcraft_installer.install_filmcraft") as download:
+            ViralStudioWindow.open_filmcraft(dummy)
+            confirm.assert_called_once()
+            spawn.assert_not_called()
+            download.assert_not_called()
+            self.assertIn("отменена",status.value)
+
     def test_gui_and_production_menu_expose_button(self):
         # The lightweight CI test must not instantiate Tk, load models,
         # import old microphone modules or require an interactive display.
