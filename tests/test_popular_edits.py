@@ -14,6 +14,7 @@ from popular_edits import (
     STYLES, STYLE_BY_NAME, PopularEditError,
     source_clips, select_style, speed_for,
     _segment_filter, render_popular_edit, verify_edit_output_media,
+    is_popular_edit_request,
 )
 from pro_montage import ProOptions, validate_options, color_filter
 
