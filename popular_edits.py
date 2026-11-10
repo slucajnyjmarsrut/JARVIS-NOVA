@@ -272,6 +272,9 @@ def render_popular_edit(
                 "style": preset.name, "style_label": preset.label,
                 "size": list(preset.size), "duration": output_duration,
                 "segments": decisions, "professional": finish,
+                # Enables FilmCraft to reconstruct honest editable cuts for
+                # presets without time warps or unsupported transitions.
+                "source_directory": str(source),
                 "technical_quality": technical,
                 "music": str(music_path) if music_path else None,
                 "created_utc": datetime.now(timezone.utc).isoformat(),
