@@ -52,6 +52,7 @@ jobs:
                                  'test_publisher_trust.py',
                                  'test_update_center.py',
                                  'test_lite_edition.py',
+                                 'test_optional_model_downloader.py',
                                  'test_nova_ui.py',
                                  'test_nova_window_state.py',
                                  'test_local_chat.py',
