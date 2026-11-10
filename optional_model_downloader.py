@@ -193,9 +193,11 @@ def pull_model_with_retries(exe: Path, store: Path, cancel: threading.Event, *,
                   "Продолжаю с уже скачанных частей.")
         pull=runner([str(exe),"pull",MODEL_NAME],
               cwd=str(exe.parent),env=env,stdin=subprocess.DEVNULL,
-              stdout=subprocess.DEVNULL,stderr=subprocess.PIPE,
+              stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
               creationflags=flags)
-        diagnostics=_ErrorTail(getattr(pull,"stderr",None))
+        # Ollama versions may print errors on stdout OR stderr. Drain both
+        # through one bounded ring buffer; never disclose raw local log paths.
+        diagnostics=_ErrorTail(getattr(pull,"stdout",None))
         failure=None
         try:
             waiter(pull,store,cancel,progress=progress)
