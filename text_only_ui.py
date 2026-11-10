@@ -71,6 +71,10 @@ def build_text_interface(app):
     _label(titlebar,"ПЕРЕПИСКА С NOVA",fg=CYAN,bold=True,size=9).pack(side="left")
     app.hud_clock = _label(titlebar,"--:--",fg=MUTED,size=9)
     app.hud_clock.pack(side="right")
+    # Visible cancellation while Qwen is downloading: users should not
+    # have to search a nested settings menu when the network stalls.
+    app.hud_cancel_model = _action(
+        titlebar,"СТОП QWEN",app.cancel_local_model_download,compact=True)
     app.hud_status = _label(card,fg=MUTED,size=9,textvariable=app.status,
                             wraplength=392,justify="left",anchor="w")
     app.hud_status.pack(fill="x",padx=10,pady=(0,6))
@@ -115,6 +119,11 @@ def build_text_interface(app):
                                if busy else ("ready","ГОТОВ К ТЕКСТУ",GREEN))
             app.hud_mode.configure(text=label,fg=color)
             app.hud_clock.configure(text=time.strftime("%H:%M"))
+            if getattr(app,"_model_download_busy",False):
+                if not app.hud_cancel_model.winfo_manager():
+                    app.hud_cancel_model.pack(side="right",padx=(2,8))
+            elif app.hud_cancel_model.winfo_manager():
+                app.hud_cancel_model.pack_forget()
             engine=getattr(app,"engine","bundled")
             engine_label,engine_color=engine_badge(
                 engine,getattr(app,"_local_model_ready",False))
