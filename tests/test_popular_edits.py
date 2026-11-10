@@ -232,6 +232,44 @@ class PopularEditTests(unittest.TestCase):
 
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
+                         "Real FFmpeg and FFprobe required")
+    def test_every_transition_effect_renders_a_real_h264_mp4(self):
+        """Every advertised transition must be accepted by FFmpeg."""
+        from pro_montage import SAFE_TRANSITIONS, finish_video
+        ffmpeg=shutil.which("ffmpeg")
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            videos=[]
+            for idx,shade in enumerate(("blue","yellow")):
+                clip=root/f"source{idx}.mp4"
+                command=[ffmpeg,"-hide_banner","-loglevel","error","-y",
+                         "-f","lavfi","-i",
+                         f"color=c={shade}:s=160x288:r=30:d=1.35",
+                         "-f","lavfi","-i",
+                         "anullsrc=r=48000:cl=stereo",
+                         "-t","1.35","-c:v","libx264",
+                         "-pix_fmt","yuv420p","-c:a","aac",str(clip)]
+                result=subprocess.run(command,capture_output=True,timeout=40)
+                if result.returncode:
+                    self.skipTest("FFmpeg unavailable for real transition renders")
+                videos.append(clip)
+            def run(cmd,timeout=240,cancel=None):
+                p=subprocess.run(cmd,capture_output=True,timeout=timeout)
+                if p.returncode:
+                    raise RuntimeError(
+                        p.stderr.decode(errors="replace")[-450:])
+                return p.stdout
+            for transition in sorted(SAFE_TRANSITIONS):
+                with self.subTest(transition=transition):
+                    movie=root/f"{transition}.mp4"
+                    finish_video(
+                        videos,[1.35,1.35],movie,ffmpeg,
+                        options=ProOptions(
+                            transition=.2,transition_style=transition),
+                        executor=run)
+                    self.assertGreater(movie.stat().st_size,1000)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
                          "Actual FFmpeg and FFprobe required")
     def test_real_two_clips_wide_vertical_velocity_and_fades(self):
         """Cover multiple real render paths, including silent inputs and speed."""
