@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """The Qwen progress source must be Ollama's streaming API, not blob size."""
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
 import threading
@@ -200,6 +201,51 @@ class OllamaStreamTests(unittest.TestCase):
         with self.assertRaisesRegex(PullAPIError, "Некорректный поток"):
             pull_via_api("http://127.0.0.1:19123", threading.Event(),
                          opener=result, attempts=1)
+
+    def test_real_http_loopback_streaming_works_without_any_model_weights(self):
+        """Actual urllib HTTP transport; test server sends only fixed fake JSON."""
+        messages = []
+        class LocalFakeOllama(BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length","0"))
+                messages.append((self.path, json.loads(self.rfile.read(length))))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-ndjson")
+                self.end_headers()
+                for message in (
+                    frame("pulling manifest"),
+                    frame("pulling a", digest="sha256:aaaa",
+                          completed=120000, total=200000),
+                    frame("pulling a", digest="sha256:aaaa",
+                          completed=200000, total=200000),
+                    frame("verifying sha256 digest"),
+                    frame("writing manifest"),
+                    frame("success")):
+                    self.wfile.write(message)
+                    self.wfile.flush()
+            def log_message(self, *_):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), LocalFakeOllama)
+        runner = threading.Thread(target=server.serve_forever, daemon=True)
+        runner.start()
+        try:
+            received = []
+            stages = []
+            done = pull_via_api(
+                f"http://127.0.0.1:{server.server_port}", threading.Event(),
+                progress=received.append, stage=stages.append,
+                attempts=1)
+            self.assertEqual(done, 200000)
+            self.assertEqual(received, [120000, 200000])
+            self.assertEqual(messages, [("/api/pull", {
+                "model": "qwen3-vl:2b-instruct",
+                "stream": True, "insecure": False})])
+            self.assertTrue(any("контрольные" in message for message in stages))
+        finally:
+            server.shutdown()
+            server.server_close()
+            runner.join(timeout=5)
 
     def test_default_transport_disables_proxies_and_redirects(self):
         recorded = []
