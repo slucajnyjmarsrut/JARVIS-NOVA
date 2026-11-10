@@ -18,6 +18,7 @@ import threading
 import time
 import urllib.request
 from collections import deque
+from contextlib import contextmanager
 
 from bundled_vision_runtime import validate_offline_model_store
 from model_storage import MODEL_NAME, user_model_store
@@ -39,6 +40,48 @@ MAX_STALL_SECONDS=5*60
 MAX_PULL_ATTEMPTS=3
 MIN_REMAINING_BYTES=800_000_000
 ERROR_TAIL_BYTES=8192
+
+
+@contextmanager
+def model_download_lock(store: Path):
+    """OS-backed lock prevents two JARVIS processes using one model cache.
+
+    The lock is automatically released on process exit, even after a crash.
+    Leaving the tiny lock file is safe and never deletes downloaded blobs.
+    """
+    path=Path(store)/".jarvis-qwen-download.lock"
+    if path.is_symlink():
+        raise ModelDownloadError("Недоверенный файл блокировки модели.")
+    with path.open("a+b") as file:
+        if os.name=="nt":
+            import msvcrt
+            file.seek(0,os.SEEK_END)
+            if file.tell()==0:
+                file.write(b"\0")
+                file.flush()
+            file.seek(0)
+            try:
+                msvcrt.locking(file.fileno(),msvcrt.LK_NBLCK,1)
+            except OSError as exc:
+                raise ModelDownloadError(
+                    "Qwen уже скачивается в другом окне JARVIS. "
+                    "Заверши первую загрузку и попробуй снова.") from exc
+            try:
+                yield
+            finally:
+                file.seek(0)
+                msvcrt.locking(file.fileno(),msvcrt.LK_UNLCK,1)
+        else:
+            import fcntl
+            try:
+                fcntl.flock(file.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except OSError as exc:
+                raise ModelDownloadError(
+                    "Qwen уже скачивается в другом процессе.") from exc
+            try:
+                yield
+            finally:
+                fcntl.flock(file.fileno(),fcntl.LOCK_UN)
 
 
 def required_free_bytes(downloaded: int) -> int:
@@ -267,60 +310,67 @@ def download_qwen(assets: Path, *, target: Path | None=None,
         if progress:
             progress(downloaded_blob_bytes(store))
         return store
-    # The Ollama server is exclusively owned by this operation on a random
-    # 127.0.0.1 port. Never connect to a system-wide Ollama daemon.
-    with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1",0))
-        port=sock.getsockname()[1]
-    env=dict(os.environ)
-    env.update({
-        "OLLAMA_HOST":f"127.0.0.1:{port}",
-        "OLLAMA_MODELS":str(store),
-        "OLLAMA_NO_CLOUD":"1",
-        "OLLAMA_MAX_LOADED_MODELS":"1",
-        # Less concurrent range traffic is gentler on constrained VPN links.
-        "OLLAMA_DOWNLOAD_PARTS":"4",
-    })
-    flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
-    runner=popen or subprocess.Popen
-    server=None
-    try:
-        server=runner([str(exe),"serve"],cwd=str(exe.parent),env=env,
-              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
-              stdin=subprocess.DEVNULL,creationflags=flags)
-        endpoint=f"http://127.0.0.1:{port}"
-        deadline=time.monotonic()+65
-        while time.monotonic()<deadline:
-            if cancel.is_set():
-                raise ModelDownloadError("Загрузка отменена")
-            if server.poll() is not None:
-                raise ModelDownloadError("Ollama не удалось запустить")
-            try:
-                _loopback_tags(endpoint)
-                break
-            except (OSError,TimeoutError,ValueError,ModelDownloadError):
-                time.sleep(.3)
-        else:
-            raise ModelDownloadError("Ollama не ответила в течение 65 секунд")
-        pull_model_with_retries(exe,store,cancel,runner=runner,server=server,
-                                env=env,flags=flags,progress=progress,stage=stage)
-        # The registry manifest specifies every blob SHA256. Do NOT accept
-        # partially downloaded files or a model with mismatched checksums.
-        validate_offline_model_store(assets,model_store=store,verify_hashes=True)
-        if progress is not None:
-            progress(downloaded_blob_bytes(store))
-        return store
-    finally:
-        for proc in (server,):
-            if proc is None:
-                continue
-            try:
-                if proc.poll() is None:
-                    proc.terminate()
-                    proc.wait(timeout=5)
-            except (OSError,subprocess.TimeoutExpired):
+    with model_download_lock(store):
+        # The Ollama server is exclusively owned by this operation on a random
+        # 127.0.0.1 port. Never connect to a system-wide Ollama daemon.
+        with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1",0))
+            port=sock.getsockname()[1]
+        env=dict(os.environ)
+        env.update({
+            "OLLAMA_HOST":f"127.0.0.1:{port}",
+            "OLLAMA_MODELS":str(store),
+            "OLLAMA_NO_CLOUD":"1",
+            "OLLAMA_MAX_LOADED_MODELS":"1",
+            # Less concurrent range traffic is gentler on constrained VPN links.
+            "OLLAMA_DOWNLOAD_PARTS":"4",
+        })
+        flags=getattr(subprocess,"CREATE_NO_WINDOW",0)
+        runner=popen or subprocess.Popen
+        server=None
+        try:
+            if stage:
+                stage("Подключаю локальную Ollama. Скачанные части останутся на диске.")
+            server=runner([str(exe),"serve"],cwd=str(exe.parent),env=env,
+                  stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                  stdin=subprocess.DEVNULL,creationflags=flags)
+            endpoint=f"http://127.0.0.1:{port}"
+            deadline=time.monotonic()+65
+            while time.monotonic()<deadline:
+                if cancel.is_set():
+                    raise ModelDownloadError("Загрузка отменена")
+                if server.poll() is not None:
+                    raise ModelDownloadError("Ollama не удалось запустить")
                 try:
-                    proc.kill()
-                    proc.wait(timeout=3)
+                    _loopback_tags(endpoint)
+                    break
+                except (OSError,TimeoutError,ValueError,ModelDownloadError):
+                    time.sleep(.3)
+            else:
+                raise ModelDownloadError("Ollama не ответила в течение 65 секунд")
+            pull_model_with_retries(exe,store,cancel,runner=runner,server=server,
+                                    env=env,flags=flags,progress=progress,stage=stage)
+            # The registry manifest specifies every blob SHA256. Do NOT accept
+            # partially downloaded files or a model with mismatched checksums.
+            if stage:
+                stage("Загрузка завершена. Проверяю SHA256 модели; файлы сохранены.")
+            validate_offline_model_store(assets,model_store=store,verify_hashes=True)
+            if cancel.is_set():
+                raise ModelDownloadError("Загрузка отменена. Модель сохранена на диске.")
+            if progress is not None:
+                progress(downloaded_blob_bytes(store))
+            return store
+        finally:
+            for proc in (server,):
+                if proc is None:
+                    continue
+                try:
+                    if proc.poll() is None:
+                        proc.terminate()
+                        proc.wait(timeout=5)
                 except (OSError,subprocess.TimeoutExpired):
-                    pass
+                    try:
+                        proc.kill()
+                        proc.wait(timeout=3)
+                    except (OSError,subprocess.TimeoutExpired):
+                        pass
