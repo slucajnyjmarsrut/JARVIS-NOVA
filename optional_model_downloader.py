@@ -27,7 +27,68 @@ class ModelDownloadError(RuntimeError):
 
 
 MIN_FREE_BYTES=3_000_000_000
-MAX_WAIT_SECONDS=2400
+# Slow internet can require several hours; a separate no-progress guard detects stalls.
+MAX_WAIT_SECONDS=4*60*60
+MAX_STALL_SECONDS=5*60
+
+
+def downloaded_blob_bytes(store: Path) -> int:
+    """Count existing complete and partial Ollama blobs without deleting them."""
+    total=0
+    for file in (Path(store)/"blobs").glob("*"):
+        try:
+            if file.is_file() and not file.is_symlink():
+                total+=file.stat().st_size
+        except (FileNotFoundError, PermissionError):
+            # Ollama may atomically rename a completed partial file.
+            continue
+    return total
+
+
+def wait_for_pull(pull, store: Path, cancel: threading.Event, *,
+                  progress=None, clock=None, sleep=None,
+                  max_wait=MAX_WAIT_SECONDS, stall_wait=MAX_STALL_SECONDS) -> None:
+    """Fail after sustained lack of downloaded bytes, without removing cache.
+
+    A clean pull exit succeeds. The caller separately verifies all model
+    digests; neither stalled nor cancelled downloads are treated as ready.
+    """
+    clock=clock or time.monotonic
+    sleep=sleep or time.sleep
+    started=clock()
+    last_growth=started
+    last_size=downloaded_blob_bytes(store)
+    last_report=-1.0
+    while True:
+        if cancel.is_set():
+            raise ModelDownloadError(
+                "Загрузка отменена. Скачанные части сохранены для повторной попытки.")
+        code=pull.poll()
+        if code is not None:
+            if code!=0:
+                raise ModelDownloadError(
+                    "Ollama не скачала модель. Проверь подключение к интернету "
+                    "и свободное место. Уже скачанные части не удаляются.")
+            return
+        now=clock()
+        if now-started>max_wait:
+            raise ModelDownloadError(
+                "Достигнут общий предел ожидания загрузки Qwen. "
+                "Скачанные части сохранены.")
+        size=downloaded_blob_bytes(store)
+        if size!=last_size:
+            last_growth=now
+            last_size=size
+        if progress is not None and now-last_report>=1:
+            progress(size)
+            last_report=now
+        if now-last_growth>stall_wait:
+            raise ModelDownloadError(
+                "Загрузка Qwen остановилась: несколько минут нет новых данных. "
+                "Проверь интернет, VPN и защиту Windows. "
+                "Открой ⚙ → «Проверить локальную модель» для повтора: "
+                "частично скачанные файлы сохранены.")
+        sleep(.3)
 
 
 def _loopback_tags(endpoint: str, timeout=2):
@@ -63,7 +124,7 @@ def download_qwen(assets: Path, *, target: Path | None=None,
     from model_storage import local_model_available
     if local_model_available(assets,user_store=store):
         if progress:
-            progress(sum(p.stat().st_size for p in (store/"blobs").glob("*") if p.is_file()))
+            progress(downloaded_blob_bytes(store))
         return store
     # The Ollama server is exclusively owned by this operation on a random
     # 127.0.0.1 port. Never connect to a system-wide Ollama daemon.
@@ -103,31 +164,12 @@ def download_qwen(assets: Path, *, target: Path | None=None,
               cwd=str(exe.parent),env=env,stdin=subprocess.DEVNULL,
               stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
               creationflags=flags)
-        deadline=time.monotonic()+MAX_WAIT_SECONDS
-        last_report=0
-        while True:
-            if cancel.is_set():
-                raise ModelDownloadError("Загрузка отменена")
-            if time.monotonic()>deadline:
-                raise ModelDownloadError("Превышено время загрузки Qwen")
-            code=pull.poll()
-            now=time.monotonic()
-            if progress is not None and now-last_report>=1:
-                size=sum(p.stat().st_size for p in (store/"blobs").glob("*")
-                         if p.is_file())
-                progress(size)
-                last_report=now
-            if code is not None:
-                if code!=0:
-                    raise ModelDownloadError(
-                        "Ollama не скачала модель. Проверь интернет и свободное место")
-                break
-            time.sleep(.3)
+        wait_for_pull(pull,store,cancel,progress=progress)
         # The registry manifest specifies every blob SHA256. Do NOT accept
         # partially downloaded files or a model with mismatched checksums.
         validate_offline_model_store(assets,model_store=store,verify_hashes=True)
         if progress is not None:
-            progress(sum(p.stat().st_size for p in (store/"blobs").glob("*") if p.is_file()))
+            progress(downloaded_blob_bytes(store))
         return store
     finally:
         for proc in (pull,server):
