@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from creator_accounts import (
     SITES, creator_site, CreatorSignupError,
     open_creator_registration, open_creator_help, suggest_creator_handles,
+    is_creator_signup_request,
 )
 
 
