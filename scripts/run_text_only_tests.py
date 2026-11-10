@@ -43,6 +43,8 @@ TESTS=(
        "test_post_montage_review.py",
        "test_pro_montage.py",
        "test_pro_video_integration.py",
+       "test_popular_edits.py",
+       "test_creator_accounts.py",
        "test_roblox_asset_pipeline.py",
        "test_roblox_world_builder.py",
        "test_self_improve.py",
