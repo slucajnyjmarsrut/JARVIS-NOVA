@@ -60,6 +60,24 @@ MAX_INPUT_BYTES = 10_000_000_000
 MAX_CLIPS = 10
 
 
+def is_popular_edit_request(message: str) -> bool:
+    """Route explicit Russian edit requests to the studio, never run edits silently."""
+    if not isinstance(message,str) or not 3<=len(message)<=400:
+        return False
+    value=" ".join(message.casefold().replace("ё","е").split()).strip(" !.,")
+    for prefix in ("джарвис, ", "джарвис ", "jarvis, ", "jarvis ", "nova "):
+        if value.startswith(prefix):
+            value=value[len(prefix):]
+            break
+    return value.startswith((
+        "сделай эдит", "создай эдит", "собери эдит", "хочу эдит",
+        "сделай монтаж", "собери монтаж",
+        "сделай шортс", "сделай shorts",
+        "создай рилс", "сделай рилс",
+        "смонтируй видео", "эдит для тиктока",
+    ))
+
+
 def select_style(name: str) -> EditStyle:
     if not isinstance(name, str) or name not in STYLE_BY_NAME:
         raise PopularEditError("Неизвестный стиль монтажа.")
