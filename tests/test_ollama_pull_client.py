@@ -150,6 +150,22 @@ class OllamaStreamTests(unittest.TestCase):
             req.full_url == "http://127.0.0.1:19123/api/pull"
             for req, _ in opener.calls))
 
+    def test_repeated_identical_status_cannot_hide_stalled_network(self):
+        """Even a daemon spamming 'pulling' without bytes must time out."""
+        class Clock:
+            value = 0.0
+            def __call__(self):
+                self.value += 1.0
+                return self.value
+        response = FakeResponse(
+            [frame("pulling manifest")] * 30 +
+            [frame("pulling a", digest="a", completed=0, total=100)] * 30)
+        opener = FakeOpener(response)
+        with self.assertRaisesRegex(PullAPIError, "не передаёт новых данных"):
+            _one_pull("http://127.0.0.1:19123", opener,
+                      threading.Event(), ProgressLedger(),
+                      clock=Clock(), max_idle=3)
+
     def test_stream_end_without_success_always_fails_closed(self):
         opener = FakeOpener(FakeResponse([
             frame("pulling", digest="sha256:a", completed=200, total=500)]))
