@@ -53,6 +53,22 @@ class CreatorSignupError(ValueError):
     pass
 
 
+def is_creator_signup_request(message: str) -> bool:
+    """An intent to open user-owned signup, never permission to create accounts."""
+    if not isinstance(message,str) or not 5<=len(message)<=400:
+        return False
+    value=" ".join(message.casefold().replace("ё","е").split()).strip(" !.,")
+    if not any(name in value for name in (
+            "youtube", "ютуб", "ютюб", "tiktok", "тик ток", "тикток",
+            "instagram", "инстаграм", "инста")):
+        return False
+    return any(phrase in value for phrase in (
+        "создай аккаунт", "создать аккаунт", "сделай аккаунт",
+        "зарегистрируй", "регистрация в ", "зарегистрироваться",
+        "создай канал", "открой регистрацию",
+    ))
+
+
 def creator_site(key: str) -> CreatorSite:
     if not isinstance(key, str) or key not in SITE_BY_KEY:
         raise CreatorSignupError("Можно выбрать только YouTube, TikTok или Instagram.")
