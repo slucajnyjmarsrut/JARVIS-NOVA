@@ -117,8 +117,38 @@ def _segment_filter(style: EditStyle, *, speed: float, seconds: float,
     return video + ";" + audio
 
 
+def verify_edit_output_media(file: Path, ffprobe: str, *,
+                             size: tuple[int,int], expected_seconds: float,
+                             executor, cancel=None) -> dict:
+    """Validate H264/AAC and exact dimensions across vertical, wide and square."""
+    from viral_studio import ViralStudioError
+    raw=executor([ffprobe,"-v","error","-show_format","-show_streams",
+                  "-of","json",str(file)],timeout=30,cancel=cancel)
+    try:
+        data=json.loads(raw)
+        video=next(s for s in data["streams"] if s.get("codec_type")=="video")
+        audio=next(s for s in data["streams"] if s.get("codec_type")=="audio")
+        duration=float(data["format"]["duration"])
+        if (not math.isfinite(duration) or not .7<=duration<=95 or
+                abs(duration-expected_seconds)>max(.5,expected_seconds*.1) or
+                video.get("codec_name")!="h264" or
+                audio.get("codec_name")!="aac" or
+                (int(video["width"]),int(video["height"]))!=size or
+                not Path(file).is_file() or Path(file).stat().st_size<1000):
+            raise ValueError("bad media")
+    except (ValueError,TypeError,KeyError,StopIteration,OverflowError) as exc:
+        raise PopularEditError(
+            "Техническая проверка MP4 не прошла: кодеки, длительность "
+            "или формат кадра неверны.") from exc
+    return {
+        "quality_checked":True, "video_codec":"h264",
+        "audio_codec":"aac", "width":size[0],"height":size[1],
+        "duration":duration,
+    }
+
+
 def render_popular_edit(
-    footage_folder: Path, out_file: Path, *,
+    footage_folder: Path, out_file: Path, *
     style: str, music_path: Path | None = None,
     cancel: threading.Event | None = None, tools=None,
     executor=None,
@@ -129,8 +159,6 @@ def render_popular_edit(
     Output is committed only after FFmpeg, ffprobe and sanity checks pass.
     """
     from viral_studio import ffmpeg_tools, _execute, _probe
-    from smart_montage import verify_output_media
-
     preset = select_style(style)
     clips = source_clips(footage_folder)
     requested_output=Path(out_file).expanduser()
@@ -201,8 +229,10 @@ def render_popular_edit(
                 parts, lengths, exported, ffmpeg,
                 options=opts, executor=runner, cancel=cancel)
             output_duration, _ = _probe(exported, ffprobe, cancel=cancel)
-            technical = verify_output_media(
-                exported, ffprobe, finish["expected_seconds"], cancel=cancel)
+            technical = verify_edit_output_media(
+                exported, ffprobe, size=preset.size,
+                expected_seconds=finish["expected_seconds"],
+                executor=runner, cancel=cancel)
             if output_duration < .7 or exported.stat().st_size < 1000:
                 raise PopularEditError("Итоговый MP4 не прошёл техническую проверку.")
             metadata = {
