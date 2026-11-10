@@ -28,6 +28,7 @@ on:
       - scripts/verify_text_package_size.py
       - installer/JarvisNovaLite.iss
       - tests/test_lite_edition.py
+      - tests/test_optional_model_downloader.py
       - .github/workflows/windows-lite.yml
   workflow_dispatch:
 permissions:
