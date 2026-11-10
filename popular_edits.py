@@ -165,6 +165,20 @@ def verify_edit_output_media(file: Path, ffprobe: str, *,
     }
 
 
+def _copy_export_with_cancel(source, destination, *, cancel=None,
+                             chunk_bytes=1024*1024):
+    """Copy a verified result in bounded chunks, honor cancellation promptly."""
+    if not isinstance(chunk_bytes,int) or not 4096<=chunk_bytes<=8*1024*1024:
+        raise PopularEditError("Недопустимый размер буфера экспорта.")
+    while True:
+        if cancel is not None and cancel.is_set():
+            raise PopularEditError("Экспорт отменён, частичный результат удалён.")
+        piece=source.read(chunk_bytes)
+        if not piece:
+            return
+        destination.write(piece)
+
+
 def render_popular_edit(
     footage_folder: Path, out_file: Path, *,
     style: str, music_path: Path | None = None,
@@ -274,7 +288,9 @@ def render_popular_edit(
                     with destination.open("xb") as target:
                         committed.append(destination)
                         with origin.open("rb") as src:
-                            shutil.copyfileobj(src, target, length=1024*1024)
+                            _copy_export_with_cancel(src,target,cancel=cancel)
+                if cancel is not None and cancel.is_set():
+                    raise PopularEditError("Экспорт отменён; файлы результата удалены.")
             except Exception:
                 for file in reversed(committed):
                     file.unlink(missing_ok=True)
