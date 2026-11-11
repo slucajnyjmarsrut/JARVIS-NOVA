@@ -12,7 +12,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from code_autopilot import generate_and_check, install_reviewed
+from code_autopilot import Attempt, AutopilotResult, generate_and_check, install_reviewed
 from code_workspace import starter_project, preview, WorkspaceError
 from code_agent import CodeResult, request_local_model
 from code_languages import SUPPORTED, LANGUAGE_LABELS
@@ -21,6 +21,7 @@ from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
 from code_project_engine import build_complete_project
 from code_quality_review import review_change_plan, unified_plan_diff
 from code_test_sandbox import run_python_tests
+from code_test_repair import repair_after_tests
 
 
 class CodeWindow(tk.Toplevel):
@@ -43,6 +44,7 @@ class CodeWindow(tk.Toplevel):
         self.world_size=tk.IntVar(value=384)
         self.model_kind=tk.StringVar(value='house')
         self._generation_busy=False
+        self._last_test_gate_status=None
         frame=ttk.Frame(self,padding=16)
         frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='Язык программирования').pack(anchor='w')
@@ -73,6 +75,10 @@ class CodeWindow(tk.Toplevel):
             actions,text='Тесты Python в Docker (с подтверждением)',
             command=self.test_reviewed_project,state='disabled')
         self.tests_button.pack(side='left',padx=(8,0))
+        self.repair_button=ttk.Button(
+            actions,text='Исправить по тестам (до 2)',
+            command=self.repair_using_test_feedback,state='disabled')
+        self.repair_button.pack(side='left',padx=(8,0))
         roblox=ttk.LabelFrame(frame,text='Roblox Studio: генерация 3D-моделей и карт')
         roblox.pack(fill='x',pady=(0,7))
         row=ttk.Frame(roblox);row.pack(fill='x',padx=8,pady=5)
@@ -153,9 +159,12 @@ class CodeWindow(tk.Toplevel):
             plan=starter_project(self.language.get(),self.task.get().strip())
             changes=preview(plan,root)
             self.result=CodeResult(plan,changes)
+            self._last_test_gate_status=None
             self.show('Шаблон без ИИ. Проверка будет выполнена после записи.\n'+self._preview_text(plan))
             self.write.configure(state='normal')
             self.tests_button.configure(
+                state='normal' if self.language.get()=='python' else 'disabled')
+            self.repair_button.configure(
                 state='normal' if self.language.get()=='python' else 'disabled')
         except Exception as exc:
             messagebox.showerror('Ошибка',str(exc),parent=self)
@@ -218,6 +227,8 @@ class CodeWindow(tk.Toplevel):
         self.starter_button.configure(state='disabled')
         self.write.configure(state='disabled')
         self.tests_button.configure(state='disabled')
+        self.repair_button.configure(state='disabled')
+        self._last_test_gate_status=None
         self.result=None
         self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
         def worker():
@@ -271,6 +282,104 @@ class CodeWindow(tk.Toplevel):
             self.write.configure(state='normal')
         self.tests_button.configure(
             state='normal' if result.plan.language=='python' else 'disabled')
+        self.repair_button.configure(
+            state='normal' if (result.plan.language=='python' and
+                result.workspace is None) else 'disabled')
+
+    def repair_using_test_feedback(self):
+        """Use a bounded Docker-only diagnostic repair loop; never auto-install."""
+        if self._generation_busy or self.result is None:
+            return
+        original=self.result
+        if original.plan.language!='python' or (
+                not isinstance(original,CodeResult) and original.workspace is not None):
+            messagebox.showinfo(
+                'Тесты и исправления',
+                'Пока доступны только новые Python-проекты. '
+                'Редактирование существующих проектов требует '
+                'отдельного согласованного обзора всех файлов.',
+                parent=self)
+            return
+        if not messagebox.askyesno(
+            'Проверить и исправить Python',
+            'Проверить тесты в изолированном Docker без сети и, если они '
+            'не проходят, предложить не более двух исправлений с помощью ИИ?\n\n'
+            'Код будет обработан как данные в отдельной папке, исходники '
+            'не перезаписываются. После проверки будет показан diff.\n'
+            'Docker должен быть установлен, образ python:3.12-slim — '
+            'уже доступен локально. Изоляция не абсолютна.',
+            parent=self):
+            return
+        if getattr(self.master,'engine',None)=='freellm':
+            if not messagebox.askyesno(
+                'Передача ошибок и исходников ИИ-провайдеру',
+                'В режиме FreeLLM содержимое Python-файлов и сообщения '
+                'ошибок тестов будут отправлены подключённому внешнему '
+                'провайдеру для исправления. Не передавай токены и '
+                'личные данные. Разрешить?',
+                parent=self):
+                return
+        task=self.task.get().strip() or 'Исправить Python-тесты'
+        self._generation_busy=True
+        self._last_test_gate_status=None
+        for button in (self.gen,self.starter_button,self.tests_button,
+                       self.repair_button,self.write):
+            button.configure(state='disabled')
+        self.log.insert('end','\nНачинаю Docker-тесты и не более двух исправлений.\n')
+        def worker():
+            try:
+                repaired=repair_after_tests(
+                    task,original.plan,generator=self._model_generator,
+                    runner=run_python_tests,confirmed=True,max_repairs=2)
+                report='\n'.join(
+                    f'Попытка {step.round}: {step.status.upper()}, '
+                    f'тестов {step.tests_run}\n{step.diagnostics[-1200:]}'
+                    for step in repaired.steps)
+                def finish():
+                    self._generation_busy=False
+                    self.gen.configure(state='normal')
+                    self.starter_button.configure(state='normal')
+                    self.tests_button.configure(state='normal')
+                    self.repair_button.configure(state='normal')
+                    self.log.insert('end','\n'+report+'\n')
+                    if repaired.success:
+                        # Retain staged changes for review; no disk writes.
+                        new_result=AutopilotResult(
+                            repaired.plan,[Attempt(1,'passed',
+                            f'Docker: {repaired.steps[-1].tests_run} tests')],
+                            True,None,{})
+                        self._last_test_gate_status='passed'
+                        self.ready(new_result)
+                        self.log.insert('end',
+                            '\nDocker-тесты прошли. Это не гарантия '
+                            'полной корректности или безопасности.\n')
+                    else:
+                        self._last_test_gate_status=(
+                            'blocked' if any(x.status=='blocked'
+                                             for x in repaired.steps)
+                            else repaired.steps[-1].status)
+                        if self._last_test_gate_status in ('failed','blocked'):
+                            self.write.configure(state='disabled')
+                        self.log.insert('end',
+                            '\nНовая версия НЕ подтверждена тестами. '
+                            'Не выдавай её за рабочую.\n')
+                    self.log.see('end')
+                self._on_ui(finish)
+            except Exception as exc:
+                msg=str(exc)[:500]
+                def error():
+                    self._generation_busy=False
+                    self._last_test_gate_status='failed'
+                    self.gen.configure(state='normal')
+                    self.starter_button.configure(state='normal')
+                    self.tests_button.configure(state='normal')
+                    self.repair_button.configure(state='normal')
+                    self.write.configure(state='disabled')
+                    self.log.insert('end','\nИсправление прервано: '+msg+'\n')
+                    self.log.see('end')
+                self._on_ui(error)
+        threading.Thread(
+            target=worker,daemon=True,name='jarvis-docker-code-repair').start()
 
     def test_reviewed_project(self):
         """Opt-in isolated test of proposed Python files, before disk install."""
@@ -339,6 +448,13 @@ class CodeWindow(tk.Toplevel):
 
     def install(self):
         if self._generation_busy or not self.result:return
+        if self._last_test_gate_status in ('failed','blocked'):
+            messagebox.showerror(
+                'Тесты не пройдены',
+                'После неудачных тестов нужна новая исправленная '
+                'генерация и повторная проверка.',
+                parent=self)
+            return
         try:
             root=self._target()
             changes=preview(self.result.plan,root)
