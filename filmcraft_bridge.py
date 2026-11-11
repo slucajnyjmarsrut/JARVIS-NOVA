@@ -131,6 +131,42 @@ def _safe_edl(meta, movie):
     """Accept only existing local source clips matching JARVIS EDL names."""
     if not isinstance(meta, dict):
         return []
+    if meta.get("schema") == "jarvis_timeline_v1":
+        # Timeline uses exact local paths and may draw timed SRT or velocity.
+        # FilmCraft's OTIO importer does not reconstruct burned captions,
+        # time warps or advanced wipe effects. Keep the mastered MP4 instead.
+        if meta.get("subtitles"):
+            return []
+        effect=meta.get("render_info", {})
+        if not isinstance(effect,dict):
+            return []
+        if effect.get("transition") not in ("fade","dissolve","none"):
+            return []
+        cuts=meta.get("cuts")
+        if not isinstance(cuts,list) or not 1<=len(cuts)<=10:
+            return []
+        result=[]
+        try:
+            for row in cuts:
+                if not isinstance(row,dict):
+                    return []
+                raw=Path(row["path"]).expanduser()
+                if raw.is_symlink() or not raw.is_file():
+                    return []
+                source=raw.resolve(strict=True)
+                start=float(row["source_start"])
+                seconds=float(row["duration"])
+                speed=float(row["speed"])
+                caption=row.get("caption","")
+                if (not math.isfinite(start) or start<0 or
+                        not math.isfinite(seconds) or not .7<=seconds<=15 or
+                        not math.isfinite(speed) or abs(speed-1.)>.0001 or
+                        not isinstance(caption,str)):
+                    return []
+                result.append((source,start,seconds,caption[:100]))
+        except (KeyError,OSError,TypeError,ValueError,RuntimeError):
+            return []
+        return result
     directory = meta.get("source_directory")
     parts = meta.get("segments")
     popular = isinstance(meta.get("style"),str)
@@ -184,14 +220,20 @@ def _safe_edl(meta, movie):
 def _read_metadata(movie, metadata):
     if isinstance(metadata, dict):
         return metadata
-    edl = movie.with_name(movie.stem + "_EDL.json")
-    try:
-        if not edl.is_file() or edl.is_symlink() or edl.stat().st_size > MAX_EDL_SIZE:
-            return {}
-        data = json.loads(edl.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
-    except (OSError, UnicodeError, ValueError):
-        return {}
+    # Accept our reviewed sidecars; no arbitrary paths from an untrusted
+    # movie or remote site. All files stay beside the user's rendered MP4.
+    for suffix in ("_EDL.json","_TIMELINE.json","_MULTITRACK.json"):
+        edl = movie.with_name(movie.stem + suffix)
+        try:
+            if (not edl.is_file() or edl.is_symlink() or
+                    edl.stat().st_size > MAX_EDL_SIZE):
+                continue
+            data = json.loads(edl.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return data
+        except (OSError, UnicodeError, ValueError):
+            continue
+    return {}
 
 
 def build_filmcraft_timeline(movie, metadata=None):
@@ -218,6 +260,8 @@ def build_filmcraft_timeline(movie, metadata=None):
     else:
         originals = len(rows)
     pro = meta.get("professional") if isinstance(meta.get("professional"), dict) else {}
+    if meta.get("schema") == "jarvis_timeline_v1":
+        pro=meta.get("render_info") if isinstance(meta.get("render_info"),dict) else {}
     fade = pro.get("transition_seconds", 0)
     try:
         fade = float(fade)
