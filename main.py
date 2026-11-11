@@ -168,6 +168,10 @@ class Jarvis(tk.Tk):
                          command=lambda:self.open_viral_studio(stage="edits"))
         menu.add_command(label="Аккаунты YouTube / TikTok / Instagram",
                          command=self.open_creator_accounts)
+        menu.add_command(label="Многодорожечный монтаж · видео/логотип/звук",
+                         command=self.open_multitrack)
+        menu.add_command(label="Подготовить публикацию · YouTube/TikTok/Instagram",
+                         command=self.open_publish_preparation)
         interface_menu=tk.Menu(menu,tearoff=False)
         interface_menu.add_checkbutton(label="Анимация ядра NOVA",variable=self.hud_animate)
         interface_menu.add_command(label="Свернуть → мини-диалог справа (Ctrl+Shift+O)",
