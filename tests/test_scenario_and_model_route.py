@@ -90,6 +90,26 @@ class AutonomousScenarioTests(TestCase):
         self.assertIn("Qwen",note)
         self.assertEqual(brief.generator,"локальная Qwen3-VL")
 
+    def test_revision_contains_rejected_ai_shots_not_just_generic_feedback(self):
+        original=replace(quick_brief("minecraft"),generator="локальная Qwen3-VL")
+        repeated=replace(original,shots=(
+            original.shots[0],*(
+                replace(x,film="Один и тот же общий план")
+                for x in original.shots[1:]
+            )))
+        calls=[]
+        def generator(topic,trends,**kwargs):
+            calls.append((topic,kwargs))
+            return repeated if len(calls)==1 else original
+        result,note,report,n=create_checked_scenario(
+            "minecraft",mode="deep",ai_generator=generator)
+        self.assertTrue(report.passed)
+        self.assertEqual(n,2)
+        self.assertEqual(calls[0][0],"minecraft")
+        self.assertEqual(calls[1][1]["previous_brief"],repeated)
+        self.assertIn("Повторяются инструкции",calls[1][1]["quality_feedback"])
+        self.assertEqual(result.shots,original.shots)
+
     def test_qwen_shortens_hook_timing_without_rewriting_ai_scenes(self):
         original=quick_brief("minecraft")
         slow=replace(

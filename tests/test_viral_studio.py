@@ -116,6 +116,44 @@ class ViralTests(unittest.TestCase):
         self.assertEqual(sum(x.seconds for x in brief.shots),27)
         runtime.stop.assert_called_once()
 
+    def test_previous_bad_scenario_is_context_not_command(self):
+        from quick_video_brief import quick_brief
+        prior=quick_brief("Minecraft")
+        runtime=Mock()
+        runtime.start.return_value='http://127.0.0.1:1234'
+        response={
+            'title':'Minecraft','hook':'Открытие',
+            'script':'Покажем, как построить безопасную ферму в игре. '
+                     'Сначала поставим основание. Затем добавим механизм. '
+                     'Проверим, что всё работает. Завершим показом результата.',
+            'shots':[
+                {'seconds':3,'film':'Показать готовую ферму','caption':'Готово'},
+                {'seconds':6,'film':'Показать место под блоки','caption':'Место'},
+                {'seconds':6,'film':'Поставить блоки основания','caption':'Основа'},
+                {'seconds':6,'film':'Испытать механизм фермы','caption':'Проверка'},
+                {'seconds':6,'film':'Показать итоговый кадр','caption':'Итог'},
+            ],
+            'call_to_action':'А ты строил такую ферму?'
+        }
+        def requester(url,payload):
+            prompt=payload['prompt']
+            self.assertIn("ПРЕДЫДУЩИЙ ЧЕРНОВИК",prompt)
+            self.assertIn("Minecraft",prompt)
+            self.assertIn("Повторяются инструкции",prompt)
+            self.assertIn("ДРУГИЕ объекты",prompt)
+            self.assertNotIn("http://example.org",prompt)
+            return {'response':json.dumps(response,ensure_ascii=False)}
+        result=create_local_brief(
+            "Minecraft",model_runtime=runtime,requester=requester,
+            previous_brief=prior,
+            quality_feedback="Повторяются инструкции для съёмки.")
+        self.assertEqual(len(result.shots),5)
+        runtime.stop.assert_called_once()
+        with self.assertRaisesRegex(ViralStudioError,"подменять тему"):
+            create_local_brief(
+                "Не Minecraft",model_runtime=runtime,requester=requester,
+                previous_brief=prior)
+
     def test_ai_bad_storyboard_is_rejected_not_marked_successful(self):
         runtime=Mock()
         runtime.start.return_value='http://127.0.0.1:1234'

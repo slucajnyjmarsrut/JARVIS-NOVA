@@ -77,6 +77,8 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
     if runtime is not None:
         kwargs.update(model_runtime=runtime,stop_runtime=False)
     report=None
+    previous=None
+    failures=[]
     for attempt in range(max_revisions+1):
         try:
             call_kwargs=dict(kwargs)
@@ -86,6 +88,8 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                     +"; ".join(report.issues)[:330]
                     +" Начни с зацепки, сделай разные сцены, конкретный сюжет "
                     "по теме и ясный финал. Не выдумывай факты.")
+                if previous is not None:
+                    call_kwargs["previous_brief"]=previous
             brief=ai_generator(topic,trends,**call_kwargs)
             if not isinstance(brief,Brief):
                 raise ViralStudioError("ИИ не вернул сценарий.")
@@ -97,6 +101,8 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                 first=replace(brief.shots[0],seconds=3.0)
                 brief=replace(brief,shots=(first,*brief.shots[1:]))
             report=assess_scenario(brief)
+            if not report.passed:
+                previous=brief
             if report.passed:
                 return brief,(
                     f"Сценарий локальной Qwen; формальная проверка пройдена "
@@ -104,10 +110,13 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                 ),report,attempt+1
         except Exception as exc:
             report=ScenarioAssessment(False,(str(exc)[:160],),0.)
+        if report and not report.passed:
+            failures.append(
+                f"{attempt+1}: "+("; ".join(report.issues))[:180])
     fallback=quick_brief(topic,trends,audience=audience)
     fallback_report=assess_scenario(fallback)
     return fallback,(
         "Локальная Qwen не подготовила сценарий, прошедший формальные "
         "проверки. Использован авторский шаблон БЕЗ нейросети. "
-        "Причины: "+"; ".join(report.issues)[:220]
+        "Причины попыток: "+" | ".join(failures)[-420:]
     ),fallback_report,max_revisions+1
