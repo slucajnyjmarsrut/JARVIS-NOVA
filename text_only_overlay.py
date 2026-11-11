@@ -24,7 +24,7 @@ class TextOverlay(NovaOverlay):
         self.quick_entry = tk.Entry(entry_row,font=("Segoe UI",9))
         self.quick_entry.pack(side="left",fill="x",expand=True,padx=(0,4))
         self.quick_entry.bind("<Return>",self.send_text)
-        self.button(entry_row,"➤",self.send_text).pack(side="right")
+        # Enter submits from the mini-chat; no separate Send button.
 
     def send_text(self,event=None):
         if self._closed or getattr(self.app,"_closing",False):

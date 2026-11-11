@@ -147,10 +147,15 @@ class CommandPalette:
         button=app.hud_settings_button
         screenw=app.winfo_screenwidth()
         screenh=app.winfo_screenheight()
+        # The old gear button is intentionally unmounted in chat-first UI.
+        # F10 and the text command "открой настройки" still open the palette.
+        anchor_x=(button.winfo_rootx()+button.winfo_width()
+                  if button.winfo_manager() else
+                  app.winfo_rootx()+app.winfo_width()-12)
+        anchor_y=(button.winfo_rooty()+button.winfo_height()+4
+                  if button.winfo_manager() else app.winfo_rooty()+48)
         x,y,w,h=clamp_popup(
-            button.winfo_rootx()+button.winfo_width()-360,
-            button.winfo_rooty()+button.winfo_height()+4,
-            360,560,screenw,screenh)
+            anchor_x-360,anchor_y,360,560,screenw,screenh)
         self.popup.geometry(f"{w}x{h}+{x}+{y}")
         self.render()
         self.popup.deiconify()

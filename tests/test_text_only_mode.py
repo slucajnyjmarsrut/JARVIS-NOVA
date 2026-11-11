@@ -77,6 +77,16 @@ class TextModeTests(unittest.TestCase):
             encoding="utf-8")
         self.assertIn('"test_debate_mode.py"',suite)
 
+    def test_chat_first_ui_has_no_visible_shortcut_buttons(self):
+        from text_only_ui import build_text_interface
+        source=inspect.getsource(build_text_interface)
+        self.assertIn('app.hud_mode_buttons = {}',source)
+        self.assertNotIn('app.hud_settings_button.pack(',source)
+        self.assertNotIn('"ОТПРАВИТЬ"',source)
+        self.assertNotIn('"СКРИН"',source)
+        self.assertIn('app.entry.bind("<Return>",app.enter)',source)
+        self.assertIn('app.hud_cancel_model',source)
+
     def test_real_text_panel_without_devices(self):
         import tkinter as tk
         from contextlib import ExitStack
@@ -101,6 +111,10 @@ class TextModeTests(unittest.TestCase):
                     self.assertFalse(hasattr(app.overlay,"listen_button"))
                     self.assertTrue(app.entry.winfo_exists())
                     self.assertTrue(app.overlay.quick_entry.winfo_exists())
+                    self.assertEqual(app.hud_mode_buttons,{})
+                    self.assertFalse(app.hud_settings_button.winfo_manager())
+                    self.assertFalse(app.hud_update_button.winfo_manager())
+                    self.assertFalse(app.hud_minimize_button.winfo_manager())
                     self.assertIn("Готов", app.status.get())
                 finally:
                     app.close()

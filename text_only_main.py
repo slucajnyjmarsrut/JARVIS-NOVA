@@ -25,6 +25,8 @@ from text_only_overlay import TextOverlay
 from freellm_client import FreeLLMChat, FreeLLMError
 from update_preferences import load_preferences
 from model_storage import active_model_store, local_model_available, installed_edition
+from chat_first_intent import route_chat_request
+from agent_core import parse_local
 
 
 class NoAudio:
@@ -73,6 +75,9 @@ class TextJarvis(BaseJarvis):
         self.vision_allowed = False
         self.engine = "bundled"
         self._debate_mode = False
+        # The legacy mode dispatcher updates this variable even when the
+        # visible mode buttons are removed from the chat-only screen.
+        self._selected_mode = tk.StringVar(master=self, value="neutral")
         self.learning = LearningStore()
         self.modes = ModeManager()
         self.games = GameCatalog()
@@ -134,10 +139,13 @@ class TextJarvis(BaseJarvis):
         self.hud_settings_button.configure(command=self.show_settings_menu)
         self.bind("<F10>", self.show_settings_menu)
 
-        self.log("Система", "Только текст: напиши сообщение и нажми Enter. Микрофон и озвучивание отключены.")
+        self.log("Система", "JARVIS готов. Просто напиши, что хочешь сделать, "
+                 "и нажми Enter: например «хочу смонтировать видео», "
+                 "«создай программу», «открой настройки». "
+                 "Микрофон и озвучивание отключены.")
         if not self._local_model_ready:
-            self.log("Система", "Qwen не установлена. Для полноценного чата открой ⚙ → "
-                     "«Проверить локальную модель». Загрузка только с твоего разрешения.")
+            self.log("Система", "Qwen не установлена. Для полноценного разговора "
+                     "напиши «установи Qwen». Загрузка только с твоего разрешения.")
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
@@ -336,9 +344,82 @@ class TextJarvis(BaseJarvis):
         self._self_development_window=SelfDevelopmentWindow(self, task=report)
         return self._self_development_window
 
+    def _dispatch_chat_first(self, intent, text):
+        """Run only the predefined, permission-preserving user-facing actions."""
+        kind, value = intent.kind, intent.value
+        self.log("Вы", text)
+        if kind == "help":
+            self.reply(
+                "Просто напиши: «хочу смонтировать видео», "
+                "«хочу написать программу на Python», «хочу эдит», "
+                "«хочу добавить озвучку», «давай поспорим», "
+                "«открой настройки», «проверь обновления», "
+                "«хочу показать скриншот» или «открой калькулятор». "
+                "Я открою нужную функцию. Для установки, запуска кода, "
+                "доступа к экрану, сохранения файлов и публикации "
+                "по-прежнему нужно твоё подтверждение.")
+        elif kind == "settings":
+            self.reply("Открываю настройки JARVIS.")
+            self.show_settings_menu()
+        elif kind == "updates":
+            self.show_update_center()
+        elif kind == "model":
+            self.check_models()  # Separate explicit download permission.
+        elif kind == "cancel_model":
+            self.cancel_local_model_download()
+        elif kind == "engine":
+            self.set_engine(value)  # FreeLLM retains external-data consent.
+        elif kind == "permission_control":
+            self.grant_control()  # Dialog consent, not chat consent.
+        elif kind == "permission_screen":
+            self.grant_vision()
+        elif kind == "revoke":
+            self.revoke()
+            self.reply("Доступ к компьютеру и экрану отключён.")
+        elif kind == "minimize":
+            self.hide_main()
+        elif kind == "screenshot":
+            self.open_screenshot_review()  # User selects image manually.
+        elif kind == "gaming":
+            self.handle_mode_command(self.modes.set_mode("gaming"))
+            self.reply("Игровой режим включён. Напиши «игра Portal 2» "
+                       "или название своей игры — никаких кнопок не требуется.")
+        elif kind == "open_desktop":
+            self.execute_plan(parse_local("открой " + value))
+        elif kind == "code":
+            if not value:
+                self.reply("Назови один язык программирования — например "
+                           "Python, Java, JavaScript или Roblox Luau.")
+                return
+            self.open_code_assistant(value, text)
+            self.reply("Открываю подготовку проекта. Запуск и запись файлов "
+                       "только после проверки и подтверждения.")
+        elif kind == "studio":
+            self.open_viral_studio(stage="audience")
+        elif kind == "filmcraft":
+            self.open_filmcraft()
+        elif kind == "timeline":
+            self.open_timeline()
+        elif kind == "multitrack":
+            self.open_multitrack()
+        elif kind == "edits":
+            self.open_viral_studio(stage="edits")
+        elif kind == "publish":
+            self.open_publish_preparation()
+            self.reply("Подготовка публикации открыта. Загрузка в соцсети "
+                       "не выполняется автоматически.")
+        elif kind == "accounts":
+            self.open_creator_accounts()
+            self.reply("Открыл помощник регистрации. Личные данные и "
+                       "проверочные коды вводишь на официальном сайте.")
+
     def handle_text(self, text):
         from self_development import is_self_fix_command
         if self._closing:
+            return
+        chat_intent=route_chat_request(text)
+        if chat_intent is not None:
+            self._dispatch_chat_first(chat_intent, text)
             return
         if is_self_fix_command(text):
             self.log("Вы", text)

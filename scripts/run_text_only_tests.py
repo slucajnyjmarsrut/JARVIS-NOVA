@@ -39,6 +39,7 @@ TESTS=(
        "test_installer_contract.py",
        "test_local_chat.py",
        "test_debate_mode.py",
+       "test_chat_first_intent.py",
        "test_screenshot_review.py",
        "test_self_development.py",
        

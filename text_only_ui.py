@@ -35,13 +35,12 @@ def build_text_interface(app):
     title = tk.Frame(header, bg=BG)
     title.pack(side="left", expand=True, fill="x")
     _label(title, "JARVIS NOVA", fg=TEXT, size=14, bold=True).pack(anchor="w")
-    _label(title, "ТОЛЬКО ТЕКСТ · ЛОКАЛЬНО", fg=CYAN_DIM, size=8).pack(anchor="w")
+    _label(title, "НАПИШИ, ЧТО ХОЧЕШЬ · ENTER", fg=CYAN_DIM, size=8).pack(anchor="w")
     app.hud_settings_button = _action(header, "⚙", app.show_settings_menu, compact=True)
-    app.hud_settings_button.pack(side="right", padx=4)
+    # Chat-first default: no toolbar. Keep controls as unmounted fallbacks
+    # for keyboard accessibility (F10) and legacy callers.
     app.hud_update_button = _action(header, "⟳", app.show_update_center, compact=True)
-    app.hud_update_button.pack(side="right", padx=3)
     app.hud_minimize_button = _action(header, "▁", app.hide_main, compact=True)
-    app.hud_minimize_button.pack(side="right")
     hub = tk.Frame(shell, bg=SURFACE, highlightthickness=1, highlightbackground=EDGE)
     hub.pack(fill="x", pady=(0, 8))
     bar = tk.Frame(hub, bg=SURFACE)
@@ -57,13 +56,8 @@ def build_text_interface(app):
     app.hud_reactor = Reactor(hub)
     app.hud_reactor.configure(height=105)
     app.hud_reactor.pack(fill="x", padx=7, pady=(0, 8))
-    modes = tk.Frame(shell, bg=BG)
-    modes.pack(fill="x", pady=(0, 7))
+    # Modes are now selected by chat (or by the optional F10 palette).
     app.hud_mode_buttons = {}
-    for key, label in (("work","РАБОТА"),("gaming","ИГРЫ"),("study","УЧЁБА")):
-        btn = _action(modes,label,lambda v=key:app.activate_mode(v),compact=True)
-        btn.pack(side="left",fill="x",expand=True,padx=2)
-        app.hud_mode_buttons[key] = btn
     card = tk.Frame(shell,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
     card.pack(fill="both",expand=True,pady=(0,7))
     titlebar = tk.Frame(card,bg=SURFACE)
@@ -95,10 +89,8 @@ def build_text_interface(app):
     app.entry = tk.Entry(writer,bg=SURFACE_ALT,fg=TEXT,insertbackground=CYAN,
         selectbackground=CYAN_DIM,relief="flat",bd=0,font=("Segoe UI",11),
         highlightthickness=1,highlightbackground=EDGE,highlightcolor=CYAN)
-    app.entry.pack(side="left",fill="x",expand=True,ipady=9,padx=(0,6))
-    _action(writer,"ОТПРАВИТЬ",app.enter,primary=True,compact=True).pack(side="right")
-    _action(writer,"СКРИН",app.open_screenshot_review,compact=True).pack(
-        side="right",padx=(0,6))
+    app.entry.pack(side="left",fill="x",expand=True,ipady=9)
+    # Enter sends the text. The screenshot editor opens via chat.
     app.entry.bind("<Return>",app.enter)
     app.bind("<Control-l>",lambda e:(app.entry.focus_set(),"break")[1])
     app.bind("<F9>",app.f9)
