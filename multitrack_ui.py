@@ -74,6 +74,7 @@ class MultitrackWindow(tk.Toplevel):
         self.layer_motions=[]
         self.layer_motion_times=[]
         self.music_volume=tk.StringVar(value="0.22")
+        self.duck_music=tk.BooleanVar(value=False)
 
         self._picker(body,"01 · ОСНОВНОЕ MP4",self.base,"video")
         for index in (1,2,3):
@@ -139,6 +140,9 @@ class MultitrackWindow(tk.Toplevel):
         ttk.Entry(volume_row,textvariable=self.music_volume,
                   width=8,style="Studio.TEntry").pack(side="left",padx=(8,0))
         self._picker(body,"05 · ОЗВУЧКА / ГОЛОС",self.voice,"audio")
+        ttk.Checkbutton(
+            body,text="Автоматически приглушать музыку, когда звучит голос",
+            variable=self.duck_music).pack(anchor="w",pady=(0,8))
         self._picker(body,"06 · НОВЫЙ РЕЗУЛЬТАТ MP4",self.output,"output")
 
         footer=ttk.Frame(self,style="Studio.TFrame",padding=12)
@@ -227,6 +231,7 @@ class MultitrackWindow(tk.Toplevel):
             music=Path(self.music.get()) if self.music.get().strip() else None,
             voiceover=Path(self.voice.get()) if self.voice.get().strip() else None,
             music_volume=float(self.music_volume.get()),
+            duck_music=self.duck_music.get(),
         ),for_export=for_export)
 
     def save_project(self):
@@ -265,6 +270,7 @@ class MultitrackWindow(tk.Toplevel):
         self.music.set(str(project.music) if project.music else "")
         self.voice.set(str(project.voiceover) if project.voiceover else "")
         self.music_volume.set(str(project.music_volume))
+        self.duck_music.set(project.duck_music)
         for i in range(3):
             layer=project.layers[i] if i<len(project.layers) else None
             self.layer_files[i].set(str(layer.path) if layer else "")
