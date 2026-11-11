@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 
 from creator_publish import (
     PORTALS, PublishDraft, PublishingError, clean_draft, prepared_caption,
-    prepare_publish_package, open_upload_portal,
+    prepare_publish_package, open_upload_portal, is_publish_prep_request,
 )
 
 
