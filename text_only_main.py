@@ -111,6 +111,7 @@ class TextJarvis(BaseJarvis):
         self._model_scan_cancel=threading.Event()
         self._semantic_queue=queue.Queue()
         self._semantic_busy=False
+        self._semantic_epoch=0  # Invalidates old model actions after new input.
         self._model_download_last_size=0
         self._model_download_last_change=time.monotonic()
         self._last_screenshot_report=""
@@ -581,6 +582,11 @@ class TextJarvis(BaseJarvis):
         from self_development import is_self_fix_command
         if self._closing:
             return
+        if getattr(self, "_semantic_busy", False):
+            # A newer message cancels the previous proposed action. The
+            # worker may finish, but its stale answer cannot reach the UI.
+            self._semantic_epoch += 1
+            self._semantic_busy=False
         chat_intent=route_chat_request(text)
         if chat_intent is not None:
             self._dispatch_chat_first(chat_intent, text)
@@ -643,6 +649,8 @@ class TextJarvis(BaseJarvis):
                 self.reply("Обрабатываю предыдущую команду. Повтори запрос позже.")
                 return
             self._semantic_busy=True
+            self._semantic_epoch += 1
+            epoch=self._semantic_epoch
             self.status.set("Локальная Qwen определяет действие…")
             def semantic_worker():
                 try:
@@ -650,7 +658,7 @@ class TextJarvis(BaseJarvis):
                 except Exception:
                     intent=None  # Fail closed; ordinary chat still works.
                 if not self._shutdown.is_set():
-                    self._semantic_queue.put((text,intent))
+                    self._semantic_queue.put((epoch,text,intent))
             threading.Thread(target=semantic_worker,daemon=True,
                              name="jarvis-local-intent").start()
             return
@@ -674,8 +682,9 @@ class TextJarvis(BaseJarvis):
             return
         try:
             while True:
-                text,intent=self._semantic_queue.get_nowait()
-                self._complete_semantic_request(text,intent)
+                epoch,text,intent=self._semantic_queue.get_nowait()
+                if epoch == self._semantic_epoch:
+                    self._complete_semantic_request(text,intent)
         except queue.Empty:
             pass
         return BaseJarvis.pump(self)

@@ -150,6 +150,7 @@ class SemanticIntentSafetyTests(unittest.TestCase):
         app._local_model_ready=True
         app.executing=False
         app._semantic_busy=False
+        app._semantic_epoch=0
         app._semantic_queue=queue.Queue()
         app._shutdown=threading.Event()
         phrase="можешь показать параметры интерфейса"
@@ -164,18 +165,41 @@ class SemanticIntentSafetyTests(unittest.TestCase):
             job()
         classify.assert_called_once_with(phrase,app.runtime)
         self.assertEqual(
-            app._semantic_queue.get_nowait(),(phrase,ChatIntent("settings")))
+            app._semantic_queue.get_nowait(),(1,phrase,ChatIntent("settings")))
 
     def test_ui_queue_consumption_and_existing_controller_pump(self):
         app=mock.Mock()
         app._closing=False
+        app._semantic_epoch=2
         app._semantic_queue=queue.Queue()
-        app._semantic_queue.put(("можешь показать настройки",ChatIntent("settings")))
+        app._semantic_queue.put((2,"можешь показать настройки",ChatIntent("settings")))
         with mock.patch.object(BaseJarvis,"pump") as base:
             TextJarvis.pump(app)
         app._complete_semantic_request.assert_called_once_with(
             "можешь показать настройки",ChatIntent("settings"))
         base.assert_called_once_with(app)
+
+    def test_stale_semantic_inference_never_executes_after_new_command(self):
+        app=mock.Mock()
+        app._closing=False
+        app._semantic_epoch=5
+        app._semantic_queue=queue.Queue()
+        app._semantic_queue.put((4,"предыдущая просьба",ChatIntent("settings")))
+        with mock.patch.object(BaseJarvis,"pump") as base:
+            TextJarvis.pump(app)
+        app._complete_semantic_request.assert_not_called()
+        base.assert_called_once_with(app)
+
+        app=mock.Mock()
+        app._closing=False
+        app._semantic_busy=True
+        app._semantic_epoch=7
+        phrase="разреши видеть экран"
+        TextJarvis.handle_text(app,phrase)
+        self.assertEqual(app._semantic_epoch,8)
+        self.assertFalse(app._semantic_busy)
+        app._dispatch_chat_first.assert_called_once_with(
+            ChatIntent("permission_screen"),phrase)
 
     def test_shortcut_precedes_ai_and_no_local_model_does_not_start_semantics(self):
         app=mock.Mock()
