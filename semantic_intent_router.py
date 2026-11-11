@@ -148,6 +148,8 @@ def classify_local_intent(text: str, runtime, *, requester=None) -> ChatIntent |
              '{"kind":"studio","confidence":0.99}; '
              "'хочу редактировать клипы на таймлайне' => "
              '{"kind":"timeline","confidence":0.99}; '
+             "'открой редактор монтажных дорожек' => "
+             '{"kind":"multitrack","confidence":0.99}; '
              "'почему настройки не работают?' => "
              '{"kind":"none","confidence":0.0}. '
              "Распознавай смысл, не копируй примеры дословно. "
