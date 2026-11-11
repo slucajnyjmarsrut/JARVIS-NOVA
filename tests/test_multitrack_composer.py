@@ -13,6 +13,7 @@ import unittest
 from multitrack_composer import (
     MultitrackError, MultitrackProject, VisualLayer, POSITIONS,
     build_filter_graph, validate_project, render_multitrack,
+    is_multitrack_request,
 )
 
 
