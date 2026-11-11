@@ -70,6 +70,26 @@ class ModelInventoryTests(unittest.TestCase):
             self.assertNotIn("bank-credentials",summarize_inventory(report))
             self.assertNotIn("PRIVATE TEXT",summarize_inventory(report))
 
+    def test_found_coder_is_labeled_for_programming_not_declared_vision_ready(self):
+        from local_model_inventory import LocalModel
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            store=root/"models"/"ollama"
+            manifest=(store/"manifests"/"registry.ollama.ai"/
+                      "library"/"qwen2.5-coder"/"7b")
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"schemaVersion":2}',encoding="utf-8")
+            report=scan_local_models(confirmed=True,roots=(root,))
+            coder=[m for m in report.models if m.name=="qwen2.5-coder:7b"]
+            self.assertEqual(len(coder),1)
+            self.assertTrue(coder[0].coding_candidate)
+            self.assertFalse(coder[0].jarvis_compatible)
+            summary=summarize_inventory(report)
+            self.assertIn("кандидат для кода",summary)
+            self.assertIn("127.0.0.1:11434",summary)
+            self.assertIn("Qwen3-VL",summary)
+            self.assertFalse(LocalModel("other",root,"gguf",1).coding_candidate)
+
     def test_default_scan_includes_every_available_fixed_drive(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)

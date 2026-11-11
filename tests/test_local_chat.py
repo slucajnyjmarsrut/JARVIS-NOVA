@@ -81,9 +81,17 @@ class LocalChatTests(unittest.TestCase):
         error = BundledRuntimeError(
             "Missing offline Vision model manifest: C:/Users/test/Models/ollama/manifests/foo")
         message = explain_local_model_failure(error)
-        self.assertIn("Проверить локальную модель", message)
+        self.assertIn("СКАЧАТЬ QWEN", message)
+        self.assertNotIn("повреждены", message)
         self.assertNotIn("C:/Users", message)
         self.assertNotIn("manifest", message)
+
+    def test_corrupt_model_error_is_distinguished_from_missing_model(self):
+        error=BundledRuntimeError("blob SHA256 mismatch in private path")
+        message=explain_local_model_failure(error)
+        self.assertIn("целостности",message)
+        self.assertIn("СКАЧАТЬ QWEN",message)
+        self.assertNotIn("private path",message)
 
     def test_non_model_error_is_not_misreported_as_missing_weights(self):
         message = explain_local_model_failure(RuntimeError("Connection refused"))

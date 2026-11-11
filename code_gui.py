@@ -154,6 +154,12 @@ class CodeWindow(tk.Toplevel):
             return request_local_model(
                 task,language,endpoint="http://127.0.0.1:11434",
                 model=self._coder_choice)
+        if getattr(host, "_local_model_ready", None) is False:
+            raise WorkspaceError(
+                "Qwen3-VL для JARVIS не подключена. Чтобы использовать уже "
+                "скачанную Qwen Coder, запусти Ollama на 127.0.0.1:11434 "
+                "и разреши проверку локальных моделей в окне программиста. "
+                "Поиск файлов на дисках сам по себе не запускает модель.")
         runtime=getattr(getattr(host,'trimodal',None),'runtime',None)
         if runtime is None:
             return request_local_model(task,language)
@@ -278,6 +284,19 @@ class CodeWindow(tk.Toplevel):
                 "проверка синтаксиса. При согласии можно также проверить "
                 "запущенную локальную Ollama и выбрать уже установленную "
                 "кодовую модель без скачивания.",parent=self)
+        coder_opt_in=bool(sandbox_consent)
+        if (getattr(self.master, "engine", None)!="freellm"
+                and getattr(self.master, "_local_model_ready", None) is False
+                and not coder_opt_in):
+            coder_opt_in=messagebox.askyesno(
+                "Использовать Qwen Coder для программирования?",
+                "Основная Qwen3-VL пока не подключена. Если уже запущена "
+                "локальная Ollama (127.0.0.1:11434), разрешить один раз "
+                "проверить список её кодовых моделей и использовать "
+                "имеющуюся Qwen Coder для этой задачи?\n\n"
+                "Новых моделей не скачиваем. В интернет код не отправляем. "
+                "Найденные на диске файлы сами по себе не запускаются.",
+                parent=self)
         self._generation_busy=True
         self.gen.configure(state='disabled')
         self.starter_button.configure(state='disabled')
@@ -286,7 +305,7 @@ class CodeWindow(tk.Toplevel):
         self.repair_button.configure(state='disabled')
         self._last_test_gate_status=None
         self._auto_save_target=root if auto_write else None
-        self._coder_opt_in=bool(sandbox_consent)
+        self._coder_opt_in=bool(coder_opt_in)
         self._coder_checked=False
         self._coder_choice=None
         self.result=None
