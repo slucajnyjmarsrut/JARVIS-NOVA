@@ -52,6 +52,16 @@ def build_text_interface(app):
     app.hud_download_qwen.pack(side="left", padx=(0, 6))
     app.hud_cancel_scan = _action(
         modelbar, "СТОП ПОИСК", app.cancel_model_scan, compact=True)
+    # Screen consent and actual screenshot selection are distinct operations.
+    # Granting vision does NOT silently start capturing or watching the desktop.
+    screenbar = tk.Frame(shell, bg=BG)
+    screenbar.pack(fill="x", pady=(0, 8))
+    app.hud_enable_screen = _action(
+        screenbar, "РАЗРЕШИТЬ ЭКРАН", app.grant_vision, compact=True)
+    app.hud_enable_screen.pack(side="left", padx=(0, 6))
+    app.hud_show_screenshot = _action(
+        screenbar, "ПОКАЗАТЬ СКРИНШОТ", app.open_screenshot_review, compact=True)
+    app.hud_show_screenshot.pack(side="left", padx=(0, 6))
     # Keep old references for callers, without adding unrelated toolbar items.
     app.hud_update_button = _action(header, "⟳", app.show_update_center, compact=True)
     app.hud_minimize_button = _action(header, "▁", app.hide_main, compact=True)

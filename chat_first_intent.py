@@ -102,8 +102,17 @@ def route_chat_request(text: str) -> ChatIntent | None:
     if s in {"разреши управлять компьютером", "хочу разрешить управление пк",
              "разреши управление пк"}:
         return ChatIntent("permission_control")
+    # Explicit opt-in wording, including the natural sentence reported by a user.
+    # A recognized phrase only opens the existing OS-level consent dialog;
+    # text itself never sets vision_allowed or captures the desktop.
     if s in {"разреши видеть экран", "разреши чтение экрана",
-             "хочу разрешить анализ экрана"}:
+             "хочу разрешить анализ экрана", "разреши экран",
+             "разреши зрение", "разрешить зрение",
+             "разрешить доступ к экрану", "разрешаю доступ к экрану",
+             "разрешаю видеть экран", "разрешаю зрение",
+             "разрешаю захват экрана", "включи зрение",
+             "хочу дать доступ к экрану", "зрение разрешаю",
+             "зрение и экран разрешаю", "экран и зрение разрешаю"}:
         return ChatIntent("permission_screen")
     if s in {"отзови все разрешения", "отключи доступ к компьютеру",
              "отключи все разрешения"}:

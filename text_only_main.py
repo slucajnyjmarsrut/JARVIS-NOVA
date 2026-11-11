@@ -496,7 +496,19 @@ class TextJarvis(BaseJarvis):
         elif kind == "permission_control":
             self.grant_control()  # Dialog consent, not chat consent.
         elif kind == "permission_screen":
+            # Spoken/typed consent is never enough: grant_vision opens a
+            # separate confirmation and may leave vision_allowed unchanged.
             self.grant_vision()
+            if bool(getattr(self, "vision_allowed", False)):
+                self.reply(
+                    "Доступ к экрану разрешён до закрытия JARVIS. "
+                    "Для анализа изображения открой «ПОКАЗАТЬ СКРИНШОТ». "
+                    "Это не включает постоянное наблюдение за экраном.")
+            else:
+                self.reply(
+                    "Доступ к экрану не предоставлен. "
+                    "Включить его можно через кнопку «РАЗРЕШИТЬ ЭКРАН» "
+                    "с отдельным подтверждением.")
         elif kind == "revoke":
             self.revoke()
             self.reply("Доступ к компьютеру и экрану отключён.")

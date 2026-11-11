@@ -34,6 +34,41 @@ class ChatFirstTests(unittest.TestCase):
                 self.assertIsNotNone(intent)
                 self.assertEqual((intent.kind,intent.value),(kind,value))
 
+    def test_screen_consent_phrasing_does_not_skip_the_confirmation(self):
+        requests=(
+            "зрение и экран разрешаю",
+            "экран и зрение разрешаю",
+            "зрение разрешаю",
+            "разрешаю доступ к экрану",
+            "разрешить доступ к экрану",
+            "включи зрение",
+            "разреши видеть экран",
+            "хочу дать доступ к экрану",
+        )
+        for phrase in requests:
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.kind,"permission_screen")
+                app=Mock()
+                app.vision_allowed=False  # User has not approved modal.
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                app.grant_vision.assert_called_once_with()
+                app.reply.assert_called_once()
+                self.assertIn("не предоставлен",app.reply.call_args.args[0])
+                app.execute_plan.assert_not_called()
+
+        app=Mock()
+        app.vision_allowed=False
+        def approved():
+            app.vision_allowed=True
+        app.grant_vision.side_effect=approved
+        TextJarvis._dispatch_chat_first(
+            app,ChatIntent("permission_screen"),"зрение и экран разрешаю")
+        self.assertIn("Доступ к экрану разрешён",app.reply.call_args.args[0])
+        app.grant_control.assert_not_called()
+        app.request_trimodal.assert_not_called()
+
     def test_model_commands_accept_ui_text_and_natural_infinitives(self):
         # These phrases are shown to users by JARVIS or typed in the chat.
         phrases={
@@ -132,6 +167,9 @@ class ChatFirstTests(unittest.TestCase):
             "не открывай настройки", "я не хочу открыть браузер",
             "если я скажу хочу сделать монтаж, что будет?",
             "объясни как разрешить управление ПК",
+            "как разрешить зрение", "почему ты не видишь экран",
+            "не разрешаю зрение", "не разрешай экран",
+            "если я напишу зрение и экран разрешаю, что будет",
             "давай поспорим", "открой Chrome", "открой cmd",
             "", "а"*1201,
         ):

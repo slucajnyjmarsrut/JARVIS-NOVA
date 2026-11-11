@@ -44,13 +44,15 @@ class VisibleModelControlsTests(unittest.TestCase):
                 "show_settings_menu", "show_update_center", "hide_main",
                 "scan_models_on_pc", "check_models", "cancel_model_scan",
                 "cancel_local_model_download", "enter", "f9", "revoke",
+                "grant_vision", "open_screenshot_review",
             ):
                 setattr(root,name,mock.Mock())
             with mock.patch("model_storage.local_model_available",
                             return_value=False):
                 build_text_interface(root)
             for name in ("hud_settings_button","hud_find_models",
-                         "hud_download_qwen"):
+                         "hud_download_qwen", "hud_enable_screen",
+                         "hud_show_screenshot"):
                 control=getattr(root,name)
                 self.assertEqual(control.winfo_manager(),"pack",name)
                 self.assertTrue(control.winfo_exists(),name)
@@ -60,6 +62,12 @@ class VisibleModelControlsTests(unittest.TestCase):
             root.scan_models_on_pc.assert_called_once_with()
             root.hud_download_qwen.invoke()
             root.check_models.assert_called_once_with(offer_scan=False)
+            root.hud_enable_screen.invoke()
+            root.grant_vision.assert_called_once_with()
+            root.hud_show_screenshot.invoke()
+            root.open_screenshot_review.assert_called_once_with()
+            root.request_trimodal = mock.Mock()
+            root.request_trimodal.assert_not_called()
             root.cancel_local_model_download.assert_not_called()
         finally:
             root.destroy()
