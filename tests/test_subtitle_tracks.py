@@ -111,6 +111,26 @@ class SubtitleTrackTests(unittest.TestCase):
             self.assertEqual(
                 hashlib.sha256(source.read_bytes()).hexdigest(),before)
 
+    def test_burn_subtitles_never_overwrites_source_or_existing_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)
+            original=folder/"original.mp4"
+            original.write_bytes(b"private original"*500)
+            another=folder/"already_finished.mp4"
+            another.write_bytes(b"already edited"*500)
+            before=hashlib.sha256(original.read_bytes()).hexdigest()
+            prior=another.read_bytes()
+            started=[]
+            for target in (original,another):
+                with self.subTest(output=target),self.assertRaises(SubtitleError):
+                    burn_subtitles(
+                        original,target,(SubtitleCue(.1,1.2,"safe text"),),
+                        ffmpeg="ffmpeg",width=720,height=1280,seconds=2,
+                        executor=lambda args,**kwargs: started.append(args))
+            self.assertFalse(started)
+            self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(),before)
+            self.assertEqual(another.read_bytes(),prior)
+
     def test_pre_cancel_never_starts_ffmpeg_or_writes_output(self):
         with tempfile.TemporaryDirectory() as root:
             base=Path(root)
