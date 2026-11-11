@@ -43,7 +43,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax check
-        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
+        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_test_sandbox.py code_quality_review.py code_test_repair.py code_edits.py coding_intent.py freellm_client.py
       - name: Run universal language tests
         run: python -m unittest discover -s tests -p test_universal_code_engine.py -v
       - name: Run Roblox map tests
