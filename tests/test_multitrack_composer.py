@@ -86,7 +86,7 @@ class MultitrackTests(unittest.TestCase):
             before=hashlib.sha256(Path(project.base_video).read_bytes()).hexdigest()
             stop=threading.Event()
             stop.set()
-            with self.assertRaises(Exception):
+            with self.assertRaisesRegex(MultitrackError,"отменён до чтения"):
                 render_multitrack(project,cancel=stop,tools=("ffmpeg","ffprobe"))
             self.assertFalse(Path(project.output_video).exists())
             self.assertEqual(
