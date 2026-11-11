@@ -12,7 +12,7 @@ from code_test_sandbox import run_python_tests
 class DockerTestGateTests(unittest.TestCase):
     def project(self, directory):
         root = Path(directory)
-        (root / "tests").mkdir()
+        (root / "tests").mkdir(parents=True)
         (root / "main.py").write_text("def add(x, y): return x+y\n", encoding="utf-8")
         (root / "tests" / "test_main.py").write_text(
             "import unittest\nfrom main import add\n"
