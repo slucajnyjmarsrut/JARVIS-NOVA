@@ -91,7 +91,7 @@ class SceneSelectionTests(unittest.TestCase):
                 max_windows=5)
             self.assertEqual(len(calls),5)
             self.assertEqual(report.examined,5)
-            self.assertEqual(len(cuts),len(draft_longform_cuts(((p,7200.),)))
+            self.assertEqual(len(cuts),len(draft_longform_cuts(((p,7200.),))))
 
 
 if __name__=="__main__":
