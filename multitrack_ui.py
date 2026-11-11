@@ -19,7 +19,7 @@ from multitrack_composer import (
 
 
 class MultitrackWindow(tk.Toplevel):
-    def __init__(self, parent):
+    def __init__(self, parent, base_video=None):
         super().__init__(parent)
         from studio_theme import apply_video_theme, BG, CARD, TEXT, CYAN
         from windows_titlebar import install_dark_titlebar
@@ -56,7 +56,7 @@ class MultitrackWindow(tk.Toplevel):
         scroller.bind("<Configure>",lambda e:scroller.itemconfigure(
             window,width=e.width),add="+")
 
-        self.base=tk.StringVar()
+        self.base=tk.StringVar(value=str(base_video) if base_video else "")
         self.output=tk.StringVar()
         self.title_text=tk.StringVar()
         self.music=tk.StringVar()
