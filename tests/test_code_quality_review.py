@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """AST review checks risks without executing model-generated code."""
 import unittest
+import tempfile
+from pathlib import Path
 
-from code_quality_review import review_change_plan
+from code_quality_review import review_change_plan, unified_plan_diff
 from code_workspace import ChangePlan, ProposedFile
 
 
@@ -48,6 +50,30 @@ class StaticCodeReviewTests(unittest.TestCase):
         self.assertEqual(review.test_files,0)
         self.assertIn("Нет проверяемых тестов",review.summary())
         self.assertTrue(any(f.path=="README.md" for f in review.findings))
+
+    def test_unified_diff_shows_actual_line_changes_without_writing_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            original=root/"app.py"
+            original.write_text("def main():\n    return 1\n",encoding="utf-8")
+            before=original.read_bytes()
+            proposal=plan("def main():\n    return 2\n")
+            diff=unified_plan_diff(proposal,root)
+            self.assertIn("--- a/app.py",diff)
+            self.assertIn("+++ b/app.py",diff)
+            self.assertIn("-    return 1",diff)
+            self.assertIn("+    return 2",diff)
+            self.assertIn("+++ b/tests/test_app.py",diff)
+            self.assertEqual(original.read_bytes(),before)
+            self.assertFalse((root/"tests").exists())
+
+    def test_unified_diff_warns_if_preview_is_truncated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source="x='a'\n"*600
+            proposal=plan(source)
+            diff=unified_plan_diff(proposal,Path(tmp),max_chars=1000)
+            self.assertIn("DIFF ОБРЕЗАН",diff)
+            self.assertLessEqual(len(diff),1120)
 
     def test_syntax_failure_does_not_execute_imports(self):
         review=review_change_plan(plan("def broken(:\n    pass\n"))
