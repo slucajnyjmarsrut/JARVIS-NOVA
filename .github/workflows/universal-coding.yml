@@ -15,6 +15,10 @@ on:
       - code_autopilot.py
       - code_edits.py
       - code_gui.py
+      - code_quality_review.py
+      - code_test_sandbox.py
+      - tests/test_code_quality_review.py
+      - tests/test_code_test_sandbox.py
       - coding_intent.py
       - freellm_client.py
       - tests/test_universal_code_engine.py
