@@ -131,7 +131,7 @@ def verify_independent_tests(plan: ChangePlan, *, runner, confirmed=False):
     # A process crash without a unittest summary is NOT evidence that
     # assertions detected a broken implementation.
     assertions_failed=bool(re.search(
-        r"(?m)^FAIL:\\s+test_[A-Za-z0-9_]+",str(report.output)))
+        r"(?m)^FAIL:\s+test_[A-Za-z0-9_]+",str(report.output)))
     detected=(report.status=="failed" and report.tests_run>=2
               and assertions_failed)
     return MutationResult(
