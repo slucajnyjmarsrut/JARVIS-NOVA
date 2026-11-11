@@ -49,6 +49,9 @@ class CodeWindow(tk.Toplevel):
         self._generation_busy=False
         self._last_test_gate_status=None
         self._auto_save_target=None
+        self._coder_opt_in=False
+        self._coder_checked=False
+        self._coder_choice=None
         frame=ttk.Frame(self,padding=16)
         frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='Язык программирования').pack(anchor='w')
@@ -137,6 +140,20 @@ class CodeWindow(tk.Toplevel):
         host=self.master
         if getattr(host,"engine",None)=="freellm":
             return host.freellm_chat.generate_code(task,language)
+        if self._coder_opt_in and not self._coder_checked:
+            self._coder_checked=True
+            try:
+                from local_coder_models import best_installed_coder
+                found=best_installed_coder(confirmed=True)
+                if found is not None:
+                    self._coder_choice=found.name
+            except (OSError,ValueError,RuntimeError,TypeError):
+                # Offline or missing Ollama: use the already configured Qwen.
+                self._coder_choice=None
+        if self._coder_choice is not None:
+            return request_local_model(
+                task,language,endpoint="http://127.0.0.1:11434",
+                model=self._coder_choice)
         runtime=getattr(getattr(host,'trimodal',None),'runtime',None)
         if runtime is None:
             return request_local_model(task,language)
@@ -242,7 +259,11 @@ class CodeWindow(tk.Toplevel):
                     f"НОВЫЕ файлы в папку:\n{root}\n\n"
                     "Существующие файлы не перезаписываются. "
                     "Тесты не запускаются на Windows. "
-                    "Docker изолирует не абсолютно; требуется локальный образ.",
+                    "Docker изолирует не абсолютно; требуется локальный образ. "
+                    "Если на 127.0.0.1:11434 уже работает Ollama, можно "
+                    "однократно проверить список моделей и использовать "
+                    "уже установленную модель для кода (до 14B параметров). "
+                    "Новые модели не скачиваются, в облако код не уходит.",
                     parent=self)
                 sandbox_consent=auto_write
         elif full_project and language=="python" and not existing:
@@ -254,7 +275,9 @@ class CodeWindow(tk.Toplevel):
                 "контейнере, не на компьютере. Изоляция не абсолютна. "
                 "Требуется уже установленный Docker и локальный "
                 "образ python:3.12-slim. Без согласия останется только "
-                "проверка синтаксиса.",parent=self)
+                "проверка синтаксиса. При согласии можно также проверить "
+                "запущенную локальную Ollama и выбрать уже установленную "
+                "кодовую модель без скачивания.",parent=self)
         self._generation_busy=True
         self.gen.configure(state='disabled')
         self.starter_button.configure(state='disabled')
@@ -263,6 +286,9 @@ class CodeWindow(tk.Toplevel):
         self.repair_button.configure(state='disabled')
         self._last_test_gate_status=None
         self._auto_save_target=root if auto_write else None
+        self._coder_opt_in=bool(sandbox_consent)
+        self._coder_checked=False
+        self._coder_choice=None
         self.result=None
         self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
         def worker():
@@ -302,7 +328,14 @@ class CodeWindow(tk.Toplevel):
         findings=[
             f'{f.severity.upper()} {f.path}:{f.line}: {f.message}'
             for f in review.findings]
+        runtime=getattr(getattr(self.master,'trimodal',None),'runtime',None)
+        model_label=(
+            "FreeLLM (внешний провайдер)" if getattr(self.master,"engine",None)=="freellm"
+            else self._coder_choice or
+                 (getattr(getattr(runtime,'config',None),'model',None)
+                  or "локальная кодовая модель по умолчанию"))
         lines=['Язык: '+LANGUAGE_LABELS.get(result.plan.language,result.plan.language),
+               'Модель проекта: '+str(model_label),
                'Инженерная рецензия (AST, без запуска): '+review.summary(),
                *findings[:30],
                'Проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),

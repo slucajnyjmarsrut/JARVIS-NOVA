@@ -8,6 +8,11 @@ on:
       - code_languages.py
       - code_checks.py
       - code_project_engine.py
+      - local_coder_models.py
+      - code_agent.py
+      - code_gui.py
+      - tests/test_local_coder_models.py
+      - tests/test_code_agent.py
       - code_acceptance_gate.py
       - code_mutation_gate.py
       - tests/test_code_mutation_gate.py

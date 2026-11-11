@@ -7,6 +7,7 @@ No shell execution, automatic IDE control, publishing, or silent overwrite.
 from __future__ import annotations
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -33,6 +34,14 @@ class CodeResult:
     changes: list[dict]
 
 
+class _RejectModelRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        # Any redirect risks exfiltrating generated/user source text to
+        # third-party hosts. Never follow even another loopback address.
+        raise WorkspaceError(
+            'Локальная модель предложила перенаправление: передача отменена.')
+
+
 def request_local_model(task: str, language: str, *, endpoint: str = 'http://127.0.0.1:11434',
                         model: str = 'qwen2.5-coder:7b', transport=None) -> str:
     """Only loopback Ollama is supported; no user code is sent to the cloud."""
@@ -48,13 +57,17 @@ def request_local_model(task: str, language: str, *, endpoint: str = 'http://127
         valid = False
     if not valid:
         raise WorkspaceError('Разрешена только локальная Ollama на 127.0.0.1')
+    if (not isinstance(model,str) or
+            re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}',model) is None):
+        raise WorkspaceError('Недопустимое имя локальной модели.')
     payload = {'model': model, 'stream': False, 'format': 'json',
                'messages': [{'role': 'system', 'content': SYSTEM},
                             {'role': 'user', 'content': f'Language: {language}\nTask: {task}'}],
                'options': {'temperature': 0.1, 'num_predict': 8192}}
     if transport is None:
         def transport(url, data):
-            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            opener = urllib.request.build_opener(
+                urllib.request.ProxyHandler({}), _RejectModelRedirect())
             req = urllib.request.Request(url, json.dumps(data).encode('utf-8'),
                                          {'Content-Type': 'application/json'}, method='POST')
             with opener.open(req, timeout=180) as response:

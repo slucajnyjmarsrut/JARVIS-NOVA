@@ -54,6 +54,9 @@ on:
       - tests/test_one_shot_project.py
       - tests/test_video_timeline.py
       - code_project_engine.py
+      - local_coder_models.py
+      - tests/test_local_coder_models.py
+      - tests/test_code_agent.py
       - code_gui.py
       - code_test_repair.py
       - long_video_limits.py
