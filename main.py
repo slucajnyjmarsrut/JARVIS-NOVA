@@ -168,6 +168,8 @@ class Jarvis(tk.Tk):
                          command=lambda:self.open_viral_studio(stage="edits"))
         menu.add_command(label="Аккаунты YouTube / TikTok / Instagram",
                          command=self.open_creator_accounts)
+        menu.add_command(label="Таймлайн · обрезка/скорость/склейки/титры",
+                         command=self.open_timeline)
         menu.add_command(label="Многодорожечный монтаж · видео/логотип/звук",
                          command=self.open_multitrack)
         menu.add_command(label="Подготовить публикацию · YouTube/TikTok/Instagram",
