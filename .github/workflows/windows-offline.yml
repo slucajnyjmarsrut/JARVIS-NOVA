@@ -14,6 +14,9 @@ on:
       - 'text_only_main.py'
       - 'local_chat.py'
       - 'scripts/verify_text_vision_e2e.py'
+      - 'scripts/verify_local_scenario_e2e.py'
+      - 'video_scenario_autonomy.py'
+      - 'quick_video_brief.py'
       - 'scripts/run_text_only_tests.py'
       - 'scripts/verify_text_package_size.py'
       - 'tests/test_text_only_bundle.py'
@@ -225,6 +228,12 @@ jobs:
             python scripts/verify_text_vision_e2e.py
             if ($LASTEXITCODE -ne 0) { throw "Qwen Vision failed pass $pass" }
           }
+      - name: REAL autonomous Qwen screenplay and shooting-plan acceptance
+        shell: pwsh
+        timeout-minutes: 25
+        run: |
+          python scripts/verify_local_scenario_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real local Qwen scenario could not pass acceptance' }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
       - name: Generate original dark NOVA installer wizard graphics
