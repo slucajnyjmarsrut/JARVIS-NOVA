@@ -117,6 +117,8 @@ def build_text_interface(app):
             busy=bool(getattr(app,"executing",False))
             mode,label,color=(("processing","ОБРАБОТКА ТЕКСТА",VIOLET)
                                if busy else ("ready","ГОТОВ К ТЕКСТУ",GREEN))
+            if not busy and getattr(app,"_debate_mode",False):
+                label="РЕЖИМ СПОРА"
             app.hud_mode.configure(text=label,fg=color)
             app.hud_clock.configure(text=time.strftime("%H:%M"))
             if getattr(app,"_model_download_busy",False):

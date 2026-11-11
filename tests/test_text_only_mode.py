@@ -68,6 +68,15 @@ class TextModeTests(unittest.TestCase):
         self.assertIn("_local_model_ready", inspect.getsource(TextJarvis.check_models))
         self.assertIn("_local_model_ready", inspect.getsource(TextJarvis._pump_model_download))
 
+    def test_debate_mode_has_visible_ui_indicator_and_runner_coverage(self):
+        from text_only_ui import build_text_interface
+        source=inspect.getsource(build_text_interface)
+        self.assertIn('label="РЕЖИМ СПОРА"',source)
+        self.assertIn('_debate_mode',source)
+        suite=(ROOT/"scripts"/"run_text_only_tests.py").read_text(
+            encoding="utf-8")
+        self.assertIn('"test_debate_mode.py"',suite)
+
     def test_real_text_panel_without_devices(self):
         import tkinter as tk
         from contextlib import ExitStack
