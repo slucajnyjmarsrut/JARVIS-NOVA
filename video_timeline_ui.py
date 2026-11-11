@@ -181,12 +181,17 @@ class TimelineWindow(tk.Toplevel):
         self._export_button.pack(side="left")
         ttk.Button(bar,text="СТОП",command=self.cancel,
                    style="Studio.TButton").pack(side="left",padx=(8,0))
-        ttk.Button(bar,text="Дальше: слои / озвучка",
+        next_actions=ttk.Frame(footer,style="Studio.TFrame")
+        next_actions.pack(fill="x",pady=(5,0))
+        ttk.Button(next_actions,text="Дальше: слои / озвучка",
                    command=self.open_layers,style="Studio.TButton").pack(
-                       side="right",padx=(6,0))
-        ttk.Button(bar,text="Дальше: публикация",
-                   command=self.open_publish,style="Studio.TButton").pack(
-                       side="right")
+                       side="left",padx=(0,6))
+        ttk.Button(next_actions,text="Открыть FilmCraft",
+                   command=self.open_filmcraft,
+                   style="Studio.TButton").pack(side="left",padx=(0,6))
+        ttk.Button(next_actions,text="Дальше: публикация",
+                   command=self.open_publish,
+                   style="Studio.TButton").pack(side="left")
         self.after(130,self._pump)
 
     def _form_entry(self,parent,title,var,*,width=18,side=None):
@@ -571,6 +576,8 @@ class TimelineWindow(tk.Toplevel):
                         self.status.set("Предпросмотр исходного кадра готов.")
                     except (OSError,ValueError) as exc:
                         self.status.set("Предпросмотр не готов: "+str(exc)[:100])
+                elif event=="filmcraft":
+                    self.status.set("FilmCraft открыт: "+value)
                 elif event=="done":
                     self._latest_video=Path(value["output"])
                     self.status.set(
@@ -592,6 +599,40 @@ class TimelineWindow(tk.Toplevel):
         if self._busy:
             self._cancel.set()
             self.status.set("Запросил остановку FFmpeg; неполный MP4 не сохраняется.")
+
+    def open_filmcraft(self):
+        if self._busy:
+            return
+        if not self._latest_video or not self._latest_video.is_file():
+            messagebox.showinfo(
+                "FilmCraft","Сначала экспортируй MP4 с таймлайна.",parent=self)
+            return
+        from filmcraft_bridge import find_filmcraft, FilmCraftError
+        try:
+            executable=find_filmcraft()
+        except FilmCraftError:
+            messagebox.showinfo(
+                "FilmCraft","FilmCraft не установлен. Его можно установить "
+                "из видеостудии JARVIS с отдельным подтверждением. "
+                "Ничего автоматически не скачивается.",parent=self)
+            return
+        if not messagebox.askyesno(
+            "Открыть FilmCraft?",
+            "Открыть твой готовый MP4 и доступные редактируемые исходные "
+            "склейки в установленном FilmCraft? Ничего не публикуется.",
+            parent=self):
+            return
+        self._busy=True
+        self.status.set("Передаю проверенный MP4 в локальный FilmCraft.")
+        def worker():
+            try:
+                from filmcraft_bridge import open_in_filmcraft
+                result=open_in_filmcraft(executable,self._latest_video)
+                self._events.put(("filmcraft",str(result.mode)))
+            except Exception as exc:
+                self._events.put(("error",str(exc)[:300]))
+        threading.Thread(target=worker,daemon=True,
+                         name="jarvis-timeline-filmcraft").start()
 
     def open_layers(self):
         if not self._latest_video or not self._latest_video.is_file():
