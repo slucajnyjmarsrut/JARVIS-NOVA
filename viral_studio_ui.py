@@ -220,7 +220,7 @@ class ViralStudioWindow(tk.Toplevel):
         ttk.Button(tools,text="Подготовить публикацию",
                    command=self.open_publish_preparation,
                    style="Studio.TButton").grid(
-            row=1,column=1,sticky="ew",padx=4,pady=4)
+            row=2,column=1,sticky="ew",padx=4,pady=4)
         # Results should stay readable while tool options scroll separately.
         resultbar=tk.Frame(self,bg=BG)
         resultbar.pack(fill="x",padx=17,pady=(5,5))
