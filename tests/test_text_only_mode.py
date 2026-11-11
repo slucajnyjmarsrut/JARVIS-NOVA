@@ -88,11 +88,14 @@ class TextModeTests(unittest.TestCase):
             encoding="utf-8")
         self.assertIn('"test_debate_mode.py"',suite)
 
-    def test_chat_first_ui_has_no_visible_shortcut_buttons(self):
+    def test_chat_first_ui_has_visible_model_controls_without_unrelated_shortcuts(self):
         from text_only_ui import build_text_interface
         source=inspect.getsource(build_text_interface)
         self.assertIn('app.hud_mode_buttons = {}',source)
-        self.assertNotIn('app.hud_settings_button.pack(',source)
+        self.assertIn('app.hud_settings_button.pack(',source)
+        self.assertIn('app.hud_find_models.pack(',source)
+        self.assertIn('app.hud_download_qwen.pack(',source)
+        self.assertIn('app.hud_cancel_scan',source)
         self.assertNotIn('"ОТПРАВИТЬ"',source)
         self.assertNotIn('"СКРИН"',source)
         self.assertIn('app.entry.bind("<Return>",app.enter)',source)
@@ -124,7 +127,9 @@ class TextModeTests(unittest.TestCase):
                     self.assertTrue(app.entry.winfo_exists())
                     self.assertTrue(app.overlay.quick_entry.winfo_exists())
                     self.assertEqual(app.hud_mode_buttons,{})
-                    self.assertFalse(app.hud_settings_button.winfo_manager())
+                    self.assertEqual(app.hud_settings_button.winfo_manager(),"pack")
+                    self.assertEqual(app.hud_find_models.winfo_manager(),"pack")
+                    self.assertEqual(app.hud_download_qwen.winfo_manager(),"pack")
                     self.assertFalse(app.hud_update_button.winfo_manager())
                     self.assertFalse(app.hud_minimize_button.winfo_manager())
                     self.assertIn("Готов", app.status.get())

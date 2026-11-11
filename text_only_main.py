@@ -145,9 +145,11 @@ class TextJarvis(BaseJarvis):
 
         self.log("Система", "JARVIS готов. Напиши, что нужно сделать, и нажми Enter.")
         if not self._local_model_ready:
-            self.log("Система", "Qwen пока не подключена. Для поиска ранее скачанных "
-                     "моделей напиши «найди модели на всех дисках». "
-                     "Установка новой Qwen — только с твоего разрешения.")
+            self.log("Система",
+                     "Qwen3-VL для чата пока не подключена. "
+                     "Нажми «НАЙТИ МОДЕЛИ», если она уже скачана, "
+                     "или «СКАЧАТЬ QWEN» для загрузки после подтверждения. "
+                     "Qwen Coder для программирования — отдельная модель.")
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
