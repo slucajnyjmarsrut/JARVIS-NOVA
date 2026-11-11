@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import re
 
-from viral_studio import Brief, ViralStudioError, validate_brief
+from viral_studio import Brief, ViralStudioError, RejectedScenarioDraft, validate_brief
 from quick_video_brief import quick_brief
 
 
@@ -120,6 +120,10 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                     f"Сценарий локальной Qwen; формальная проверка пройдена "
                     f"за {attempt+1} попытку(и). Требуется оценить факты и сюжет."
                 ),report,attempt+1
+        except RejectedScenarioDraft as exc:
+            # A parseable but invalid AI response can be revised, not accepted.
+            previous=exc.draft if 2<=len(exc.draft.shots)<=10 else None
+            report=ScenarioAssessment(False,(str(exc)[:160],),0.)
         except Exception as exc:
             report=ScenarioAssessment(False,(str(exc)[:160],),0.)
         if report and not report.passed:
