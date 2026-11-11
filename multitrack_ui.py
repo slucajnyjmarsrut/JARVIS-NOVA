@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from multitrack_composer import (
-    MultitrackError, MultitrackProject, POSITIONS, VisualLayer,
+    MultitrackError, MultitrackProject, POSITIONS, MOTIONS, VisualLayer,
     render_multitrack, validate_project, save_multitrack, load_multitrack,
 )
 
@@ -71,6 +71,8 @@ class MultitrackWindow(tk.Toplevel):
         self.layer_durations=[]
         self.layer_widths=[]
         self.layer_opacities=[]
+        self.layer_motions=[]
+        self.layer_motion_times=[]
         self.music_volume=tk.StringVar(value="0.22")
 
         self._picker(body,"01 · ОСНОВНОЕ MP4",self.base,"video")
@@ -85,6 +87,10 @@ class MultitrackWindow(tk.Toplevel):
             duration=tk.StringVar(value="4")
             width=tk.StringVar(value="26")
             opacity=tk.StringVar(value="1.0")
+            motion=tk.StringVar(value="static")
+            motion_time=tk.StringVar(value="0.45")
+            self.layer_motions.append(motion)
+            self.layer_motion_times.append(motion_time)
             self.layer_widths.append(width)
             self.layer_opacities.append(opacity)
             self.layer_positions.append(position)
@@ -108,6 +114,17 @@ class MultitrackWindow(tk.Toplevel):
             ttk.Label(options,text="Прозрачность (0.1–1):",
                       style="Studio.TLabel").pack(side="left")
             ttk.Entry(options,textvariable=opacity,width=6,
+                      style="Studio.TEntry").pack(side="left",padx=(6,0))
+            animation=ttk.Frame(body,style="Studio.TFrame")
+            animation.pack(fill="x",pady=(0,10))
+            ttk.Label(animation,text="Анимация:",
+                      style="Studio.TLabel").pack(side="left")
+            ttk.Combobox(animation,textvariable=motion,values=MOTIONS,
+                         state="readonly",width=16,
+                         style="Studio.TCombobox").pack(side="left",padx=(6,15))
+            ttk.Label(animation,text="Время движения, с:",
+                      style="Studio.TLabel").pack(side="left")
+            ttk.Entry(animation,textvariable=motion_time,width=7,
                       style="Studio.TEntry").pack(side="left",padx=(6,0))
 
         ttk.Label(body,text="03 · ТИТР НА ЭКРАНЕ (необязательно)",
@@ -190,16 +207,18 @@ class MultitrackWindow(tk.Toplevel):
 
     def _project(self,*,for_export=True):
         layers=[]
-        for file,pos,start,seconds,width,opacity in zip(
+        for file,pos,start,seconds,width,opacity,motion,motion_time in zip(
                 self.layer_files,self.layer_positions,
                 self.layer_starts,self.layer_durations,
-                self.layer_widths,self.layer_opacities):
+                self.layer_widths,self.layer_opacities,
+                self.layer_motions,self.layer_motion_times):
             if file.get().strip():
                 layers.append(VisualLayer(
                     Path(file.get()),start=float(start.get()),
                     duration=float(seconds.get()),position=pos.get(),
                     width_percent=int(width.get()),
-                    opacity=float(opacity.get())))
+                    opacity=float(opacity.get()),
+                    motion=motion.get(),motion_seconds=float(motion_time.get())))
         return validate_project(MultitrackProject(
             base_video=Path(self.base.get()),
             output_video=Path(self.output.get()),
@@ -254,6 +273,9 @@ class MultitrackWindow(tk.Toplevel):
             self.layer_durations[i].set(str(layer.duration) if layer else "4")
             self.layer_widths[i].set(str(layer.width_percent) if layer else "26")
             self.layer_opacities[i].set(str(layer.opacity) if layer else "1.0")
+            self.layer_motions[i].set(layer.motion if layer else "static")
+            self.layer_motion_times[i].set(
+                str(layer.motion_seconds) if layer else "0.45")
         output=Path(project.output_video)
         if output.exists() or output.with_name(
                 output.stem+"_MULTITRACK.json").exists():
