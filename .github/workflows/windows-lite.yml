@@ -114,6 +114,8 @@ jobs:
           $env:PATH = (Resolve-Path 'assets/bin').Path + [IO.Path]::PathSeparator + $env:PATH
           python -m unittest discover -s tests -p test_popular_edits.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Popular-edit FFmpeg output verification failed' }
+          python -m unittest discover -s tests -p test_multitrack_composer.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Real multitrack FFmpeg output verification failed' }
       - name: Generate original Windows icon and Lite installer artwork
         shell: pwsh
         run: |
