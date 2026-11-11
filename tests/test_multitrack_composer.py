@@ -18,6 +18,34 @@ from multitrack_composer import (
 
 
 class MultitrackTests(unittest.TestCase):
+    def test_chat_routes_explicit_multilayer_commands_only(self):
+        for text in ("Джарвис, сделай многодорожечный монтаж",
+                     "наложи логотип на видео","добавь озвучку к видео",
+                     "наложи видео на видео"):
+            self.assertTrue(is_multitrack_request(text),text)
+        for text in ("включи музыку","сделай эдит","открой ютуб"):
+            self.assertFalse(is_multitrack_request(text),text)
+
+    def test_gui_starts_without_internet_or_rendering(self):
+        import tkinter as tk
+        from multitrack_ui import MultitrackWindow
+        try:
+            root=tk.Tk()
+        except tk.TclError:
+            self.skipTest("No graphical Windows/Tk display")
+        root.withdraw()
+        view=None
+        try:
+            view=MultitrackWindow(root)
+            view.update_idletasks()
+            self.assertEqual(len(view.layer_files),2)
+            self.assertFalse(view._busy)
+            self.assertEqual(view._events.qsize(),0)
+        finally:
+            if view is not None:
+                view.destroy()
+            root.destroy()
+
     def fixture(self,root):
         root=Path(root)
         base=root/"original.mp4"
