@@ -141,8 +141,7 @@ class TextJarvis(BaseJarvis):
 
         self.log("Система", "JARVIS готов. Просто напиши, что хочешь сделать, "
                  "и нажми Enter: например «хочу смонтировать видео», "
-                 "«создай программу», «открой настройки». "
-                 "Микрофон и озвучивание отключены.")
+                 "«создай программу», «открой настройки».")
         if not self._local_model_ready:
             self.log("Система", "Qwen не установлена. Для полноценного разговора "
                      "напиши «установи Qwen». Загрузка только с твоего разрешения.")
@@ -298,7 +297,7 @@ class TextJarvis(BaseJarvis):
         return None
 
     def toggle_voice(self):
-        self.status.set("Голосовой ввод и озвучивание отключены.")
+        # Inert legacy compatibility; no UI entry point or device activation.
         return None
 
     def f9(self, event=None):
@@ -309,8 +308,7 @@ class TextJarvis(BaseJarvis):
         messagebox.showinfo("JARVIS NOVA — текст",
             "Пиши сообщения в чате, ответы появляются только текстом.\n\n"
             "Локальная Qwen, команды Windows, 20 языков, Roblox 3D, монтаж и "
-            "анализ экрана с подтверждением и режим спора доступны.\n"
-            "Микрофон и синтез речи не запускаются.", parent=self)
+            "анализ экрана с подтверждением и режим спора доступны.", parent=self)
 
     def open_filmcraft(self):
         studio=self.open_viral_studio(stage="edit")
@@ -326,7 +324,7 @@ class TextJarvis(BaseJarvis):
             old.lift()
             old.focus_stage(stage)
             return old
-        # No audio speaker is ever handed to the editor.
+        # Video soundtracks are media-editing data, not assistant speech.
         self._viral_window = ViralStudioWindow(self, speaker=None)
         self._viral_window.focus_stage(stage)
         return self._viral_window
@@ -571,7 +569,7 @@ class TextJarvis(BaseJarvis):
             return
         self.log("JARVIS", str(message))
         self.status.set(str(message)[:130])
-        # Absolutely no Speaker.say(), voice.activate(), or TTS threads.
+        # Reply only through the visible transcript and status line.
 
     def close(self):
         if self._closing:

@@ -29,6 +29,15 @@ class TextModeTests(unittest.TestCase):
         self.assertNotIn("TrimodalService(",source)
         self.assertNotIn(".start()",source)
 
+    def test_real_overlay_never_constructs_audio_buttons(self):
+        from nova_overlay import NovaOverlay
+        from text_only_overlay import TextOverlay
+        base=inspect.getsource(NovaOverlay.__init__)
+        text=inspect.getsource(TextOverlay.__init__)
+        self.assertIn("if not self._text_only:",base)
+        self.assertIn("super().__init__(app, text_only=True)",text)
+        self.assertNotIn("mic_button.destroy()",text)
+
     def test_no_audio_object_does_not_have_hardware_methods(self):
         obj=NoAudio()
         self.assertFalse(obj.busy)
@@ -56,6 +65,8 @@ class TextModeTests(unittest.TestCase):
         self.assertNotIn("toggle_voice",source)
         self.assertNotIn("mic_toggle_button",source)
         self.assertNotIn("LevelMeter(",source)
+        self.assertNotIn('"МИКРОФОН"',source)
+        self.assertNotIn('"ОЗВУЧИТЬ"',source)
 
     def test_qwen_badge_matches_actual_model_state(self):
         from text_only_ui import engine_badge, build_text_interface
@@ -109,6 +120,7 @@ class TextModeTests(unittest.TestCase):
                     self.assertFalse(hasattr(app,"mic_toggle_button"))
                     self.assertFalse(hasattr(app.overlay,"mic_button"))
                     self.assertFalse(hasattr(app.overlay,"listen_button"))
+                    self.assertFalse(hasattr(app.overlay,"level"))
                     self.assertTrue(app.entry.winfo_exists())
                     self.assertTrue(app.overlay.quick_entry.winfo_exists())
                     self.assertEqual(app.hud_mode_buttons,{})

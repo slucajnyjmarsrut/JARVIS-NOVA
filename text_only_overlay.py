@@ -7,16 +7,8 @@ from nova_ui import GREEN, MUTED
 
 class TextOverlay(NovaOverlay):
     def __init__(self, app):
-        super().__init__(app)
-        self.mic_button.destroy()
-        self.listen_button.destroy()
-        self.level.destroy()
-        del self.mic_button
-        del self.listen_button
-        del self.level
-        self.unbind("<F9>")
-        self.unbind("<Control-Shift-M>")
-        self.status_label.configure(text="ТЕКСТОВЫЙ РЕЖИМ", fg=GREEN)
+        super().__init__(app, text_only=True)
+        self.status_label.configure(text="ГОТОВ К ПЕРЕПИСКЕ", fg=GREEN)
         self.last_user.configure(text="ВЫ  ·  напишите сообщение")
         controls = self.restore_button.master
         entry_row = tk.Frame(controls.master,bg=controls.master.cget("bg"))
@@ -52,7 +44,7 @@ class TextOverlay(NovaOverlay):
             return
         self._timer_id=None
         busy=bool(getattr(self.app,"executing",False))
-        self.status_label.configure(text="ПИШУ ОТВЕТ…" if busy else "ТЕКСТОВЫЙ РЕЖИМ",
+        self.status_label.configure(text="ПИШУ ОТВЕТ…" if busy else "ГОТОВ К ПЕРЕПИСКЕ",
                                     fg=MUTED if busy else GREEN)
         self.refresh_preview()
         self._timer_id=self.after(190,self.refresh)
