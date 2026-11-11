@@ -59,6 +59,7 @@ class MultitrackProject:
     voiceover: Path | None = None
     music: Path | None = None
     music_volume: float = 0.22
+    duck_music: bool = False
 
 
 def is_multitrack_request(text: str) -> bool:
@@ -125,6 +126,11 @@ def validate_project(project: MultitrackProject, *, for_export=True) -> Multitra
             or not math.isfinite(project.music_volume)
             or not 0 <= project.music_volume <= .7):
         raise MultitrackError("Громкость музыки должна быть от 0 до 70%.")
+    if type(project.duck_music) is not bool:
+        raise MultitrackError("Неверная настройка приглушения музыки.")
+    if project.duck_music and (project.music is None or project.voiceover is None):
+        raise MultitrackError(
+            "Для автоматического приглушения выбери и музыку, и озвучку.")
     if out in used:
         raise MultitrackError("Выходной файл не должен совпадать с исходниками.")
     edl = out.with_name(out.stem + "_MULTITRACK.json")
@@ -150,6 +156,7 @@ def save_multitrack(project: MultitrackProject, destination: Path) -> Path:
         "narration":str(_safe_media(project.voiceover,AUDIO_TYPES))
                     if project.voiceover else None,
         "music_volume":project.music_volume,
+        "duck_music":project.duck_music,
         "layers":[{
             "file":str(_safe_media(item.path,IMAGE_TYPES|VIDEO_TYPES)),
             "start":item.start,"duration":item.duration,
@@ -201,6 +208,7 @@ def load_multitrack(path: Path) -> MultitrackProject:
             music=Path(music) if music is not None else None,
             voiceover=Path(voice) if voice is not None else None,
             music_volume=data["music_volume"],
+            duck_music=data.get("duck_music",False),
         )
     except (KeyError,TypeError,ValueError,UnicodeError,OSError) as exc:
         raise MultitrackError("Повреждённый или неподдерживаемый проект.") from exc
@@ -307,6 +315,15 @@ def build_filter_graph(project: MultitrackProject, *, duration: float,
             f"atrim=duration={duration:.3f},"
             "asetpts=PTS-STARTPTS,volume=1.0[voice]")
         audio_inputs.append("voice")
+    if project.duck_music and music_index is not None and voice_index is not None:
+        # The voice stream is explicitly split; a FFmpeg filter output
+        # cannot feed both the sidechain and the final mix without asplit.
+        filters.extend([
+            "[voice]asplit=2[voice_detector][voice_for_mix]",
+            "[music][voice_detector]sidechaincompress="
+            "threshold=0.020:ratio=5:attack=50:release=400[ducked_music]",
+        ])
+        audio_inputs=["abase","ducked_music","voice_for_mix"]
     if len(audio_inputs) == 1:
         final_audio = "abase"
     else:
@@ -418,6 +435,7 @@ def render_multitrack(project: MultitrackProject, *,
             "music": str(project.music) if project.music is not None else None,
             "narration": str(project.voiceover) if project.voiceover is not None else None,
             "music_volume": float(project.music_volume),
+            "duck_music": project.duck_music,
             "technical_quality": technical,
             "duration": duration,
             "created_utc": datetime.now(timezone.utc).isoformat(),
