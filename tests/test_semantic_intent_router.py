@@ -52,7 +52,11 @@ class SemanticIntentSafetyTests(unittest.TestCase):
                 self.assertEqual(endpoint,"http://127.0.0.1:31819")
                 self.assertEqual(payload["model"],runtime.config.model)
                 self.assertEqual(payload["stream"],False)
-                self.assertEqual(payload["format"],"json")
+                self.assertIsInstance(payload["format"],dict)
+                self.assertEqual(
+                    set(payload["format"]["properties"]["kind"]["enum"]),
+                    set(KINDS)|{"none"})
+                self.assertFalse(payload["format"]["additionalProperties"])
                 self.assertNotIn("tools",payload)
                 self.assertEqual(payload["messages"][0]["role"],"system")
                 self.assertEqual(json.loads(payload["messages"][1]["content"])["message"],phrase)
