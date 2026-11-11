@@ -207,6 +207,11 @@ class TimelineTests(unittest.TestCase):
                                   proc.stderr.decode(errors="replace")[-150:])
                 tracks.append(path)
             checksums=[hashlib.sha256(p.read_bytes()).hexdigest() for p in tracks]
+            subtitles=root/"captions.srt"
+            subtitles.write_text(
+                "1\n00:00:00,300 --> 00:00:01,300\nПервый клип\n"
+                "\n2\n00:00:01,500 --> 00:00:02,300\nФинал!\n",
+                encoding="utf-8")
             project=TimelineProject(
                 cuts=(
                     TimelineCut(tracks[0],source_start=.3,duration=1.5,
@@ -216,7 +221,7 @@ class TimelineTests(unittest.TestCase):
                 ),
                 output=root/"final.mp4",aspect="YouTube / Gaming 16:9",
                 color="cinematic",transition="dissolve",
-                transition_seconds=.12)
+                transition_seconds=.12,subtitles=subtitles)
             result=render_timeline(project,tools=(ffmpeg,ffprobe))
             self.assertGreater(project.output.stat().st_size,1000)
             self.assertEqual(result["technical_quality"]["video_codec"],"h264")
@@ -224,6 +229,7 @@ class TimelineTests(unittest.TestCase):
             self.assertEqual(result["technical_quality"]["width"],1280)
             self.assertEqual(result["technical_quality"]["height"],720)
             self.assertEqual(len(result["render_decisions"]),2)
+            self.assertEqual(result["subtitle_cues"],2)
             self.assertAlmostEqual(result["duration"],estimate_seconds(project),delta=.6)
             self.assertTrue(project.output.with_name("final_TIMELINE.json").is_file())
             self.assertEqual([hashlib.sha256(p.read_bytes()).hexdigest()
