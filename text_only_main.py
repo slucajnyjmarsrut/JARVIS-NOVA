@@ -582,7 +582,7 @@ class TextJarvis(BaseJarvis):
         from self_development import is_self_fix_command
         if self._closing:
             return
-        if getattr(self, "_semantic_busy", False):
+        if getattr(self, "_semantic_busy", False) is True:
             # A newer message cancels the previous proposed action. The
             # worker may finish, but its stale answer cannot reach the UI.
             self._semantic_epoch += 1
@@ -644,7 +644,7 @@ class TextJarvis(BaseJarvis):
                 and bool(getattr(self, "_local_model_ready", False))
                 and not getattr(self, "executing", False)
                 and suitable_for_semantic_routing(text)):
-            if getattr(self, "_semantic_busy", False):
+            if getattr(self, "_semantic_busy", False) is True:
                 self.log("Вы", text)
                 self.reply("Обрабатываю предыдущую команду. Повтори запрос позже.")
                 return

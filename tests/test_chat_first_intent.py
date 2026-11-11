@@ -234,12 +234,17 @@ class ChatFirstTests(unittest.TestCase):
     def test_text_handler_routes_before_generic_model_chat(self):
         app=Mock()
         app._closing=False
+        # A regular command must bypass semantic inference and its state.
+        app._semantic_busy=False
+        app._semantic_epoch=0
         TextJarvis.handle_text(app,"хочу смонтировать видео")
         app._dispatch_chat_first.assert_called_once()
         intent,original=app._dispatch_chat_first.call_args.args
         self.assertEqual(intent.kind,"timeline")
         self.assertEqual(original,"хочу смонтировать видео")
         app.open_code_assistant.assert_not_called()
+        self.assertEqual(app._semantic_epoch,0)
+        app._semantic_queue.put.assert_not_called()
 
 
 if __name__=="__main__":
