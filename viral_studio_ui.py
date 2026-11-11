@@ -216,7 +216,7 @@ class ViralStudioWindow(tk.Toplevel):
         self.multitrack_button=ttk.Button(
             tools,text="МНОГОДОРОЖЕЧНЫЙ МОНТАЖ",
             command=self.open_multitrack,style="Studio.Primary.TButton")
-        self.multitrack_button.grid(row=1,column=0,sticky="ew",padx=4,pady=4)
+        self.multitrack_button.grid(row=2,column=0,sticky="ew",padx=4,pady=4)
         ttk.Button(tools,text="Подготовить публикацию",
                    command=self.open_publish_preparation,
                    style="Studio.TButton").grid(
