@@ -49,6 +49,8 @@ on:
       - subtitle_tracks.py
       - tests/test_subtitle_tracks.py
       - tests/test_longform_video.py
+      - tests/test_longform_autoexport.py
+      - tests/test_chat_first_intent.py
       - tests/test_one_shot_project.py
       - tests/test_video_timeline.py
       - code_project_engine.py

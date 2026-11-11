@@ -41,6 +41,7 @@ TESTS=(
        "test_debate_mode.py",
        "test_chat_first_intent.py",
        "test_longform_video.py",
+       "test_longform_autoexport.py",
        "test_one_shot_project.py",
        "test_smart_highlight_selection.py",
        "test_model_inventory.py",

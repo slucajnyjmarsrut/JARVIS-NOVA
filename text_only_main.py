@@ -538,9 +538,11 @@ class TextJarvis(BaseJarvis):
         elif kind == "longform":
             window=self.open_timeline()
             if window is not None:
-                window.after(80,window.prepare_longform)
+                window.after(
+                    80,lambda w=window:w.prepare_longform(auto_export=True))
             self.reply("Готовлю черновой 15-минутный монтаж из длинных исходников. "
-                       "Выбери локальные видео; перед экспортом покажу фрагменты.")
+                       "Выбери локальные видео: смогу сам экспортировать монтаж "
+                       "после одного подтверждения. Оригиналы сохранятся.")
         elif kind == "multitrack":
             self.open_multitrack()
         elif kind == "edits":

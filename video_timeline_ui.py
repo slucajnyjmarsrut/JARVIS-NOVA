@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Editable JARVIS NOVA video timeline: true trims, cut order, preview, undo.
 
-FFmpeg never starts automatically. Every export requires explicit confirmation.
+FFmpeg starts only after explicit consent; chat-driven long-form export can
+use a one-time approval obtained after the user selects source files.
 The project format is a local JSON document, not executable model output.
 """
 from __future__ import annotations
@@ -42,6 +43,7 @@ class TimelineWindow(tk.Toplevel):
         self._cuts=[]
         self._preview_image=None
         self._latest_video=None
+        self._auto_export_token=None
         self._drag_from=None
         self._drag_x=None
         self._busy_since=None
@@ -340,8 +342,12 @@ class TimelineWindow(tk.Toplevel):
         self._refresh(index)
         self.status.set("Таймлайн изменён. Экспорт ещё не выполнялся.")
 
-    def prepare_longform(self, target_seconds=900.0):
-        """Pick hour-long media, then draft a 15-minute timeline without rendering."""
+    def prepare_longform(self, target_seconds=900.0, *, auto_export=False):
+        """Draft locally; optionally export after a ONE-TIME upfront consent.
+
+        Chat-first automatic montage asks permission once after media selection.
+        Manual timeline actions still require their existing export consent.
+        """
         if self._busy:
             return
         names=filedialog.askopenfilenames(
@@ -357,6 +363,24 @@ class TimelineWindow(tk.Toplevel):
         except (OSError,TimelineError) as exc:
             messagebox.showerror("Видео",str(exc),parent=self)
             return
+        self._auto_export_token=None
+        if auto_export:
+            wants_auto=messagebox.askyesno(
+                "Автономный 15-минутный монтаж",
+                f"Исходников: {len(paths)}. Создать из них 15-минутный MP4 "
+                "автоматически, без второго подтверждения?\n\n"
+                "JARVIS локально проанализирует небольшие выборки кадров, "
+                "соберёт монтаж в формате YouTube 16:9 и технически проверит "
+                "результат. Файл будет создан в папке первого исходника "
+                "под новым именем JARVIS_LONGFORM_15min*.mp4.\n\n"
+                "Исходники НЕ перезаписываются; в сеть ничего не отправляется. "
+                "Отбор основан на движении, не на понимании сюжета. "
+                "Задачу можно отменить кнопкой СТОП.\n\n"
+                "Разрешить автоматический экспорт после анализа?",
+                parent=self)
+            if wants_auto:
+                self._auto_export_token=object()
+        consent=self._auto_export_token
         self._cancel.clear()
         self._working("Анализирую исходники локально (без загрузки в сеть)…")
         def worker():
@@ -377,7 +401,9 @@ class TimelineWindow(tk.Toplevel):
                         out.stem+"_TIMELINE.json").exists():
                     suffix+=1
                     out=paths[0].parent/f"JARVIS_LONGFORM_15min_{suffix}.mp4"
-                self._events.put(("longform",(cuts,out,analysis)))
+                if self._cancel.is_set():
+                    raise InterruptedError("Автомонтаж отменён.")
+                self._events.put(("longform",(cuts,out,analysis,consent)))
             except Exception as exc:
                 self._events.put(("error",str(exc)[:300]))
         threading.Thread(target=worker,daemon=True,
@@ -614,16 +640,19 @@ class TimelineWindow(tk.Toplevel):
         threading.Thread(target=worker,daemon=True,
                          name="jarvis-timeline-preview").start()
 
-    def export(self):
+    def export(self, *, _approved_token=None):
         if self._busy:
             return
+        approved=(_approved_token is not None
+                  and _approved_token is self._auto_export_token)
+        self._auto_export_token=None  # Expire even on validation failure.
         try:
             project=self._project(export=True)
             length=estimate_seconds(project)
         except (TimelineError,OSError,ValueError) as exc:
             messagebox.showerror("Проверка проекта",str(exc),parent=self)
             return
-        if not messagebox.askyesno(
+        if not approved and not messagebox.askyesno(
             "Подтвердить экспорт таймлайна?",
             f"Клипов: {len(project.cuts)} · ~{length/60:.1f} минут\n"
             f"Размер: {ASPECTS[project.aspect]}\n"
@@ -675,17 +704,28 @@ class TimelineWindow(tk.Toplevel):
                     except (OSError,ValueError) as exc:
                         self.status.set("Предпросмотр не готов: "+str(exc)[:100])
                 elif event=="longform":
-                    cuts,target,analysis=value
+                    cuts,target,analysis,token=value
+                    approved=(token is not None
+                              and token is self._auto_export_token
+                              and not self._cancel.is_set())
                     self._history=TimelineHistory()
                     self._cuts=list(cuts)
                     self.fade.set("0")
+                    if approved:
+                        self.aspect.set("YouTube / Gaming 16:9")
                     self.output.set(str(target))
                     self._refresh(0)
                     self.status.set(
                         f"Черновик: {len(cuts)} фрагментов на 15 минут. "
                         f"Проверено мини-сцен: {analysis.usable}/{analysis.examined}. "
                         "Отбор по движению/детализации, не понимание сюжета. "
-                        "Проверь монтаж и подтверди экспорт.")
+                        ("Экспортирую автоматически по выданному разрешению."
+                         if approved else
+                         "Проверь монтаж и подтверди экспорт."))
+                    if approved:
+                        self.after_idle(
+                            lambda approval=token: self.export(
+                                _approved_token=approval))
                 elif event=="filmcraft":
                     self.status.set("FilmCraft открыт: "+value)
                 elif event=="done":
@@ -699,6 +739,7 @@ class TimelineWindow(tk.Toplevel):
                         value["output"]+"\nИсходные файлы не изменены.",
                         parent=self)
                 else:
+                    self._auto_export_token=None
                     self.status.set("Экспорт/предпросмотр не завершён: "+value)
                     messagebox.showerror("Таймлайн",value,parent=self)
         except queue.Empty:
@@ -713,6 +754,7 @@ class TimelineWindow(tk.Toplevel):
         self.after(130,self._pump)
 
     def cancel(self):
+        self._auto_export_token=None
         if self._busy:
             self._cancel.set()
             self.status.set("Запросил остановку FFmpeg; неполный MP4 не сохраняется.")
@@ -793,4 +835,5 @@ class TimelineWindow(tk.Toplevel):
                 parent=self):
                 return
             self._cancel.set()
+        self._auto_export_token=None
         self.destroy()
