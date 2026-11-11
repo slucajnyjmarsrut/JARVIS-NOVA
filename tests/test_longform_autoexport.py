@@ -86,7 +86,7 @@ class AutoLongformTests(TestCase):
         w=dummy_window(object())
         TimelineWindow.cancel(w)
         self.assertIsNone(w._auto_export_token)
-        w._cancel.set.assert_not_called()
+        self.assertFalse(w._cancel.is_set())
         w._auto_export_token=object()
         TimelineWindow.close(w)
         self.assertIsNone(w._auto_export_token)
