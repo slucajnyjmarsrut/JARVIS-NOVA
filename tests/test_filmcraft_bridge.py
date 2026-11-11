@@ -109,6 +109,48 @@ class FilmCraftBridgeTests(unittest.TestCase):
             _,count=build_filmcraft_timeline(movie,meta)
             self.assertEqual(count,0)
 
+    def test_timeline_edl_imports_editable_cuts_but_respects_subtitles_velocity(self):
+        with tempfile.TemporaryDirectory() as root:
+            movie,fixture=project_fixture(root)
+            folder=Path(fixture["source_directory"])
+            metadata={
+                "schema":"jarvis_timeline_v1",
+                "output":str(movie),"duration":2.85,
+                "subtitles":None,
+                "cuts":[
+                    {"path":str(folder/"01.mp4"),"source_start":.25,
+                     "duration":1.5,"speed":1.0,"caption":"Клип 1"},
+                    {"path":str(folder/"02.mp4"),"source_start":.2,
+                     "duration":1.5,"speed":1.0,"caption":"Клип 2"},
+                ],
+                "render_info":{
+                    "transition":"dissolve","transition_seconds":.15},
+            }
+            sidecar=movie.with_name(movie.stem+"_TIMELINE.json")
+            sidecar.write_text(json.dumps(metadata),encoding="utf-8")
+            timeline,count=build_filmcraft_timeline(movie)
+            self.assertEqual(count,2)
+            children=timeline["tracks"]["children"][0]["children"]
+            self.assertEqual(
+                [clip["OTIO_SCHEMA"] for clip in children],
+                ["Clip.2","Transition.1","Clip.2"])
+            self.assertEqual(len(timeline["tracks"]["markers"]),2)
+            metadata["subtitles"]="subtitles.srt"
+            _,count=build_filmcraft_timeline(movie,metadata)
+            self.assertEqual(count,0)
+            metadata["subtitles"]=None
+            metadata["cuts"][1]["speed"]=1.5
+            _,count=build_filmcraft_timeline(movie,metadata)
+            self.assertEqual(count,0)
+            metadata["cuts"][1]["speed"]=1.
+            metadata["render_info"]["transition"]="wipeleft"
+            _,count=build_filmcraft_timeline(movie,metadata)
+            self.assertEqual(count,0)
+            metadata["render_info"]["transition"]="fade"
+            metadata["cuts"][0]["path"]=str(folder/"../private.mp4")
+            _,count=build_filmcraft_timeline(movie,metadata)
+            self.assertEqual(count,0)
+
     def test_missing_clips_reverts_to_rendered_mp4(self):
         with tempfile.TemporaryDirectory() as temp:
             video, meta = project_fixture(temp, originals=False)
