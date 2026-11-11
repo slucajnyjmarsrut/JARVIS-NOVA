@@ -39,6 +39,12 @@ on:
       - installer/JarvisNovaLite.iss
       - tests/test_lite_edition.py
       - popular_edits.py
+      - multitrack_composer.py
+      - multitrack_ui.py
+      - creator_publish.py
+      - creator_publish_ui.py
+      - tests/test_multitrack_composer.py
+      - tests/test_creator_publish.py
       - creator_accounts.py
       - creator_accounts_ui.py
       - tests/test_popular_edits.py
