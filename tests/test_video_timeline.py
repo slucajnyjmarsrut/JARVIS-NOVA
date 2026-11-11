@@ -77,7 +77,21 @@ class TimelineTests(unittest.TestCase):
             project_file=Path(tmp)/"timeline.json"
             save_timeline(p,project_file)
             loaded=load_timeline(project_file)
-            self.assertEqual(loaded,p)
+            # Windows may spell the SAME directory as RUNNER~1 or
+            # runneradmin (8.3 alias); verify file identity, not text.
+            self.assertEqual(loaded.aspect,p.aspect)
+            self.assertEqual(loaded.color,p.color)
+            self.assertEqual(loaded.transition,p.transition)
+            self.assertEqual(loaded.transition_seconds,p.transition_seconds)
+            self.assertEqual(loaded.output.name,p.output.name)
+            self.assertTrue(loaded.output.parent.samefile(p.output.parent))
+            self.assertEqual(len(loaded.cuts),len(p.cuts))
+            for imported,original in zip(loaded.cuts,p.cuts):
+                self.assertTrue(imported.path.samefile(original.path))
+                self.assertEqual(imported.source_start,original.source_start)
+                self.assertEqual(imported.duration,original.duration)
+                self.assertEqual(imported.speed,original.speed)
+                self.assertEqual(imported.caption,original.caption)
             with self.assertRaises(TimelineError):
                 save_timeline(p,project_file)
             attack=Path(tmp)/"malformed.json"
