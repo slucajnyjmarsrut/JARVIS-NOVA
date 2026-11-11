@@ -72,6 +72,7 @@ class TextJarvis(BaseJarvis):
         self.control_allowed = False
         self.vision_allowed = False
         self.engine = "bundled"
+        self._debate_mode = False
         self.learning = LearningStore()
         self.modes = ModeManager()
         self.games = GameCatalog()
@@ -300,7 +301,7 @@ class TextJarvis(BaseJarvis):
         messagebox.showinfo("JARVIS NOVA — текст",
             "Пиши сообщения в чате, ответы появляются только текстом.\n\n"
             "Локальная Qwen, команды Windows, 20 языков, Roblox 3D, монтаж и "
-            "анализ экрана с подтверждением доступны.\n"
+            "анализ экрана с подтверждением и режим спора доступны.\n"
             "Микрофон и синтез речи не запускаются.", parent=self)
 
     def open_filmcraft(self):

@@ -51,6 +51,32 @@ class GatewayTests(unittest.TestCase):
         with self.assertRaises(FreeLLMError):
             client.ask("Привет")
 
+    def test_debate_changes_only_chat_and_not_code_generation(self):
+        requests=[]
+        def send(url,payload,headers,timeout):
+            requests.append(payload)
+            return {"choices":[{"message":{"content":"OK"}}]}
+        client=FreeLLMChat(transport=send)
+        client.ask("Обычный разговор")
+        self.assertNotIn("РЕЖИМ ДИСКУССИИ",
+                         requests[-1]["messages"][0]["content"])
+        client.set_debate_mode(True)
+        client.ask("Нужно отказаться от тестов")
+        self.assertIn("РЕЖИМ ДИСКУССИИ",
+                      requests[-1]["messages"][0]["content"])
+        client.generate_code("Сделай Main.java","java")
+        self.assertEqual(len(requests[-1]["messages"]),2)
+        self.assertNotIn("РЕЖИМ ДИСКУССИИ",
+                         requests[-1]["messages"][0]["content"])
+        client.set_debate_mode(False)
+        client.ask("Нормальный режим")
+        self.assertNotIn("РЕЖИМ ДИСКУССИИ",
+                         requests[-1]["messages"][0]["content"])
+        with self.assertRaises(ValueError):
+            client.set_debate_mode(1)
+        client.close()
+        self.assertFalse(client.debate_mode)
+
     def test_code_uses_separate_context_and_model(self):
         requests=[]
         def send(url,payload,headers,timeout):

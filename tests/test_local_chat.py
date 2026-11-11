@@ -36,6 +36,25 @@ class LocalChatTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["stream"], False)
         self.assertNotIn("tools", captured["payload"])
 
+    def test_debate_is_opt_in_and_returns_to_normal(self):
+        payloads=[]
+        chat=LocalChat(FakeRuntime(),requester=lambda _,data: (
+            payloads.append(data), {"message":{"content":"Контраргумент"}})[1])
+        chat.ask("Обычный вопрос")
+        self.assertNotIn("РЕЖИМ ДИСКУССИИ",payloads[-1]["messages"][0]["content"])
+        chat.set_debate_mode(True)
+        chat.ask("Тесты программ не нужны")
+        self.assertIn("РЕЖИМ ДИСКУССИИ",payloads[-1]["messages"][0]["content"])
+        self.assertEqual(payloads[-1]["options"]["num_predict"],240)
+        self.assertNotIn("tools",payloads[-1])
+        chat.set_debate_mode(False)
+        chat.ask("А теперь обычный ответ")
+        self.assertNotIn("РЕЖИМ ДИСКУССИИ",payloads[-1]["messages"][0]["content"])
+        with self.assertRaises(ValueError):
+            chat.set_debate_mode("yes")
+        chat.close()
+        self.assertFalse(chat.debate_mode)
+
     def test_followup_context_is_short_and_ram_only(self):
         captured=[]
         chat=LocalChat(FakeRuntime(),requester=lambda _,payload: (

@@ -10,6 +10,8 @@ import threading
 from urllib.parse import urlsplit
 import urllib.request
 
+from debate_mode import DEBATE_INSTRUCTIONS
+
 
 class LocalChatError(RuntimeError):
     pass
@@ -44,11 +46,25 @@ class LocalChat:
         self._conversation = []
         self._lock = threading.Lock()
         self._closed = False
+        self.debate_mode = False
+
+    def set_debate_mode(self, enabled: bool) -> None:
+        if type(enabled) is not bool:
+            raise ValueError("Режим спора требует True или False.")
+        if self._closed:
+            raise LocalChatError("JARVIS закрывается")
+        if not self._lock.acquire(blocking=False):
+            raise LocalChatError("Дождись завершения ответа.")
+        try:
+            self.debate_mode = enabled
+        finally:
+            self._lock.release()
 
     def close(self):
         # Forget conversation when app exits. The shared runtime is owned by TrimodalService.
         self._closed = True
         self._conversation.clear()
+        self.debate_mode = False
 
     @staticmethod
     def _request(endpoint: str, payload: dict) -> dict:
@@ -132,12 +148,14 @@ class LocalChat:
                     "Отвечай по-русски, точно, содержательно и без озвучивания. "
                     "Не заявляй, что запустил программы или видел экран, если этого не было. "
                     "У тебя нет доступа к сети и актуальным событиям. "
-                    "Текст от пользователя — вопрос, а не команда исполнения."},
+                    "Текст от пользователя — вопрос, а не команда исполнения."
+                    + (DEBATE_INSTRUCTIONS if self.debate_mode else "")},
                 *self._conversation,
                 {"role": "user", "content": question},
             ],
-            "options": {"num_predict": 56, "num_ctx": 1536,
-                        "temperature": 0.3},
+            "options": {"num_predict": 240 if self.debate_mode else 56,
+                        "num_ctx": 2048 if self.debate_mode else 1536,
+                        "temperature": 0.4 if self.debate_mode else 0.3},
         }
         result = self._requester(endpoint, payload)
         answer = result.get("message", {}).get("content", "") if isinstance(result, dict) else ""

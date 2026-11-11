@@ -16,6 +16,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from debate_mode import DEBATE_INSTRUCTIONS
+
 DEFAULT_BASE_URL = "http://127.0.0.1:4000/v1"
 SYSTEM_CHAT = (
     "Ты JARVIS NOVA — текстовый помощник. Отвечай по-русски, точно, "
@@ -70,6 +72,19 @@ class FreeLLMChat:
         self._lock = threading.Lock()
         self._history = []
         self._closed = False
+        self.debate_mode = False
+
+    def set_debate_mode(self, enabled: bool) -> None:
+        if type(enabled) is not bool:
+            raise ValueError("Режим спора требует True или False.")
+        if self._closed:
+            raise FreeLLMError("JARVIS закрывается")
+        if not self._lock.acquire(blocking=False):
+            raise FreeLLMError("Дождись завершения ответа.")
+        try:
+            self.debate_mode = enabled
+        finally:
+            self._lock.release()
 
     @staticmethod
     def _request(url, payload, headers, timeout=90):
@@ -137,7 +152,9 @@ class FreeLLMChat:
         if not self._lock.acquire(blocking=False):
             raise FreeLLMError("Предыдущий ответ FreeLLM ещё обрабатывается")
         try:
-            messages = [{"role": "system", "content": SYSTEM_CHAT},
+            system = SYSTEM_CHAT + (
+                DEBATE_INSTRUCTIONS if self.debate_mode else "")
+            messages = [{"role": "system", "content": system},
                         *self._history, {"role": "user", "content": question}]
             answer = self._complete(messages, model=self.model)
             if self._closed:
@@ -171,3 +188,4 @@ class FreeLLMChat:
     def close(self):
         self._closed = True
         self._history.clear()
+        self.debate_mode = False

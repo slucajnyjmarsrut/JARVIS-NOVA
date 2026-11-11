@@ -33,6 +33,7 @@ from nova_compact_ui import build_interface, compact_geometry
 from nova_window_state import load_layout, save_layout, safe_window_geometry
 from nova_overlay import NovaOverlay, dock_geometry
 from overlay_commands import overlay_intent, preview_line
+from debate_mode import debate_command
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -66,6 +67,7 @@ class Jarvis(tk.Tk):
         self.control_allowed=False
         self.vision_allowed=False
         self.engine="bundled"
+        self._debate_mode=False
         self.learning=LearningStore()
         self.modes=ModeManager()
         self.games=GameCatalog()
@@ -729,6 +731,30 @@ class Jarvis(tk.Tk):
                          "openai":"AI: OpenAI API (ключ из окружения)",
                          "anthropic":"AI: Claude API (ключ из окружения)"}[engine])
 
+    def set_debate_mode(self, enabled=None):
+        """Opt-in, session-only debate style for conversational models."""
+        if self._closing:
+            return
+        if getattr(self,"executing",False):
+            self.reply("Сначала дождись завершения текущего ответа.")
+            return
+        if enabled is None:
+            enabled = not bool(getattr(self,"_debate_mode",False))
+        if type(enabled) is not bool:
+            raise ValueError("Нужен логический параметр режима спора.")
+        for name in ("local_chat","freellm_chat"):
+            client=getattr(self,name,None)
+            if client is not None:
+                client.set_debate_mode(enabled)
+        self._debate_mode=enabled
+        if enabled:
+            self.reply("Режим спора включён. Предложи тезис — я выдвину "
+                       "аргументы против, проверю доводы и буду готов "
+                       "признать твою правоту. Чтобы завершить, скажи "
+                       "«хватит спорить».")
+        else:
+            self.reply("Режим спора выключен. Вернулся к обычному диалогу.")
+
     def enter(self,event=None):
         s=self.entry.get().strip()
         self.entry.delete(0,"end")
@@ -883,6 +909,14 @@ class Jarvis(tk.Tk):
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        debate=debate_command(text)
+        if debate is not None:
+            if debate=="status":
+                self.reply("Режим спора "+("включён." if getattr(
+                    self,"_debate_mode",False) else "выключен."))
+            else:
+                self.set_debate_mode(debate=="on")
+            return
         from coding_intent import detect_coding_intent
         coding=detect_coding_intent(text)
         if coding is not None:
