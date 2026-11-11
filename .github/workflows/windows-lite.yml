@@ -100,6 +100,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_video_timeline.py -v
       - name: Verify SRT UTF-8 subtitle bounds and safe import
         run: python -m unittest discover -s tests -p test_subtitle_tracks.py -v
+      - name: Verify player consent and local MP4-only validation
+        run: python -m unittest discover -s tests -p test_video_preview.py -v
       - name: Run existing text-only application tests
         shell: pwsh
         run: |
