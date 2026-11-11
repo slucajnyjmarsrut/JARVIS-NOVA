@@ -20,7 +20,7 @@ SENSITIVE_KINDS = frozenset({
     "model", "model_scan", "model_download",
     "permission_screen", "permission_control",
 })
-MODEL_TIMEOUT_SECONDS = 12
+MODEL_TIMEOUT_SECONDS = 40
 MAX_REQUEST_CHARS = 300
 REQUIRED_CONFIDENCE = 0.92
 COMMAND_START = re.compile(

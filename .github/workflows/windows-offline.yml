@@ -15,6 +15,7 @@ on:
       - 'local_chat.py'
       - 'scripts/verify_text_vision_e2e.py'
       - 'scripts/verify_local_scenario_e2e.py'
+      - 'scripts/verify_real_qwen_intent_e2e.py'
       - 'scripts/verify_real_qwen_coding_e2e.py'
       - 'tests/test_real_qwen_coding_contract.py'
       - 'code_agent.py'
@@ -231,6 +232,12 @@ jobs:
             python scripts/verify_text_vision_e2e.py
             if ($LASTEXITCODE -ne 0) { throw "Qwen Vision failed pass $pass" }
           }
+      - name: REAL local Qwen natural-command classification acceptance
+        shell: pwsh
+        timeout-minutes: 12
+        run: |
+          python scripts/verify_real_qwen_intent_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real Qwen intent routing failed; do not publish a release' }
       - name: REAL autonomous Qwen screenplay and shooting-plan acceptance
         shell: pwsh
         timeout-minutes: 25
