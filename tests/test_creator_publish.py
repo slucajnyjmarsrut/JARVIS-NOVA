@@ -16,6 +16,33 @@ from creator_publish import (
 
 
 class PublishPreparationTests(unittest.TestCase):
+    def test_chat_prepares_publication_without_sending_it(self):
+        for text in ("подготовь публикацию","загрузи видео на ютуб",
+                     "опубликуй ролик в инстаграм"):
+            self.assertTrue(is_publish_prep_request(text),text)
+        for text in ("обнови JARVIS","скинь пароль","сделай видео"):
+            self.assertFalse(is_publish_prep_request(text),text)
+
+    def test_real_tk_draft_window_has_no_automatic_upload(self):
+        import tkinter as tk
+        from creator_publish_ui import PublishWindow
+        try:
+            root=tk.Tk()
+        except tk.TclError:
+            self.skipTest("No graphical Tk display")
+        root.withdraw()
+        window=None
+        try:
+            window=PublishWindow(root)
+            window.update_idletasks()
+            self.assertEqual(window.platform.get(),"youtube")
+            self.assertFalse(window._busy)
+            self.assertEqual(window._messages.qsize(),0)
+        finally:
+            if window is not None:
+                window.destroy()
+            root.destroy()
+
     def fixture(self,root):
         video=Path(root)/"My Video.mp4"
         video.write_bytes(b"video-data"*150)
