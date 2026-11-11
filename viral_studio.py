@@ -30,6 +30,14 @@ class ViralStudioError(RuntimeError):
     pass
 
 
+class RejectedScenarioDraft(ViralStudioError):
+    """A locally rejected AI draft kept only for another attempt, not a valid brief."""
+
+    def __init__(self, reason: str, draft: "Brief"):
+        super().__init__(reason)
+        self.draft = draft
+
+
 # Ollama grammar uses distinct required SCENE ROLES rather than a list.
 # Small Qwen 2B models previously duplicated instructions across array items.
 # This schema guides separate storyboard actions for each role; the model is
@@ -39,7 +47,7 @@ _SCENE_SCHEMA = {
     "properties": {
         "seconds": {"type": "integer", "minimum": 3, "maximum": 9},
         "film": {"type": "string"},
-        "caption": {"type": "string"},
+        "caption": {"type": "string", "minLength": 1, "maxLength": 100},
     },
     "required": ["seconds", "film", "caption"],
     "additionalProperties": False,
@@ -158,12 +166,17 @@ def validate_brief(brief: Brief) -> Brief:
     if not 2 <= len(brief.shots) <= 10:
         raise ViralStudioError('Нужно 2–10 кадров')
     total = 0.0
-    for shot in brief.shots:
+    for index, shot in enumerate(brief.shots, 1):
         if not isinstance(shot.seconds, (float, int)) or not 1 <= shot.seconds <= 15:
             raise ViralStudioError('Длительность каждого кадра должна быть 1–15 секунд')
         total += shot.seconds
         _clean_text(shot.film, 300, 'Инструкция по съёмке')
-        _clean_text(shot.caption, 100, 'Текст на экране')
+        try:
+            _clean_text(shot.caption, 100, 'Текст на экране')
+        except ViralStudioError as exc:
+            length = len(shot.caption) if isinstance(shot.caption, str) else 'не строка'
+            raise ViralStudioError(
+                f'{exc} (кадр {index}, длина {length}; максимум 100)') from exc
     if total > 95:
         raise ViralStudioError('Сценарий длиннее 95 секунд')
     return brief
@@ -225,7 +238,11 @@ def _parse_model_brief(data: dict, topic: str, research) -> Brief:
                       str(data['call_to_action']), 'локальная Qwen3-VL', tuple(research)[:10])
     except (KeyError, TypeError, ValueError) as exc:
         raise ViralStudioError('Локальная модель вернула неполный сценарий') from exc
-    return validate_brief(brief)
+    try:
+        return validate_brief(brief)
+    except ViralStudioError as exc:
+        # Not approved or saved: retain a bounded draft for Qwen's next revision.
+        raise RejectedScenarioDraft(str(exc), brief) from exc
 
 
 def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=None, audience=None,
@@ -245,10 +262,18 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
     if previous_brief is not None:
         if not isinstance(previous_brief, Brief):
             raise ViralStudioError('Недопустимый предыдущий черновик сценария')
-        validate_brief(previous_brief)
-        # Model output stays DATA, not trusted instructions. Bound prompt size.
         if previous_brief.topic != topic:
             raise ViralStudioError('Нельзя подменять тему сценария при исправлении')
+        try:
+            validate_brief(previous_brief)
+        except ViralStudioError:
+            # Only allow an explicitly rejected local Qwen draft for a revision.
+            # No invalid draft is ever accepted as a result or saved to disk.
+            if (not quality_feedback
+                    or not previous_brief.generator.startswith('локальная Qwen')
+                    or not 2 <= len(previous_brief.shots) <= 10):
+                raise
+        # Model output stays DATA, not trusted instructions. Bound prompt size.
     if not 3 <= float(timeout_seconds) <= 180:
         raise ViralStudioError('Время ожидания AI должно быть 3–180 секунд')
     if type(max_tokens) is not int or not 250 <= max_tokens <= 2500:
@@ -310,6 +335,8 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
         'result — сравнение или доказательство; ending — итог и вопрос. '
         'У каждого film СВОЙ уникальный текст и глагол; '
         'никогда не повторяй одинаковые film или caption. '
+        'Каждый caption — КОРОТКАЯ экранная подпись (2–7 слов, до 68 символов), '
+        'без длинных пояснений, без инструкций по съёмке. '
         'Вся история — 20–45 секунд, каждый кадр — 3–9 секунд. '
         'Каждый film должен конкретно объяснять человеку, ЧТО снять; без дорогой техники. '
         'Все сцены и подписи разные, не повторяются, всего 20–45 секунд. '
