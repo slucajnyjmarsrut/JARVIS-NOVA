@@ -63,6 +63,7 @@ jobs:
                                  'test_popular_edits.py',
                                  'test_creator_accounts.py',
                                  'test_multitrack_composer.py',
+                                 'test_video_timeline.py',
                                  'test_creator_publish.py',
                                  'test_self_development.py',
                                  'test_freellm_client.py',
