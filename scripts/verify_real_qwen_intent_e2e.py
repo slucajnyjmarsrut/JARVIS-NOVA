@@ -7,6 +7,7 @@ import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bundled_vision_runtime import BundledRuntimeConfig, BundledVisionRuntime
 from semantic_intent_router import classify_local_intent
+from local_chat import LocalChat
 
 
 def main() -> int:
@@ -25,8 +26,20 @@ def main() -> int:
     try:
         for idx,(phrase,expected) in enumerate(cases,1):
             try:
-                decision=classify_local_intent(phrase,runtime)
+                # Log only bounded AI output for these fixed, public test
+                # phrases. Never log any user's private chats or files.
+                outputs=[]
+                def requester(endpoint,payload):
+                    response=LocalChat._request(endpoint,payload,timeout=40)
+                    outputs.append(response)
+                    return response
+                decision=classify_local_intent(
+                    phrase,runtime,requester=requester)
                 actual=decision.kind if decision is not None else "none"
+                if actual == "none" and outputs:
+                    msg=outputs[-1].get("message",{})
+                    raw=msg.get("content","") if isinstance(msg,dict) else ""
+                    print("QWEN INTENT DIAGNOSTIC "+repr(str(raw)[:340]),flush=True)
                 ok=actual==expected
                 print("REAL QWEN INTENT "+("PASS" if ok else "FAIL")
                       +f" {idx}/{len(cases)} expected={expected} got={actual}",
