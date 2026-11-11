@@ -86,15 +86,15 @@ def route_chat_request(text: str) -> ChatIntent | None:
         "прерви сканирование моделей", "останови сканирование моделей"
     }:
         return ChatIntent("cancel_model_scan")
-    # Match both imperative and UI-label infinitive forms. Never auto-download:
-    # "model" always calls the existing confirmation-gated check_models().
+    # Explicit install and inspection are separate consent-preserving actions.
     if s in {"скачай qwen", "скачать qwen", "установи qwen",
-             "установить qwen", "проверь qwen", "проверить qwen",
-             "проверь локальную модель", "проверить локальную модель",
-             "скачай модель", "скачать модель",
+             "установить qwen", "скачай модель", "скачать модель",
              "скачай локальную модель", "скачать локальную модель",
              "установи локальную модель", "установить локальную модель",
              "хочу установить qwen"}:
+        return ChatIntent("model_download")
+    if s in {"проверь qwen", "проверить qwen",
+             "проверь локальную модель", "проверить локальную модель"}:
         return ChatIntent("model")
     if s in {"останови скачивание qwen", "отмени загрузку qwen",
              "останови загрузку модели", "отмени скачивание модели"}:

@@ -154,8 +154,8 @@ class TextJarvis(BaseJarvis):
         self.after(250,self._pump_model_download)
         self.after(300,self._pump_model_scan)
 
-    def check_models(self):
-        """No speech asset imports. Offer Lite users a consent-gated Qwen pull."""
+    def check_models(self, *, offer_scan=True):
+        """Explicit download skips disk scan but still asks for UI permission."""
         from bundled_vision_runtime import validate_offline_model_store
         try:
             validate_offline_model_store(
@@ -167,7 +167,7 @@ class TextJarvis(BaseJarvis):
                     "Загрузка модели уже идёт. Прогресс отображается в чате.",
                     parent=self)
                 return
-            if (not self._model_scan_busy and
+            if (offer_scan and not self._model_scan_busy and
                     messagebox.askyesno(
                         "Сначала найти уже скачанные модели?",
                         "JARVIS проверяет только свой кеш. Возможно, Qwen "
@@ -480,7 +480,9 @@ class TextJarvis(BaseJarvis):
         elif kind == "updates":
             self.show_update_center()
         elif kind == "model":
-            self.check_models()  # Separate explicit download permission.
+            self.check_models()  # Search optional; download needs consent.
+        elif kind == "model_download":
+            self.check_models(offer_scan=False)  # Direct consent dialog.
         elif kind == "model_scan":
             self.scan_models_on_pc()
         elif kind == "cancel_model_scan":

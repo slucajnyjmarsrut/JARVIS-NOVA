@@ -21,7 +21,7 @@ class ChatFirstTests(unittest.TestCase):
             "хочу показать скриншот":("screenshot",""),
             "открой настройки":("settings",""),
             "проверь обновления":("updates",""),
-            "установи Qwen":("model",""),
+            "установи Qwen":("model_download",""),
             "отмени загрузку Qwen":("cancel_model",""),
             "давай поиграем":("gaming",""),
             "хочу открыть браузер":("open_desktop","браузер"),
@@ -39,9 +39,10 @@ class ChatFirstTests(unittest.TestCase):
         phrases={
             "проверить локальную модель":"model",
             "проверь локальную модель":"model",
-            "скачать модель":"model",
-            "скачай модель":"model",
-            "скачать Qwen":"model",
+            "скачать модель":"model_download",
+            "скачай модель":"model_download",
+            "скачать Qwen":"model_download",
+            "скачай qwen":"model_download",
             "проверить Qwen":"model",
             "найди модели":"model_scan",
             "найти модели":"model_scan",
@@ -54,8 +55,11 @@ class ChatFirstTests(unittest.TestCase):
                 self.assertEqual(intent.kind,kind)
                 app=Mock()
                 TextJarvis._dispatch_chat_first(app,intent,phrase)
-                method="check_models" if kind=="model" else "scan_models_on_pc"
-                getattr(app,method).assert_called_once_with()
+                if kind=="model_download":
+                    app.check_models.assert_called_once_with(offer_scan=False)
+                else:
+                    method="check_models" if kind=="model" else "scan_models_on_pc"
+                    getattr(app,method).assert_called_once_with()
                 app.execute_plan.assert_not_called()
                 app.download_local_model.assert_not_called()
 
@@ -67,6 +71,31 @@ class ChatFirstTests(unittest.TestCase):
         ):
             with self.subTest(phrase=phrase):
                 self.assertIsNone(route_chat_request(phrase))
+
+    def test_direct_download_skips_search_but_requires_permission(self):
+        from unittest.mock import patch
+        app=Mock()
+        app._model_download_busy=False
+        app._model_scan_busy=False
+        app._asset_root="assets"
+        app.runtime.config.model_store="empty"
+        with patch("bundled_vision_runtime.validate_offline_model_store",
+                   side_effect=RuntimeError("No Qwen")):
+            with patch("text_only_main.messagebox.askyesno",return_value=True) as ask:
+                TextJarvis.check_models(app,offer_scan=False)
+        ask.assert_called_once()
+        self.assertIn("Скачать",ask.call_args.args[0])
+        app.scan_models_on_pc.assert_not_called()
+        app.download_local_model.assert_called_once()
+
+        app.reset_mock()
+        with patch("bundled_vision_runtime.validate_offline_model_store",
+                   side_effect=RuntimeError("No Qwen")):
+            with patch("text_only_main.messagebox.askyesno",return_value=False) as ask:
+                TextJarvis.check_models(app,offer_scan=False)
+        ask.assert_called_once()
+        app.scan_models_on_pc.assert_not_called()
+        app.download_local_model.assert_not_called()
 
     def test_longform_chat_requests_one_permission_autoexport(self):
         request="хочу сделать 15 минут из двухчасового видео"
@@ -115,12 +144,16 @@ class ChatFirstTests(unittest.TestCase):
             ("studio","open_viral_studio"),("edits","open_viral_studio"),
             ("publish","open_publish_preparation"),("screenshot","open_screenshot_review"),
             ("updates","show_update_center"),("model","check_models"),
+            ("model_download","check_models"),
             ("settings","show_settings_menu"),("cancel_model","cancel_local_model_download"),
         ):
             with self.subTest(kind=kind):
                 app=Mock()
                 TextJarvis._dispatch_chat_first(app,ChatIntent(kind),"Пожелание")
-                getattr(app,method).assert_called_once()
+                if kind=="model_download":
+                    app.check_models.assert_called_once_with(offer_scan=False)
+                else:
+                    getattr(app,method).assert_called_once()
                 app.execute_plan.assert_not_called()
                 app.log.assert_called_once_with("Вы","Пожелание")
 
