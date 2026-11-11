@@ -348,6 +348,22 @@ class TextJarvis(BaseJarvis):
                        "проверь предложенный код и подтверди запись. "
                        "Обновление EXE выполняется только через проверенный релиз.")
             return
+        from multitrack_composer import is_multitrack_request
+        from creator_publish import is_publish_prep_request
+        if is_multitrack_request(text):
+            self.log("Вы",text)
+            self.open_multitrack()
+            self.reply("Открыл многодорожечный монтаж: наложения, титры, "
+                       "музыка и озвучка. Твои файлы не будут изменены, "
+                       "пока ты не подтвердил экспорт.")
+            return
+        if is_publish_prep_request(text):
+            self.log("Вы",text)
+            self.open_publish_preparation()
+            self.reply("Открыл подготовку публикации. Черновик останется "
+                       "на компьютере; MP4 загружаешь через официальный "
+                       "сайт самостоятельно. Автопубликация не включена.")
+            return
         from popular_edits import is_popular_edit_request
         from creator_accounts import is_creator_signup_request
         if is_popular_edit_request(text):
