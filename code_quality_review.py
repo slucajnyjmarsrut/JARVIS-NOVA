@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import ast
+import difflib
+from pathlib import Path
 
-from code_workspace import ChangePlan, validate_plan
+from code_workspace import ChangePlan, WorkspaceError, validate_plan
 
 
 @dataclass(frozen=True)
@@ -105,3 +107,44 @@ def review_change_plan(plan: ChangePlan, *, max_findings=40) -> ProjectReview:
         add("note", "README.md", 0,
             "Нет инструкции запуска или проверки проекта")
     return ProjectReview(tuple(findings), tests, sources)
+
+
+def unified_plan_diff(plan: ChangePlan, workspace: Path, *,
+                      max_chars: int = 36000) -> str:
+    """Human-readable read-only unified diff; no code evaluation or writes.
+
+    Warn when output is truncated, never claim that truncated text represents
+    the full change. Caller separately displays complete proposed sources.
+    """
+    validate_plan(plan)
+    if type(max_chars) is not int or not 1000 <= max_chars <= 100_000:
+        raise WorkspaceError("Недопустимый размер просмотра diff.")
+    base=Path(workspace).expanduser()
+    if base.is_symlink() or (base.exists() and not base.is_dir()):
+        raise WorkspaceError("Недопустимая папка проекта для diff.")
+    base=base.resolve()
+    lines=[]
+    for item in plan.files:
+        target=base/Path(item.path)
+        if target.is_symlink() or not target.resolve().is_relative_to(base):
+            raise WorkspaceError("Diff запрещает внешние файлы и ссылки.")
+        if target.is_file():
+            if target.stat().st_size > 500_000:
+                raise WorkspaceError("Нельзя просмотреть слишком большой исходник.")
+            original=target.read_text(encoding="utf-8")
+        elif target.exists():
+            raise WorkspaceError("Путь будущего файла уже занят папкой.")
+        else:
+            original=""
+        if original == item.content:
+            continue
+        before=original.splitlines(keepends=True)
+        after=item.content.splitlines(keepends=True)
+        result="".join(difflib.unified_diff(
+            before,after,fromfile="a/"+item.path,
+            tofile="b/"+item.path))
+        lines.append(result)
+    combined="\n".join(lines) or "Изменений в предложенных файлах нет."
+    if len(combined)>max_chars:
+        return combined[:max_chars]+"\n[DIFF ОБРЕЗАН: изучи полный исходный код перед подтверждением.]"
+    return combined
