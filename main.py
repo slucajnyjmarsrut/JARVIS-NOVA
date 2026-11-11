@@ -511,6 +511,30 @@ class Jarvis(tk.Tk):
         self._creator_accounts_window=CreatorAccountsWindow(self)
         return self._creator_accounts_window
 
+    def open_multitrack(self):
+        """Genuine local multi-track compositor; no media leaves this computer."""
+        if self._closing:
+            return None
+        from multitrack_ui import MultitrackWindow
+        old=getattr(self,"_multitrack_window",None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        self._multitrack_window=MultitrackWindow(self)
+        return self._multitrack_window
+
+    def open_publish_preparation(self,video=None):
+        """Prepare a local draft; upload requires the owner's manual action."""
+        if self._closing:
+            return None
+        from creator_publish_ui import PublishWindow
+        old=getattr(self,"_publish_window",None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        self._publish_window=PublishWindow(self,video=video)
+        return self._publish_window
+
     def open_viral_studio(self,stage="audience"):
         """One in-app window for trend research, a shot list and local video editing."""
         if self._closing:return
