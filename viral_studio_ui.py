@@ -349,6 +349,16 @@ class ViralStudioWindow(tk.Toplevel):
             self._notify(done)
         self._spawn(worker)
 
+    def open_timeline(self):
+        """Non-destructive clip-level editor, offline and consent-gated."""
+        previous=getattr(self,"_timeline_window",None)
+        if previous is not None and previous.winfo_exists():
+            previous.lift()
+            return previous
+        from video_timeline_ui import TimelineWindow
+        self._timeline_window=TimelineWindow(self)
+        return self._timeline_window
+
     def open_multitrack(self):
         """Standalone offline compositor, separate from basic auto montage."""
         previous=getattr(self,"_multitrack_window",None)
