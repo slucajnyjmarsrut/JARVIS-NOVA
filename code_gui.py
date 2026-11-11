@@ -6,6 +6,7 @@ No silent file writes, shell commands, or network code upload.
 """
 from __future__ import annotations
 import os
+import tempfile
 import threading
 from pathlib import Path
 import tkinter as tk
@@ -18,6 +19,8 @@ from code_languages import SUPPORTED, LANGUAGE_LABELS
 from code_checks import check_project
 from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
 from code_project_engine import build_complete_project
+from code_quality_review import review_change_plan
+from code_test_sandbox import run_python_tests
 
 
 class CodeWindow(tk.Toplevel):
@@ -66,6 +69,10 @@ class CodeWindow(tk.Toplevel):
         actions=ttk.Frame(frame);actions.pack(fill='x',pady=(0,8))
         ttk.Button(actions,text='Открыть папку проекта',command=self.open_project).pack(side='left')
         ttk.Button(actions,text='Открыть IDE',command=self.open_ide).pack(side='left',padx=8)
+        self.tests_button=ttk.Button(
+            actions,text='Тесты Python в Docker (с подтверждением)',
+            command=self.test_reviewed_project,state='disabled')
+        self.tests_button.pack(side='left',padx=(8,0))
         roblox=ttk.LabelFrame(frame,text='Roblox Studio: генерация 3D-моделей и карт')
         roblox.pack(fill='x',pady=(0,7))
         row=ttk.Frame(roblox);row.pack(fill='x',padx=8,pady=5)
@@ -148,6 +155,8 @@ class CodeWindow(tk.Toplevel):
             self.result=CodeResult(plan,changes)
             self.show('Шаблон без ИИ. Проверка будет выполнена после записи.\n'+self._preview_text(plan))
             self.write.configure(state='normal')
+            self.tests_button.configure(
+                state='normal' if self.language.get()=='python' else 'disabled')
         except Exception as exc:
             messagebox.showerror('Ошибка',str(exc),parent=self)
 
@@ -208,6 +217,7 @@ class CodeWindow(tk.Toplevel):
         self.gen.configure(state='disabled')
         self.starter_button.configure(state='disabled')
         self.write.configure(state='disabled')
+        self.tests_button.configure(state='disabled')
         self.result=None
         self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
         def worker():
@@ -241,7 +251,13 @@ class CodeWindow(tk.Toplevel):
 
     def ready(self,result):
         self.result=result
+        review=review_change_plan(result.plan)
+        findings=[
+            f'{f.severity.upper()} {f.path}:{f.line}: {f.message}'
+            for f in review.findings]
         lines=['Язык: '+LANGUAGE_LABELS.get(result.plan.language,result.plan.language),
+               'Инженерная рецензия (AST, без запуска): '+review.summary(),
+               *findings[:30],
                'Статическая проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
                'Важное ограничение: JARVIS не запускает сгенерированный код и тесты.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],
@@ -251,6 +267,73 @@ class CodeWindow(tk.Toplevel):
             self.write.configure(state='disabled')
         else:
             self.write.configure(state='normal')
+        self.tests_button.configure(
+            state='normal' if result.plan.language=='python' else 'disabled')
+
+    def test_reviewed_project(self):
+        """Opt-in isolated test of proposed Python files, before disk install."""
+        if self._generation_busy or self.result is None:
+            return
+        plan=self.result.plan
+        if plan.language!='python':
+            messagebox.showinfo(
+                'Docker-тесты','Сейчас поддерживаются только Python-проекты.',
+                parent=self)
+            return
+        if (not isinstance(self.result,CodeResult)
+                and self.result.workspace is not None):
+            messagebox.showinfo(
+                'Редактируемый проект',
+                'Для существующего проекта сначала сохрани подтверждённые '
+                'изменения, затем проверь собранный проект в Docker отдельно. '
+                'Здесь тестируется только новая генерация, без доступа '
+                'к старым исходникам.',
+                parent=self)
+            return
+        if not messagebox.askyesno(
+            'Изолированная проверка Python',
+            'Создать временную копию только Python-файлов проекта и '
+            'выполнить тесты в Docker?\n\n'
+            'Требуется уже установленный Docker и локальный образ '
+            'python:3.12-slim. Интернет в контейнере отключён, '
+            'исходники только для чтения. Это не абсолютная песочница; '
+            'не запускай заведомо вредоносные программы.',
+            parent=self):
+            return
+        self._generation_busy=True
+        self.tests_button.configure(state='disabled')
+        self.gen.configure(state='disabled')
+        self.status_note='Docker: проверка проекта без сети и без установки пакетов.'
+        self.log.insert('end','\n\n'+self.status_note+'\n')
+        def worker():
+            try:
+                with tempfile.TemporaryDirectory(prefix='jarvis-test-proposal-') as tmp:
+                    root=Path(tmp)
+                    for item in plan.files:
+                        if not item.path.endswith('.py'):
+                            continue
+                        target=root/item.path
+                        target.parent.mkdir(parents=True,exist_ok=True)
+                        target.write_text(item.content,encoding='utf-8')
+                    report=run_python_tests(root,confirmed=True)
+                summary=(
+                    '\nDOCKER: '+report.status.upper()+
+                    '; тестов: '+str(report.tests_run)+
+                    '; проверено файлов: '+str(report.inspected_files)+
+                    '\n'+report.output[-9000:]+
+                    '\nЭто результат тестов в контейнере, '
+                    'а не сертификат безопасности.\n')
+            except Exception as exc:
+                summary='\nDocker-тесты не выполнены: '+str(exc)[:500]+'\n'
+            def finish():
+                self._generation_busy=False
+                self.gen.configure(state='normal')
+                self.tests_button.configure(state='normal')
+                self.log.insert('end',summary)
+                self.log.see('end')
+            self._on_ui(finish)
+        threading.Thread(
+            target=worker,daemon=True,name='jarvis-reviewed-docker-tests').start()
 
     def install(self):
         if self._generation_busy or not self.result:return
@@ -261,6 +344,15 @@ class CodeWindow(tk.Toplevel):
             messagebox.showerror('Ошибка',str(exc),parent=self)
             return
         editable=not isinstance(self.result,CodeResult) and self.result.workspace is not None
+        engineering=review_change_plan(self.result.plan)
+        if engineering.risk_count and not messagebox.askyesno(
+            'Потенциально опасные операции',
+            f'AST-рецензия обнаружила {engineering.risk_count} '
+            'операций, требующих ручной проверки.\n'
+            'Посмотри список в окне исходников. '
+            'Разрешить продолжить только после личной проверки?',
+            parent=self):
+            return
         if any(item['action']=='replace' for item in changes) and not editable:
             messagebox.showerror('Защита файлов','Для правок существующего проекта нужно включить режим редактирования и повторно проверить код.',parent=self)
             return
