@@ -78,7 +78,8 @@ class CodeWindow(tk.Toplevel):
         self.repair_button=ttk.Button(
             actions,text='Исправить по тестам (до 2)',
             command=self.repair_using_test_feedback,state='disabled')
-        self.repair_button.pack(side='left',padx=(8,0))
+        repairs=ttk.Frame(frame);repairs.pack(fill='x',pady=(0,6))
+        self.repair_button.pack(in_=repairs,side='left',padx=(0,6))
         roblox=ttk.LabelFrame(frame,text='Roblox Studio: генерация 3D-моделей и карт')
         roblox.pack(fill='x',pady=(0,7))
         row=ttk.Frame(roblox);row.pack(fill='x',padx=8,pady=5)
@@ -270,7 +271,7 @@ class CodeWindow(tk.Toplevel):
                'Инженерная рецензия (AST, без запуска): '+review.summary(),
                *findings[:30],
                'Статическая проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
-               'Важное ограничение: JARVIS не запускает сгенерированный код и тесты.',
+               'Тесты выполняются только по запросу в Docker; проверка синтаксиса не равна функциональной.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],
                'Предлагаемые изменения (unified diff, без записи в проект):',
                unified_plan_diff(result.plan,self._target()),
@@ -280,11 +281,12 @@ class CodeWindow(tk.Toplevel):
             self.write.configure(state='disabled')
         else:
             self.write.configure(state='normal')
+        allowed_python=(result.plan.language=='python'
+                        and result.workspace is None)
         self.tests_button.configure(
-            state='normal' if result.plan.language=='python' else 'disabled')
+            state='normal' if allowed_python else 'disabled')
         self.repair_button.configure(
-            state='normal' if (result.plan.language=='python' and
-                result.workspace is None) else 'disabled')
+            state='normal' if allowed_python else 'disabled')
 
     def repair_using_test_feedback(self):
         """Use a bounded Docker-only diagnostic repair loop; never auto-install."""
@@ -413,10 +415,14 @@ class CodeWindow(tk.Toplevel):
             return
         self._generation_busy=True
         self.tests_button.configure(state='disabled')
+        self.repair_button.configure(state='disabled')
+        self.starter_button.configure(state='disabled')
+        self.write.configure(state='disabled')
         self.gen.configure(state='disabled')
         self.status_note='Docker: проверка проекта без сети и без установки пакетов.'
         self.log.insert('end','\n\n'+self.status_note+'\n')
         def worker():
+            state='failed'
             try:
                 with tempfile.TemporaryDirectory(prefix='jarvis-test-proposal-') as tmp:
                     root=Path(tmp)
@@ -427,6 +433,7 @@ class CodeWindow(tk.Toplevel):
                         target.parent.mkdir(parents=True,exist_ok=True)
                         target.write_text(item.content,encoding='utf-8')
                     report=run_python_tests(root,confirmed=True)
+                state=report.status
                 summary=(
                     '\nDOCKER: '+report.status.upper()+
                     '; тестов: '+str(report.tests_run)+
@@ -438,8 +445,15 @@ class CodeWindow(tk.Toplevel):
                 summary='\nDocker-тесты не выполнены: '+str(exc)[:500]+'\n'
             def finish():
                 self._generation_busy=False
+                self._last_test_gate_status=state
                 self.gen.configure(state='normal')
+                self.starter_button.configure(state='normal')
                 self.tests_button.configure(state='normal')
+                self.repair_button.configure(state='normal')
+                if state in ('failed','blocked'):
+                    self.write.configure(state='disabled')
+                elif self.result is not None and state=='passed':
+                    self.write.configure(state='normal')
                 self.log.insert('end',summary)
                 self.log.see('end')
             self._on_ui(finish)
