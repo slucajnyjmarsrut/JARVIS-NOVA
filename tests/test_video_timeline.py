@@ -133,8 +133,9 @@ class TimelineTests(unittest.TestCase):
             project=self.fixture(tmp)
             subtitle=root/"long_after_cut.srt"
             subtitle.write_text(
-                "1\\n00:00:06,000 --> 00:00:07,000\\nToo late\\n".replace(
-                    "\\\\n","\\n"),encoding="utf-8")
+                chr(10).join([
+                    "1","00:00:06,000 --> 00:00:07,000",
+                    "Too late",""]),encoding="utf-8")
             project=replace(project,subtitles=subtitle)
             with mock.patch("viral_studio._probe") as probe:
                 with self.assertRaisesRegex(TimelineError,"SRT"):
