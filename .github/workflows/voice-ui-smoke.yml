@@ -1,7 +1,7 @@
 name: JARVIS NOVA text-only UI smoke (no speech models)
 on:
   push:
-    branches: [jarvis]
+    branches: [jarvis, fix/qwen-scenario-stability-2026-11]
     paths:
       - '**/*.py'
       - '**/*.ps1'

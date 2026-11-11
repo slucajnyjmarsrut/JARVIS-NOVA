@@ -1,7 +1,7 @@
 name: Viral Studio Windows video-render smoke
 on:
   push:
-    branches: [jarvis, dev/viral-studio-2026-10, dev/modes-video-game-cleanup-2026-10]
+    branches: [jarvis, fix/qwen-scenario-stability-2026-11, dev/viral-studio-2026-10, dev/modes-video-game-cleanup-2026-10]
     paths:
       - '.github/workflows/viral-studio-smoke.yml'
       - 'viral_studio.py'

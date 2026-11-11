@@ -1,7 +1,7 @@
 name: JARVIS NOVA Lite small Windows installer
 on:
   push:
-    branches: [jarvis]
+    branches: [jarvis, fix/qwen-scenario-stability-2026-11]
     paths:
       - jarvis_nova.spec
       - bootstrap.py
