@@ -72,7 +72,7 @@ class TextModeTests(unittest.TestCase):
         from text_only_ui import engine_badge, build_text_interface
         missing,missing_color=engine_badge("bundled",False)
         ready,ready_color=engine_badge("bundled",True)
-        self.assertIn("НЕ УСТАНОВЛЕНА",missing)
+        self.assertIn("НЕ ПОДКЛЮЧЕНА",missing)
         self.assertEqual(ready,"QWEN · ЛОКАЛЬНО")
         self.assertNotEqual(missing_color,ready_color)
         self.assertIn("_local_model_ready", inspect.getsource(build_text_interface))

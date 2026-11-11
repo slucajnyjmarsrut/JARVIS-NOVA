@@ -12,7 +12,7 @@ def engine_badge(engine: str, model_ready: bool):
     """Keep the HUD truthful: selecting local Qwen does not install it."""
     if engine == "bundled":
         return (("QWEN · ЛОКАЛЬНО", GREEN) if model_ready
-                else ("QWEN · НЕ УСТАНОВЛЕНА", AMBER))
+                else ("QWEN · НЕ ПОДКЛЮЧЕНА", AMBER))
     labels = {
         "none": ("КОМАНДЫ · ОФЛАЙН", GREEN),
         "ollama": ("OLLAMA · ЛОКАЛЬНО", AMBER),

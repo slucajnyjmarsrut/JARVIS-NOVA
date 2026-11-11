@@ -145,8 +145,9 @@ class TextJarvis(BaseJarvis):
 
         self.log("Система", "JARVIS готов. Напиши, что нужно сделать, и нажми Enter.")
         if not self._local_model_ready:
-            self.log("Система", "Qwen не установлена. Для полноценного разговора "
-                     "напиши «установи Qwen». Загрузка только с твоего разрешения.")
+            self.log("Система", "Qwen пока не подключена. Для поиска ранее скачанных "
+                     "моделей напиши «найди модели на всех дисках». "
+                     "Установка новой Qwen — только с твоего разрешения.")
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
@@ -179,7 +180,7 @@ class TextJarvis(BaseJarvis):
                 self.scan_models_on_pc(confirmed=True)
                 return
             if messagebox.askyesno("Скачать локальную Qwen?",
-                "Локальная Qwen ещё не установлена.\n\n"
+                "JARVIS пока не обнаружил совместимую Qwen.\n\n"
                 "Скачать приблизительно 1,9 ГБ с официального реестра Ollama?\n"
                 "Потребуется интернет и не менее 3 ГБ свободного места.\n"
                 "JARVIS сохранит модель отдельно от программы, "
@@ -390,7 +391,7 @@ class TextJarvis(BaseJarvis):
 
     def set_engine(self, engine):
         if engine == "bundled" and not local_model_available(self._asset_root):
-            self.status.set("Локальная Qwen ещё не установлена: ⚙ → Проверить локальную модель")
+            self.status.set("Локальная Qwen пока не подключена: найди модели на всех дисках")
             self.check_models()
             return
         if engine == "freellm":
