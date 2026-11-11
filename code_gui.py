@@ -75,11 +75,11 @@ class CodeWindow(tk.Toplevel):
             actions,text='Тесты Python в Docker (с подтверждением)',
             command=self.test_reviewed_project,state='disabled')
         self.tests_button.pack(side='left',padx=(8,0))
-        self.repair_button=ttk.Button(
-            actions,text='Исправить по тестам (до 2)',
-            command=self.repair_using_test_feedback,state='disabled')
         repairs=ttk.Frame(frame);repairs.pack(fill='x',pady=(0,6))
-        self.repair_button.pack(in_=repairs,side='left',padx=(0,6))
+        self.repair_button=ttk.Button(
+            repairs,text='Исправить по тестам (до 2)',
+            command=self.repair_using_test_feedback,state='disabled')
+        self.repair_button.pack(side='left',padx=(0,6))
         roblox=ttk.LabelFrame(frame,text='Roblox Studio: генерация 3D-моделей и карт')
         roblox.pack(fill='x',pady=(0,7))
         row=ttk.Frame(roblox);row.pack(fill='x',padx=8,pady=5)
