@@ -50,6 +50,7 @@ hiddenimports=[
     'update_preferences','update_center','model_storage',
     'optional_model_downloader','ollama_pull_client','update_idle_guard',
     'freellm_client','pro_montage','popular_edits',
+    'multitrack_composer','multitrack_ui','creator_publish','creator_publish_ui',
     'creator_accounts','creator_accounts_ui','filmcraft_bridge',
     'filmcraft_installer','code_gui','code_agent','code_autopilot',
     'code_project_engine','code_languages','code_checks',
