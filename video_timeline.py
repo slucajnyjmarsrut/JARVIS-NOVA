@@ -67,6 +67,18 @@ def _finite(value, low, high):
             and low <= value <= high)
 
 
+def is_timeline_request(text: str) -> bool:
+    """Only explicit montage intent opens the editor; it never renders."""
+    if not isinstance(text, str) or not 4 <= len(text) <= 400:
+        return False
+    value=" ".join(text.casefold().replace("ё","е").split())
+    return any(phrase in value for phrase in (
+        "открой таймлайн", "покажи таймлайн", "монтаж по таймлайну",
+        "редактор таймлайна", "обрежь и склей видео", "разрежь видео",
+        "соедини клипы в видео", "редактируй видео по кадрам",
+    ))
+
+
 def _input_video(path):
     file = Path(path).expanduser()
     if (file.is_symlink() or not file.is_file() or
