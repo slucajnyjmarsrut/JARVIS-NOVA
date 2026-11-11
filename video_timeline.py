@@ -94,9 +94,11 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
     if (type(project.cuts) is not tuple or
             not 1 <= len(project.cuts) <= MAX_CUTS):
         raise TimelineError("На таймлайне должно быть от 1 до 10 клипов.")
-    if project.aspect not in ASPECTS or project.color not in COLORS:
+    if (not isinstance(project.aspect,str)
+            or not isinstance(project.color,str)
+            or project.aspect not in ASPECTS or project.color not in COLORS):
         raise TimelineError("Недопустимый формат кадра или цвет.")
-    if project.transition not in SAFE_TRANSITIONS:
+    if not isinstance(project.transition,str) or project.transition not in SAFE_TRANSITIONS:
         raise TimelineError("Неизвестный переход между клипами.")
     if not _finite(project.transition_seconds, 0, .45):
         raise TimelineError("Длительность перехода должна быть 0–0,45 секунды.")
@@ -116,13 +118,15 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
         total += cut.duration
     if total > MAX_TOTAL:
         raise TimelineError("Один ролик не может превышать 90 секунд.")
-    opts = validate_options(ProOptions(
-        transition=project.transition_seconds,
-        color=project.color, animated_titles=False,
-        beat_sync=False, semantic=False,
-        music_path=project.music, music_volume=project.music_volume,
-        transition_style=project.transition,
-    ))
+    try:
+        validate_options(ProOptions(
+            transition=project.transition_seconds,
+            color=project.color, animated_titles=False,
+            beat_sync=False, semantic=False,
+            music_path=project.music, music_volume=project.music_volume,
+            transition_style=project.transition))
+    except (ValueError, TypeError, OSError) as exc:
+        raise TimelineError("Недопустимые параметры музыки или переходов.") from exc
     if project.music is not None:
         inputs.add(Path(project.music).expanduser().resolve())
     raw = Path(project.output).expanduser()
