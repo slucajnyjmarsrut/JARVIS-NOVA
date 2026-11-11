@@ -180,12 +180,28 @@ def build_one_shot_project(task: str, language: str, *, generator,
             len(attempts)+1,step.status,
             f"Docker: {step.tests_run} tests. {step.diagnostics[-1200:]}"))
     from code_acceptance_gate import MIN_CASES
-    passed_independent=(repaired.success and repaired.steps
-                        and repaired.steps[-1].tests_run>=MIN_CASES)
+    passed_independent=bool(repaired.success and repaired.steps
+                            and repaired.steps[-1].tests_run>=MIN_CASES)
     if repaired.success and not passed_independent:
         attempts.append(Attempt(
             len(attempts)+1,"blocked",
             "Docker сообщил слишком мало выполненных тестов для подтверждения."))
+    if passed_independent:
+        from code_mutation_gate import verify_independent_tests
+        try:
+            mutation=verify_independent_tests(
+                repaired.plan,runner=runner,confirmed=True)
+            passed_independent=mutation.detected
+            attempts.append(Attempt(
+                len(attempts)+1,
+                "passed" if mutation.detected else "blocked",
+                f"Docker: mutation-check ({mutation.target}), "
+                +f"{mutation.cases} tests. "+mutation.diagnostics))
+        except (WorkspaceError,ValueError,TypeError,OSError) as exc:
+            passed_independent=False
+            attempts.append(Attempt(
+                len(attempts)+1,"blocked",
+                "Docker: mutation-check не подтверждён: "+str(exc)[:360]))
     return AutopilotResult(
-        repaired.plan,attempts,bool(passed_independent),
+        repaired.plan,attempts,passed_independent,
         initial.workspace,initial.expected_sha)

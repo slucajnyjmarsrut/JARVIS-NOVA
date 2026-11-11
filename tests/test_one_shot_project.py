@@ -53,20 +53,27 @@ class OneShotCodingTests(unittest.TestCase):
             self.assertTrue(confirmed)
             root=Path(root)
             folders.append(root)
-            self.assertTrue((root/"tests"/"test_app.py").exists())
-            self.assertTrue((root/"tests"/"test_acceptance_calculator.py").exists())
             source=(root/"app.py").read_text()
+            if "return None" not in source:
+                self.assertTrue((root/"tests"/"test_app.py").exists())
+            else:
+                # Mutation run contains ONLY the independent acceptance oracle.
+                self.assertFalse((root/"tests"/"test_app.py").exists())
+            self.assertTrue((root/"tests"/"test_acceptance_calculator.py").exists())
             return (TestGateReport("passed",3,"Ran 3 tests in 0.01s OK",4)
                     if "a+b" in source else
-                    TestGateReport("failed",3,"Ran 3 tests in 0.01s FAILED",4))
+                    TestGateReport("failed",3,"Ran 3 tests in 0.01s FAILED\n"
+                                   "FAIL: test_positive (acceptance)\n"
+                                   "AssertionError: None != 5",4))
         with tempfile.TemporaryDirectory() as tmp:
             target=Path(tmp)
             result=build_one_shot_project(
                 "Create a calculator", "python",generator=self.model(requests),
                 allow_sandbox_tests=True,test_runner=runner)
             self.assertTrue(result.verified)
-            self.assertEqual([entry.status for entry in result.attempts[-2:]],
-                             ["failed","passed"])
+            self.assertEqual([entry.status for entry in result.attempts[-3:]],
+                             ["failed","passed","passed"])
+            self.assertIn("mutation-check",result.attempts[-1].diagnostics)
             self.assertEqual(len(requests),5)
             self.assertEqual(list(target.iterdir()),[])
             self.assertFalse(any(path.exists() for path in folders))

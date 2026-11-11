@@ -55,7 +55,7 @@ hiddenimports=[
     'video_timeline','video_timeline_ui','subtitle_tracks','video_preview',
     'creator_accounts','creator_accounts_ui','filmcraft_bridge',
     'filmcraft_installer','code_gui','code_agent','code_autopilot',
-    'code_project_engine','code_languages','code_checks',
+    'code_project_engine','code_mutation_gate','code_languages','code_checks',
     'code_quality_review','code_test_sandbox','code_test_repair',
     'roblox_world_builder','roblox_asset_pipeline','code_workspace',
     'code_edits','coding_intent','scripts.verify_text_vision_e2e',

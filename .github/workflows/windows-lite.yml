@@ -58,6 +58,9 @@ on:
       - smart_highlight_selection.py
       - scripts/verify_longform_2hour_e2e.py
       - code_acceptance_gate.py
+      - code_mutation_gate.py
+      - tests/test_code_mutation_gate.py
+      - scripts/verify_autonomous_coding_docker.py
       - code_autosave_policy.py
       - tests/test_smart_highlight_selection.py
       - tests/test_code_acceptance_gate.py

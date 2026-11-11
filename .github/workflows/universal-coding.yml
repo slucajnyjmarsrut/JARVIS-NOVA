@@ -9,6 +9,8 @@ on:
       - code_checks.py
       - code_project_engine.py
       - code_acceptance_gate.py
+      - code_mutation_gate.py
+      - tests/test_code_mutation_gate.py
       - code_autosave_policy.py
       - scripts/verify_autonomous_coding_docker.py
       - tests/test_code_acceptance_gate.py
@@ -48,7 +50,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax check
-        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_test_sandbox.py code_quality_review.py code_test_repair.py code_edits.py coding_intent.py freellm_client.py
+        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py code_mutation_gate.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_test_sandbox.py code_quality_review.py code_test_repair.py code_edits.py coding_intent.py freellm_client.py
       - name: Run universal language tests
         run: python -m unittest discover -s tests -p test_universal_code_engine.py -v
       - name: Run Roblox map tests
@@ -86,7 +88,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Syntax check
-        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
+        run: python -m compileall -q code_languages.py code_checks.py code_project_engine.py code_mutation_gate.py roblox_world_builder.py roblox_asset_pipeline.py code_workspace.py code_autopilot.py code_agent.py code_gui.py code_edits.py coding_intent.py freellm_client.py
       - name: Run universal language tests
         run: python -m unittest discover -s tests -p test_universal_code_engine.py -v
       - name: Run Roblox map tests

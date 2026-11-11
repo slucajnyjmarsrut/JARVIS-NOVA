@@ -75,13 +75,47 @@ class ViralTests(unittest.TestCase):
             self.assertEqual(url,'http://127.0.0.1:1234/api/generate')
             self.assertEqual(payload['model'],'qwen3-vl:2b-instruct')
             self.assertEqual(payload['format'],SCENARIO_JSON_SCHEMA)
-            self.assertEqual(payload['format']['properties']['shots']['minItems'],5)
-            self.assertEqual(payload['format']['properties']['shots']['maxItems'],5)
+            self.assertEqual(
+                set(payload['format']['properties']['scenes']['required']),
+                {'hook','setup','action','result','ending'})
             self.assertFalse(payload['format']['additionalProperties'])
             return {'response':json.dumps(mock_response,ensure_ascii=False)}
         b=create_local_brief('Камеры',model_runtime=runtime,requester=requester)
         self.assertIn('Qwen3',b.generator)
         runtime.stop.assert_called_once()
+    def test_ai_role_based_scene_json_parses_five_different_shots(self):
+        runtime=Mock()
+        runtime.start.return_value='http://127.0.0.1:1234'
+        descriptions=[
+            'Открыть ролик неожиданной деталью крупным планом.',
+            'Показать чистый стол до начала преобразования.',
+            'Показать ручную сортировку предметов и кабелей.',
+            'Сравнить рабочее место до и после.',
+            'Закончить на аккуратном столе с вопросом зрителю.',
+        ]
+        roles=('hook','setup','action','result','ending')
+        data={
+            'title':'Реорганизация стола', 'hook':'Твое рабочее место?',
+            'script':'Показываю, как правильно расположить вещи на столе. '
+                     'Сначала убираю провода. Затем сортирую предметы. '
+                     'После изменений сравниваю результат и задаю вопрос.',
+            'scenes':{
+                role:{
+                    'seconds':3 if idx==0 else 6,
+                    'film':descriptions[idx],
+                    'caption':f'Этап {idx+1}',
+                } for idx,role in enumerate(roles)
+            },
+            'call_to_action':'А как организован твой стол?',
+        }
+        brief=create_local_brief(
+            'Организация рабочего места',model_runtime=runtime,
+            requester=lambda *args:{'response':json.dumps(data,ensure_ascii=False)})
+        self.assertEqual(len(brief.shots),5)
+        self.assertEqual(brief.shots[2].film,descriptions[2])
+        self.assertEqual(sum(x.seconds for x in brief.shots),27)
+        runtime.stop.assert_called_once()
+
     def test_ai_bad_storyboard_is_rejected_not_marked_successful(self):
         runtime=Mock()
         runtime.start.return_value='http://127.0.0.1:1234'

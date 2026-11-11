@@ -30,34 +30,48 @@ class ViralStudioError(RuntimeError):
     pass
 
 
-# Strict Ollama JSON-schema output prevents local 2B models from omitting
-# the storyboard or returning an invalid number of scenes. Content is still
-# checked independently: the schema alone does not establish quality.
+# Ollama grammar uses distinct required SCENE ROLES rather than a list.
+# Small Qwen 2B models previously duplicated instructions across array items.
+# This schema guides separate storyboard actions for each role; the model is
+# still independently checked for meaningful/unique content afterwards.
+_SCENE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "seconds": {"type": "integer", "minimum": 3, "maximum": 9},
+        "film": {"type": "string"},
+        "caption": {"type": "string"},
+    },
+    "required": ["seconds", "film", "caption"],
+    "additionalProperties": False,
+}
+_SCENE_ROLES = ("hook", "setup", "action", "result", "ending")
+_SCENE_GUIDANCE = (
+    "ХУК: показать неожиданный результат или вопрос крупным планом.",
+    "КОНТЕКСТ: показать исходное состояние, проблему и цель.",
+    "ДЕЙСТВИЕ: продемонстрировать конкретный процесс по теме.",
+    "РЕЗУЛЬТАТ: показать реальную разницу или проверяемый итог.",
+    "ФИНАЛ: закончить ролик другим кадром и призывом к действию.",
+)
 SCENARIO_JSON_SCHEMA = {
     "type": "object",
     "properties": {
         "title": {"type": "string"},
         "hook": {"type": "string"},
         "script": {"type": "string"},
-        "shots": {
-            "type": "array", "minItems": 5, "maxItems": 5,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "seconds": {"type": "integer", "minimum": 3, "maximum": 9},
-                    "film": {"type": "string"},
-                    "caption": {"type": "string"},
-                },
-                "required": ["seconds", "film", "caption"],
-                "additionalProperties": False,
+        "scenes": {
+            "type": "object",
+            "properties": {
+                role: {**_SCENE_SCHEMA, "description": description}
+                for role, description in zip(_SCENE_ROLES, _SCENE_GUIDANCE)
             },
+            "required": list(_SCENE_ROLES),
+            "additionalProperties": False,
         },
         "call_to_action": {"type": "string"},
     },
-    "required": ["title", "hook", "script", "shots", "call_to_action"],
+    "required": ["title", "hook", "script", "scenes", "call_to_action"],
     "additionalProperties": False,
 }
-
 
 @dataclass(frozen=True)
 class Trend:
@@ -176,7 +190,13 @@ def template_brief(topic: str, research=()) -> Brief:
 
 def _parse_model_brief(data: dict, topic: str, research) -> Brief:
     try:
-        shots = tuple(Shot(float(s['seconds']), str(s['film']), str(s['caption'])) for s in data['shots'])
+        if isinstance(data.get('scenes'), dict):
+            source_shots = tuple(data['scenes'][role] for role in _SCENE_ROLES)
+        else:
+            # Legacy model protocol and earlier saved response fixtures.
+            source_shots = data['shots']
+        shots = tuple(Shot(float(item['seconds']), str(item['film']),
+                           str(item['caption'])) for item in source_shots)
         brief = Brief(str(data['title']), topic, str(data['hook']), str(data['script']), shots,
                       str(data['call_to_action']), 'локальная Qwen3-VL', tuple(research)[:10])
     except (KeyError, TypeError, ValueError) as exc:
@@ -228,10 +248,15 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
         'Не копируй чужие видео/музыку, не придумывай факты и не обещай вирусность. '
         'Не рассуждай вслух, не пиши теги <think>, Markdown или пояснения. '
         'СРАЗУ дай один короткий JSON-объект с полями title, hook, script, '
-        'shots (РОВНО 5 объектов: seconds [3..9], film, caption), call_to_action. '
-        'Пять кадров по порядку: 1) зацепка, 2) проблема, 3) шаги, '
-        '4) результат, 5) финал. Длительность каждого 3–9 секунд; '
-        'всего 20–45 секунд. Не добавляй шестую сцену. '
+        'scenes (ОБЪЕКТ с ПЯТЬЮ различными ключами hook, setup, action, result, '
+        'ending; каждый объект содержит seconds [3..9], film, caption), '
+        'call_to_action. Не создавай shots-массив. '
+        'Для каждого ключа разные предметы и действия: hook — провокационный '
+        'кадр с результатом; setup — исходная проблема; action — процесс; '
+        'result — сравнение или доказательство; ending — итог и вопрос. '
+        'У каждого film СВОЙ уникальный текст и глагол; '
+        'никогда не повторяй одинаковые film или caption. '
+        'Вся история — 20–45 секунд, каждый кадр — 3–9 секунд. '
         'Каждый film должен конкретно объяснять человеку, ЧТО снять; без дорогой техники. '
         'Все сцены и подписи разные, не повторяются, всего 20–45 секунд. '
         'Текст script: не менее 100 русских символов, связный, про указанную тему. '
@@ -249,7 +274,10 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
         # The older "qwen3-vl:2b" tag does not exist in the packaged store.
         payload = {'model':'qwen3-vl:2b-instruct','prompt':prompt,'stream':False,
                    'format':SCENARIO_JSON_SCHEMA,
-                   'options':{'temperature':0.20,'num_predict':max_tokens}}
+                   'options':{
+                       'temperature':0.72 if quality_feedback else 0.50,
+                       'repeat_penalty':1.18,
+                       'num_predict':max_tokens}}
         result = requester(endpoint + '/api/generate', payload)
         if not isinstance(result, dict) or not isinstance(result.get('response'), str):
             raise ViralStudioError('Не получен сценарий от локальной модели')
@@ -265,7 +293,8 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
             for match in list(re.finditer(r'\{',cleaned))[:24]:
                 try:
                     parsed,_=decoder.raw_decode(cleaned[match.start():])
-                    if isinstance(parsed,dict) and 'shots' in parsed:
+                    if isinstance(parsed,dict) and (
+                            'shots' in parsed or 'scenes' in parsed):
                         data=parsed
                         break
                 except ValueError:

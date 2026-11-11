@@ -74,7 +74,8 @@ def main() -> int:
             )
             docker=[step for step in result.attempts if "Docker:" in step.diagnostics]
             statuses=[step.status for step in docker]
-            if not (result.verified and statuses==["failed","passed"]):
+            if not (result.verified and statuses==["failed","passed","passed"]
+                    and "mutation-check" in result.attempts[-1].diagnostics):
                 raise RuntimeError("Docker repair was not actually performed: "
                                    +str(statuses)+" "+repr(docker[-2:]))
             target=home/"JARVIS-NOVA-Projects"/"Project-1234abcd"

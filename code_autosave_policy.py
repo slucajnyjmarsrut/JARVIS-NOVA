@@ -39,7 +39,8 @@ def save_approved_one_shot(result: AutopilotResult, destination: Path, *,
             result.workspace is not None or not result.verified or
             result.plan.language != "python" or not result.attempts or
             result.attempts[-1].status != "passed" or
-            "Docker:" not in result.attempts[-1].diagnostics):
+            "Docker:" not in result.attempts[-1].diagnostics or
+            "mutation-check" not in result.attempts[-1].diagnostics):
         raise WorkspaceError("Проект не прошёл отдельные функциональные тесты.")
     if review_change_plan(result.plan).risk_count:
         raise WorkspaceError("Потенциально опасный проект требует ручного просмотра.")

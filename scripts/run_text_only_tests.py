@@ -47,6 +47,7 @@ TESTS=(
        "test_scenario_and_model_route.py",
        "test_code_acceptance_gate.py",
        "test_code_autosave_policy.py",
+       "test_code_mutation_gate.py",
        "test_screenshot_review.py",
        "test_self_development.py",
        

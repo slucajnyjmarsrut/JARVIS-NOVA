@@ -21,7 +21,10 @@ def prepared():
         ProposedFile("README.md","# Project\n")
     ))
     return AutopilotResult(
-        plan,[Attempt(1,"passed","Docker: 3 tests. verified")],True)
+        plan,[
+            Attempt(1,"passed","Docker: 3 tests. verified"),
+            Attempt(2,"passed","Docker: mutation-check 2 tests. detected"),
+        ],True)
 
 
 class AutoSaveSafetyTests(unittest.TestCase):
