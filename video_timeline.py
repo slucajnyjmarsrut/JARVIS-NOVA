@@ -60,6 +60,7 @@ class TimelineProject:
     transition_seconds: float = .17
     music: Path | None = None
     music_volume: float = .18
+    subtitles: Path | None = None
 
 
 def _finite(value, low, high):
@@ -129,6 +130,10 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
         raise TimelineError("Недопустимые параметры музыки или переходов.") from exc
     if project.music is not None:
         inputs.add(Path(project.music).expanduser().resolve())
+    if project.subtitles is not None:
+        from subtitle_tracks import load_srt
+        load_srt(project.subtitles,max_time=MAX_TOTAL)
+        inputs.add(Path(project.subtitles).expanduser().resolve())
     raw = Path(project.output).expanduser()
     if raw.suffix.casefold() != ".mp4" or raw.is_symlink():
         raise TimelineError("Выходной файл должен быть обычным MP4.")
@@ -163,6 +168,8 @@ def _format_snapshot(project: TimelineProject):
         "output": str(Path(project.output).expanduser().resolve()),
         "music": str(Path(project.music).expanduser().resolve()) if project.music else None,
         "music_volume": project.music_volume,
+        "subtitles": str(Path(project.subtitles).expanduser().resolve())
+                     if project.subtitles else None,
         "cuts": [
             {"path": str(_input_video(c.path)), "source_start": c.source_start,
              "duration": c.duration, "speed": c.speed, "caption": c.caption}
@@ -207,13 +214,15 @@ def load_timeline(path: Path):
                 Path(row["path"]), row["source_start"],
                 row["duration"], row["speed"], row["caption"]))
         music = data.get("music")
+        subtitles = data.get("subtitles")
         project = TimelineProject(
             cuts=tuple(cuts), output=Path(data["output"]),
             aspect=data["aspect"], color=data["color"],
             transition=data["transition"],
             transition_seconds=data["transition_seconds"],
             music=Path(music) if music is not None else None,
-            music_volume=data["music_volume"])
+            music_volume=data["music_volume"],
+            subtitles=Path(subtitles) if subtitles is not None else None)
     except (KeyError, TypeError, ValueError, UnicodeError, OSError) as exc:
         raise TimelineError("Некорректный или неподдерживаемый файл таймлайна.") from exc
     return validate_timeline(project, for_export=False)
@@ -336,6 +345,18 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
         staged = work / "finished.mp4"
         finish = finish_video(parts, lengths, staged, ffmpeg, options=options,
                               executor=runner, cancel=cancel)
+        cues = ()
+        if project.subtitles is not None:
+            from subtitle_tracks import load_srt, burn_subtitles
+            cues = load_srt(
+                project.subtitles, max_time=finish["expected_seconds"]+.03)
+            captioned = work / "subtitled.mp4"
+            burn_subtitles(
+                staged, captioned, cues,
+                ffmpeg=ffmpeg, width=width, height=height,
+                seconds=finish["expected_seconds"], executor=runner,
+                cancel=cancel)
+            staged = captioned
         if progress:
             progress(len(parts), len(parts), "Проверяю готовое MP4")
         technical = verify_edit_output_media(
@@ -347,6 +368,7 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
             "output": str(out), "duration": technical["duration"],
             "technical_quality": technical, "render_info": finish,
             "render_decisions": decisions,
+            "subtitle_cues": len(cues),
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "published": False,
         })
