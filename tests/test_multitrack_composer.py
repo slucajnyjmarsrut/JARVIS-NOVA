@@ -117,7 +117,7 @@ class MultitrackTests(unittest.TestCase):
                     if motion=="fade-in":
                         self.assertIn("fade=t=in:st=0:d=0.450:alpha=1",graph)
                     if motion in ("slide-left","slide-right","rise","drop"):
-                        self.assertTrue("t-0.000" in x+y)
+                        self.assertIn(f"t-{layer.start:.3f}",x+y)
             for motion in ("unknown","fade=in;movie=http://evil.example"):
                 with self.assertRaises(MultitrackError):
                     validate_project(replace(
