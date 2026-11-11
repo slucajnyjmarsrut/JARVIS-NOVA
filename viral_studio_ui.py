@@ -208,6 +208,11 @@ class ViralStudioWindow(tk.Toplevel):
         ttk.Button(tools,text="Справка FFmpeg",
             command=self.study_editing,style="Studio.TButton").grid(
             row=0,column=1,sticky="ew",padx=4,pady=4)
+        self.timeline_button=ttk.Button(
+            tools,text="ТАЙМЛАЙН · ОБРЕЗКА / ПЕРЕХОДЫ / ТИТРЫ",
+            command=self.open_timeline,style="Studio.Primary.TButton")
+        self.timeline_button.grid(row=1,column=0,columnspan=2,sticky="ew",
+                                  padx=4,pady=4)
         self.multitrack_button=ttk.Button(
             tools,text="МНОГОДОРОЖЕЧНЫЙ МОНТАЖ",
             command=self.open_multitrack,style="Studio.Primary.TButton")
