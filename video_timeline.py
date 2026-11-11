@@ -131,8 +131,11 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
     if project.music is not None:
         inputs.add(Path(project.music).expanduser().resolve())
     if project.subtitles is not None:
-        from subtitle_tracks import load_srt
-        load_srt(project.subtitles,max_time=MAX_TOTAL)
+        from subtitle_tracks import load_srt, SubtitleError
+        try:
+            load_srt(project.subtitles,max_time=MAX_TOTAL)
+        except (SubtitleError,ValueError,OSError,TypeError) as exc:
+            raise TimelineError("Недопустимый SRT: проверь время и текст субтитров.") from exc
         inputs.add(Path(project.subtitles).expanduser().resolve())
     raw = Path(project.output).expanduser()
     if raw.suffix.casefold() != ".mp4" or raw.is_symlink():
