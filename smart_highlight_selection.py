@@ -24,6 +24,8 @@ class ActivityReport:
     usable: int
     fallback: int
     method: str = "local-grayscale-motion"
+    audio_examined: int = 0
+    audio_usable: int = 0
 
 
 def frame_activity(raw: bytes) -> float:
@@ -63,7 +65,8 @@ def _sample(path, seconds, *, ffmpeg, executor, cancel):
 
 def select_active_cuts(sources, *, target_seconds=900., ffmpeg,
                        executor, cancel: threading.Event | None = None,
-                       progress=None, max_windows=MAX_SAMPLE_WINDOWS):
+                       progress=None, max_windows=MAX_SAMPLE_WINDOWS,
+                       audio_sources=None, max_audio_windows=96):
     """Replace uniform draft offsets with locally sampled active periods.
 
     Each draft segment stays in its chronological source interval, so the
@@ -75,6 +78,14 @@ def select_active_cuts(sources, *, target_seconds=900., ffmpeg,
     from video_timeline import draft_longform_cuts, TimelineError
     if type(max_windows) is not int or not 1 <= max_windows <= MAX_SAMPLE_WINDOWS:
         raise ValueError("Недопустимое число окон анализа")
+    if type(max_audio_windows) is not int or not 0 <= max_audio_windows <= 96:
+        raise ValueError("Недопустимое число аудио-окон анализа")
+    # Audio is opt-in based on FFprobe's verified per-source streams.
+    # Never attempt to read audio from files with no audio track.
+    audio_paths = {
+        Path(path).resolve() for path,has_audio
+        in (audio_sources or {}).items() if has_audio is True
+    }
     cuts = list(draft_longform_cuts(sources,target_seconds=target_seconds))
     lengths = {Path(path).resolve():float(seconds) for path,seconds in sources}
     by_source: dict[Path,list[int]] = {}
@@ -93,7 +104,7 @@ def select_active_cuts(sources, *, target_seconds=900., ffmpeg,
                 source_duration-cut.duration,start)),3) for start in starts)))
             candidate_sets.append((i,path,cut,starts))
     # Cap all decoder invocations, including caller-selected small budgets.
-    sampled=usable=fallback=0
+    sampled=usable=fallback=audio_examined=audio_usable=0
     slots=max(1,max_windows//len(candidate_sets))
     for processed,(i,path,cut,starts) in enumerate(candidate_sets,1):
         if sampled >= max_windows:
@@ -125,6 +136,23 @@ def select_active_cuts(sources, *, target_seconds=900., ffmpeg,
             if math.isfinite(score):
                 usable+=1
                 success=True
+                if path in audio_paths and audio_examined < max_audio_windows:
+                    from audio_highlight_signal import sample_audio_activity
+                    audio_examined+=1
+                    try:
+                        audible=sample_audio_activity(
+                            path,at,ffmpeg=ffmpeg,
+                            executor=executor,cancel=cancel)
+                        audio_usable+=1
+                        # Give visual activity more weight than loudness,
+                        # but help quiet-talking scenes beat silent stills.
+                        score=0.68*score+0.32*audible
+                    except InterruptedError:
+                        raise
+                    except Exception:
+                        # A missing/corrupt audio stream must NEVER destroy
+                        # valid video candidates or cause a false skip.
+                        pass
                 # Small preference for the baseline when scores are equal.
                 rank_score=score-abs(start-cut.source_start)*1.e-7
                 if rank_score>best[0]:
@@ -136,4 +164,8 @@ def select_active_cuts(sources, *, target_seconds=900., ffmpeg,
         if progress:
             progress(processed,len(cuts),"Сравниваю сцены")
     # All paths, boundaries and durations must remain checked on export.
-    return tuple(cuts), ActivityReport(sampled,usable,fallback)
+    return tuple(cuts), ActivityReport(
+        sampled,usable,fallback,
+        method=("local-motion-and-audio" if audio_paths and audio_usable
+                else "local-grayscale-motion"),
+        audio_examined=audio_examined,audio_usable=audio_usable)

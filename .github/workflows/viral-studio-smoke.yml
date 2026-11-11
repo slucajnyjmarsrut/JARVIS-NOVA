@@ -14,6 +14,9 @@ on:
       - 'tests/test_longform_autoexport.py'
       - 'tests/test_chat_first_intent.py'
       - 'smart_highlight_selection.py'
+      - 'audio_highlight_signal.py'
+      - 'tests/test_audio_highlight_signal.py'
+      - 'scripts/verify_video_audio_selection.py'
       - 'pro_montage.py'
       - 'local_model_inventory.py'
       - 'model_storage.py'
@@ -62,6 +65,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Autoexport authorization test failed' }
           python -m unittest discover -s tests -p 'test_chat_first_intent.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Chat router safety test failed' }
+      - name: Verify short audio activity algorithm without FFmpeg
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_audio_highlight_signal.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Audio-driven selection unit test failed' }
       - name: Obtain exact audited FFmpeg for offline installer
         shell: pwsh
         run: ./scripts/prepare_ffmpeg.ps1
@@ -82,6 +90,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Profile mode tests failed' }
           python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Game and video stage tests failed' }
+      - name: Real FFmpeg audio-guided highlights without speech models
+        shell: pwsh
+        timeout-minutes: 5
+        run: |
+          python scripts/verify_video_audio_selection.py
+          if ($LASTEXITCODE -ne 0) { throw 'Audio-guided highlight evidence failed' }
       - name: Real long-form timeline render (synthetic 2h -> 15min)
         timeout-minutes: 18
         shell: pwsh

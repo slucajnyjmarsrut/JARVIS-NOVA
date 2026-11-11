@@ -388,13 +388,16 @@ class TimelineWindow(tk.Toplevel):
                 from viral_studio import ffmpeg_tools, _probe, _execute
                 from smart_highlight_selection import select_active_cuts
                 ffmpeg,ffprobe=ffmpeg_tools()
-                sources=tuple((path,_probe(path,ffprobe,cancel=self._cancel)[0])
-                              for path in paths)
+                probed=tuple((path,_probe(path,ffprobe,cancel=self._cancel))
+                             for path in paths)
+                sources=tuple((path,info[0]) for path,info in probed)
+                source_audio={path:bool(info[1]) for path,info in probed}
                 def report(n,total,stage):
                     self._events.put(("progress",(n,total,stage)))
                 cuts,analysis=select_active_cuts(
                     sources,target_seconds=target_seconds,ffmpeg=ffmpeg,
-                    executor=_execute,cancel=self._cancel,progress=report)
+                    executor=_execute,cancel=self._cancel,progress=report,
+                    audio_sources=source_audio)
                 out=paths[0].parent/"JARVIS_LONGFORM_15min.mp4"
                 suffix=1
                 while out.exists() or out.with_name(
@@ -717,8 +720,9 @@ class TimelineWindow(tk.Toplevel):
                     self._refresh(0)
                     self.status.set(
                         f"Черновик: {len(cuts)} фрагментов на 15 минут. "
-                        f"Проверено мини-сцен: {analysis.usable}/{analysis.examined}. "
-                        "Отбор по движению/детализации, не понимание сюжета. "
+                        f"Мини-сцен: {analysis.usable}/{analysis.examined}; "
+                        f"аудио: {analysis.audio_usable}/{analysis.audio_examined}. "
+                        "Отбор по движению и наличию звука, не понимание сюжета. "
                         + ("Экспортирую автоматически по выданному разрешению."
                          if approved else
                          "Проверь монтаж и подтверди экспорт."))

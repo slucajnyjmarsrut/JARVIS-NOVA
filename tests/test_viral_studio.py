@@ -154,6 +154,32 @@ class ViralTests(unittest.TestCase):
                 "Не Minecraft",model_runtime=runtime,requester=requester,
                 previous_brief=prior)
 
+    def test_long_qwen_overlay_is_shortened_without_weakening_story_checks(self):
+        from viral_studio import _parse_model_brief, _short_ai_caption
+        paragraph="Текст для экрана крупным планом " * 9
+        response={
+            "title":"Пример","hook":"Смотри результат",
+            "script":"Сначала показываю экран до исправления. Потом "
+                     "открываю параметры, меняю масштаб и проверяю "
+                     "настройку. Под конец демонстрирую улучшенный "
+                     "вид. Теперь все элементы стали заметнее.",
+            "scenes":{
+                role:{"seconds":6,"film":f"Снять этап {index} отдельно",
+                      "caption":f"Этап {index}: "+paragraph}
+                for index,role in enumerate(
+                    ("hook","setup","action","result","ending"),1)},
+            "call_to_action":"Сохрани подсказку"
+        }
+        brief=_parse_model_brief(response,"Настройка экрана",())
+        self.assertEqual(len(brief.shots),5)
+        self.assertTrue(all(1<=len(s.caption)<=68 for s in brief.shots))
+        self.assertEqual(len({s.caption for s in brief.shots}),5)
+        with self.assertRaises(ViralStudioError):
+            _short_ai_caption("  ")
+        with self.assertRaises(ViralStudioError):
+            _short_ai_caption(123)
+        self.assertEqual(_short_ai_caption("Точный текст"),"Точный текст")
+
     def test_ai_bad_storyboard_is_rejected_not_marked_successful(self):
         runtime=Mock()
         runtime.start.return_value='http://127.0.0.1:1234'

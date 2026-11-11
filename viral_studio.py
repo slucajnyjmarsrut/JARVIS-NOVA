@@ -188,6 +188,29 @@ def template_brief(topic: str, research=()) -> Brief:
         generator='шаблон (без нейросети)', research=tuple(research)[:10]))
 
 
+def _short_ai_caption(value, *, limit=68) -> str:
+    """Make verbose AI captions readable on screen without changing meaning.
+
+    This editorial operation applies only to untrusted AI output. Empty,
+    invalid, duplicate, or off-topic captions can still fail the separate QA
+    gate. User-authored scenario files remain strictly validated unchanged.
+    """
+    if not isinstance(value,str):
+        raise ViralStudioError('Текст на экране должен быть строкой')
+    text=re.sub(r'\s+',' ',value).strip(' \t\r\n')
+    if not text:
+        raise ViralStudioError('Пустой текст на экране')
+    if len(text)<=limit:
+        return text
+    excerpt=text[:limit+1]
+    last=excerpt.rfind(' ')
+    if last>=max(15,limit//2):
+        excerpt=excerpt[:last]
+    else:
+        excerpt=excerpt[:limit]
+    return excerpt.strip().rstrip(',;:')
+
+
 def _parse_model_brief(data: dict, topic: str, research) -> Brief:
     try:
         if isinstance(data.get('scenes'), dict):
@@ -196,7 +219,8 @@ def _parse_model_brief(data: dict, topic: str, research) -> Brief:
             # Legacy model protocol and earlier saved response fixtures.
             source_shots = data['shots']
         shots = tuple(Shot(float(item['seconds']), str(item['film']),
-                           str(item['caption'])) for item in source_shots)
+                           _short_ai_caption(item['caption']))
+                      for item in source_shots)
         brief = Brief(str(data['title']), topic, str(data['hook']), str(data['script']), shots,
                       str(data['call_to_action']), 'локальная Qwen3-VL', tuple(research)[:10])
     except (KeyError, TypeError, ValueError) as exc:

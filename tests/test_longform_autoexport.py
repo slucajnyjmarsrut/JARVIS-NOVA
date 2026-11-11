@@ -50,7 +50,7 @@ class AutoLongformTests(TestCase):
             p.write_bytes(b"x"*3200)
             cuts=(TimelineCut(p,source_start=10,duration=900),)
             w._events.put(("longform",(cuts,Path(td)/"new.mp4",
-                                      SimpleNamespace(usable=3,examined=3),token)))
+                                      SimpleNamespace(usable=3,examined=3,audio_usable=2,audio_examined=3),token)))
             TimelineWindow._pump(w)
             w.aspect.set.assert_called_once_with("YouTube / Gaming 16:9")
             w.after_idle.assert_called_once()
@@ -68,7 +68,7 @@ class AutoLongformTests(TestCase):
                 w._events.put(("longform",(
                     (TimelineCut(p,duration=900),),
                     Path(td)/"new.mp4",
-                    SimpleNamespace(usable=0,examined=1),token)))
+                    SimpleNamespace(usable=0,examined=1,audio_usable=0,audio_examined=0),token)))
                 TimelineWindow._pump(w)
                 w.after_idle.assert_not_called()
 

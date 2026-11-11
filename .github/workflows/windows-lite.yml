@@ -58,6 +58,9 @@ on:
       - code_test_repair.py
       - long_video_limits.py
       - smart_highlight_selection.py
+      - audio_highlight_signal.py
+      - tests/test_audio_highlight_signal.py
+      - scripts/verify_video_audio_selection.py
       - scripts/verify_longform_2hour_e2e.py
       - code_acceptance_gate.py
       - code_mutation_gate.py
