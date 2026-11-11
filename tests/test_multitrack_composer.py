@@ -241,6 +241,44 @@ class MultitrackTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
                          "Real FFmpeg missing on this runner")
+    def test_real_all_six_motion_presets_render_and_preserve_originals(self):
+        from PIL import Image
+        ffmpeg=shutil.which("ffmpeg")
+        ffprobe=shutil.which("ffprobe")
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            base=root/"base.mp4"
+            logo=root/"logo.png"
+            Image.new("RGBA",(70,36),(240,30,30,255)).save(logo)
+            created=subprocess.run([
+                ffmpeg,"-hide_banner","-loglevel","error","-nostdin","-y",
+                "-f","lavfi","-i","color=c=blue:s=320x180:r=30:d=1.8",
+                "-c:v","libx264","-pix_fmt","yuv420p",str(base)
+            ],capture_output=True,timeout=40)
+            if created.returncode:
+                self.skipTest("FFmpeg test input not available")
+            checksum=hashlib.sha256(base.read_bytes()).hexdigest()
+            for motion in MOTIONS:
+                with self.subTest(motion=motion):
+                    target=root/(motion+".mp4")
+                    project=MultitrackProject(
+                        base_video=base,output_video=target,
+                        layers=(VisualLayer(
+                            logo,start=.1,duration=1.3,
+                            position="bottom-right",motion=motion,
+                            motion_seconds=.4),))
+                    finished=render_multitrack(
+                        project,tools=(ffmpeg,ffprobe))
+                    self.assertTrue(target.is_file())
+                    self.assertTrue(
+                        finished["technical_quality"]["quality_checked"])
+                    self.assertEqual(
+                        finished["layers"][0]["motion"],motion)
+            self.assertEqual(
+                hashlib.sha256(base.read_bytes()).hexdigest(),checksum)
+
+    @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
+                         "Real FFmpeg missing on this runner")
     def test_real_silent_base_with_video_picture_in_picture(self):
         ffmpeg=shutil.which("ffmpeg")
         ffprobe=shutil.which("ffprobe")
