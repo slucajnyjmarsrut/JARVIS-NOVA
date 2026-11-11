@@ -119,6 +119,10 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
         total += cut.duration
     if total > MAX_TOTAL:
         raise TimelineError("Один ролик не может превышать 90 секунд.")
+    overlap = (min(project.transition_seconds,
+                   max(0.,min(c.duration for c in project.cuts)-.705))
+               if len(project.cuts)>1 else 0.)
+    predicted_duration = total - overlap*(len(project.cuts)-1)
     try:
         validate_options(ProOptions(
             transition=project.transition_seconds,
@@ -133,7 +137,10 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
     if project.subtitles is not None:
         from subtitle_tracks import load_srt, SubtitleError
         try:
-            load_srt(project.subtitles,max_time=MAX_TOTAL)
+            # Reject captions past the actual cut *before* rendering
+            # every clip. A tiny tolerance covers FFmpeg frame rounding.
+            load_srt(project.subtitles,
+                     max_time=min(MAX_TOTAL,predicted_duration+.04))
         except (SubtitleError,ValueError,OSError,TypeError) as exc:
             raise TimelineError("Недопустимый SRT: проверь время и текст субтитров.") from exc
         inputs.add(Path(project.subtitles).expanduser().resolve())
