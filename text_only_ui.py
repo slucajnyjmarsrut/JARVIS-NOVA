@@ -36,9 +36,23 @@ def build_text_interface(app):
     title.pack(side="left", expand=True, fill="x")
     _label(title, "JARVIS NOVA", fg=TEXT, size=14, bold=True).pack(anchor="w")
     _label(title, "НАПИШИ, ЧТО ХОЧЕШЬ · ENTER", fg=CYAN_DIM, size=8).pack(anchor="w")
-    app.hud_settings_button = _action(header, "⚙", app.show_settings_menu, compact=True)
-    # Chat-first default: no toolbar. Keep controls as unmounted fallbacks
-    # for keyboard accessibility (F10) and legacy callers.
+    app.hud_settings_button = _action(header, "⚙ НАСТРОЙКИ", app.show_settings_menu, compact=True)
+    app.hud_settings_button.pack(side="right", padx=(6, 0))
+    # A minimal, visible setup route: users must not guess hidden exact phrases.
+    # Each action is a safe, explicit controller method; network/model setup
+    # still requires an independent affirmative confirmation dialog.
+    modelbar = tk.Frame(shell, bg=BG)
+    modelbar.pack(fill="x", pady=(0, 8))
+    app.hud_find_models = _action(
+        modelbar, "НАЙТИ МОДЕЛИ", app.scan_models_on_pc, compact=True)
+    app.hud_find_models.pack(side="left", padx=(0, 6))
+    app.hud_download_qwen = _action(
+        modelbar, "СКАЧАТЬ QWEN", lambda: app.check_models(offer_scan=False),
+        compact=True)
+    app.hud_download_qwen.pack(side="left", padx=(0, 6))
+    app.hud_cancel_scan = _action(
+        modelbar, "СТОП ПОИСК", app.cancel_model_scan, compact=True)
+    # Keep old references for callers, without adding unrelated toolbar items.
     app.hud_update_button = _action(header, "⟳", app.show_update_center, compact=True)
     app.hud_minimize_button = _action(header, "▁", app.hide_main, compact=True)
     hub = tk.Frame(shell, bg=SURFACE, highlightthickness=1, highlightbackground=EDGE)
@@ -113,6 +127,11 @@ def build_text_interface(app):
                 label="РЕЖИМ СПОРА"
             app.hud_mode.configure(text=label,fg=color)
             app.hud_clock.configure(text=time.strftime("%H:%M"))
+            if getattr(app, "_model_scan_busy", False):
+                if not app.hud_cancel_scan.winfo_manager():
+                    app.hud_cancel_scan.pack(side="left", padx=(0, 6))
+            elif app.hud_cancel_scan.winfo_manager():
+                app.hud_cancel_scan.pack_forget()
             if getattr(app,"_model_download_busy",False):
                 if not app.hud_cancel_model.winfo_manager():
                     app.hud_cancel_model.pack(side="right",padx=(2,8))

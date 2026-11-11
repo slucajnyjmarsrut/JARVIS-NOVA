@@ -29,12 +29,18 @@ def explain_local_model_failure(error: Exception) -> str:
     from bundled_vision_runtime import BundledRuntimeError
 
     detail = str(error)
-    if isinstance(error, BundledRuntimeError) and any(marker in detail for marker in (
-        "model manifest", "model blob", "blob digest", "blob SHA256",
-        "manifest JSON", "manifest structure", "model blob size",
-    )):
-        return ("Локальная Qwen не установлена или её файлы повреждены. "
-                "Открой ⚙ → «Проверить локальную модель» и подтверди загрузку.")
+    if isinstance(error, BundledRuntimeError):
+        if any(marker in detail for marker in (
+                "blob digest", "blob SHA256", "model blob size")):
+            return ("Файлы Qwen3-VL не прошли проверку целостности. "
+                    "Нажми «СКАЧАТЬ QWEN» для повторной загрузки "
+                    "после подтверждения.")
+        if any(marker in detail for marker in (
+                "model manifest", "model blob", "manifest JSON",
+                "manifest structure")):
+            return ("Qwen3-VL для чата не установлена либо загрузка не завершена. "
+                    "Нажми «СКАЧАТЬ QWEN» и подтверди загрузку. "
+                    "Найденная Qwen Coder — отдельная модель для программирования.")
     return "Локальная модель недоступна: " + detail[:160]
 
 

@@ -39,6 +39,7 @@ class LocalModel:
     kind: str
     size_bytes: int
     jarvis_compatible: bool = False
+    coding_candidate: bool = False  # Name-only hint, never a readiness claim.
 
 
 @dataclass(frozen=True)
@@ -188,9 +189,15 @@ def scan_local_models(*, confirmed=False, roots=None, cancel=None,
                                     compatible=True
                                 except (OSError,ValueError,RuntimeError):
                                     pass
+                            # The name on disk is not proof that a coder can
+                            # be loaded; that requires the separately consented
+                            # loopback Ollama /api/tags check in CodeWindow.
+                            from local_coder_models import CODE_NAME
+                            candidate=bool(CODE_NAME.fullmatch(f"{model}:{tag}"))
                             found.append(LocalModel(
                                 f"{model}:{tag}",store,"ollama-store",size,
-                                jarvis_compatible=compatible))
+                                jarvis_compatible=compatible,
+                                coding_candidate=candidate))
                         else:
                             candidate=_describe(path,size)
                             if candidate:
@@ -217,8 +224,10 @@ def summarize_inventory(result: ModelInventory, *, max_visible=18):
         lines.append("Нет доступных локальных дисков; поиск не выполнялся.")
     if result.models:
         for item in result.models[:max_visible]:
-            status=("совместимая Qwen" if item.jarvis_compatible else
-                    "найдена, совместимость не проверена")
+            status=("совместимая Qwen3-VL для чата" if item.jarvis_compatible
+                    else "кандидат для кода; запуск через Ollama не проверен"
+                    if item.coding_candidate
+                    else "найдена, совместимость не проверена")
             lines.append(f"• {item.name} ({item.kind}, {status}) — {item.location}")
         if len(result.models)>max_visible:
             lines.append(f"Показано {max_visible} из {len(result.models)}.")
@@ -228,5 +237,10 @@ def summarize_inventory(result: ModelInventory, *, max_visible=18):
         lines.append("Поиск неполный: отменён или достигнут предел времени/файлов.")
     if result.permission_errors:
         lines.append(f"Недоступных папок/файлов: {result.permission_errors}.")
+    if any(m.coding_candidate for m in result.models):
+        lines.append(
+            "Для Qwen Coder открой «Программирование» и разреши проверить "
+            "запущенную локальную Ollama (127.0.0.1:11434). "
+            "Для чата и картинок отдельно требуется Qwen3-VL.")
     lines.append("Неизвестные модели не подключаются и не запускаются автоматически.")
     return "\n".join(lines)
