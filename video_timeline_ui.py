@@ -467,6 +467,7 @@ class TimelineWindow(tk.Toplevel):
         if index is None:
             return
         cut=self._cuts[index]
+        self._cancel.clear()
         self._busy=True
         self.status.set("Получаю один кадр через локальный FFmpeg.")
         def worker():
