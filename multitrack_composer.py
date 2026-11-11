@@ -58,6 +58,18 @@ class MultitrackProject:
     music_volume: float = 0.22
 
 
+def is_multitrack_request(text: str) -> bool:
+    if not isinstance(text,str) or not 4 <= len(text) <= 400:
+        return False
+    value=" ".join(text.casefold().replace("ё","е").split())
+    return any(phrase in value for phrase in (
+        "многодорожечный монтаж", "многослойный монтаж",
+        "наложи логотип на видео", "добавь логотип на видео",
+        "наложи видео на видео", "добавь озвучку к видео",
+        "добавь картинку на видео",
+    ))
+
+
 def _safe_media(path: Path, allowed: frozenset[str]) -> Path:
     raw = Path(path).expanduser()
     if raw.is_symlink() or not raw.is_file() or raw.suffix.casefold() not in allowed:
