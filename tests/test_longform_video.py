@@ -46,8 +46,8 @@ class LongVideoTests(unittest.TestCase):
             self.assertEqual({cut.path for cut in cuts},{one.resolve(),two.resolve()})
             self.assertAlmostEqual(sum(c.duration for c in cuts),900.,delta=.05)
             for cut in cuts:
-                self.assertGreaterEqual(c.source_start,0)
-                self.assertLessEqual(c.source_start+cut.duration,7200.001)
+                self.assertGreaterEqual(cut.source_start,0)
+                self.assertLessEqual(cut.source_start+cut.duration,7200.001)
 
     def test_only_plans_possible_lengths_and_rejects_unsafe_sources(self):
         with tempfile.TemporaryDirectory() as tmp:
