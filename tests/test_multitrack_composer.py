@@ -13,7 +13,7 @@ import unittest
 from multitrack_composer import (
     MultitrackError, MultitrackProject, VisualLayer, POSITIONS,
     build_filter_graph, validate_project, render_multitrack,
-    is_multitrack_request,
+    is_multitrack_request, save_multitrack, load_multitrack,
 )
 
 
@@ -38,7 +38,9 @@ class MultitrackTests(unittest.TestCase):
         try:
             view=MultitrackWindow(root)
             view.update_idletasks()
-            self.assertEqual(len(view.layer_files),2)
+            self.assertEqual(len(view.layer_files),3)
+            self.assertEqual(len(view.layer_widths),3)
+            self.assertEqual(len(view.layer_opacities),3)
             self.assertFalse(view._busy)
             self.assertEqual(view._events.qsize(),0)
         finally:
@@ -56,6 +58,33 @@ class MultitrackTests(unittest.TestCase):
             base_video=base,output_video=root/"finished.mp4",
             layers=(VisualLayer(image,start=.5,duration=1.2),),
             title="JARVIS NOVA",music=None,voiceover=None)
+
+    def test_editable_multitrack_json_roundtrip_and_no_overwrite(self):
+        with tempfile.TemporaryDirectory() as root:
+            project=self.fixture(root)
+            filename=Path(root)/"JARVIS_Multi.json"
+            save_multitrack(project,filename)
+            loaded=load_multitrack(filename)
+            self.assertTrue(loaded.base_video.samefile(project.base_video))
+            self.assertEqual(loaded.output_video.name,project.output_video.name)
+            self.assertTrue(
+                loaded.output_video.parent.samefile(project.output_video.parent))
+            self.assertEqual(len(loaded.layers),1)
+            self.assertTrue(loaded.layers[0].path.samefile(project.layers[0].path))
+            self.assertEqual(loaded.layers[0].width_percent,26)
+            self.assertEqual(loaded.layers[0].opacity,1.)
+            with self.assertRaises(MultitrackError):
+                save_multitrack(project,filename)
+            corrupted=Path(root)/"corrupted.json"
+            corrupted.write_text(
+                '{"format":"jarvis_multitrack_edit_v1",'
+                '"layers":[{"file":"../../secret.mp4"}]}',encoding="utf-8")
+            with self.assertRaises(MultitrackError):
+                load_multitrack(corrupted)
+            with self.assertRaises(MultitrackError):
+                validate_project(
+                    replace(project,layers=(
+                        replace(project.layers[0],start="nan"),)))
 
     def test_all_positions_and_multiple_track_graphs(self):
         with tempfile.TemporaryDirectory() as directory:
