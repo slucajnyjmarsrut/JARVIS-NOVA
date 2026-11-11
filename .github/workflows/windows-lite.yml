@@ -85,6 +85,10 @@ jobs:
         run: python -m unittest discover -s tests -p test_popular_edits.py -v
       - name: Verify creator signup permissions and allowlisted websites
         run: python -m unittest discover -s tests -p test_creator_accounts.py -v
+      - name: Test multitrack validation, audio and source protection
+        run: python -m unittest discover -s tests -p test_multitrack_composer.py -v
+      - name: Test offline upload drafts and official portals
+        run: python -m unittest discover -s tests -p test_creator_publish.py -v
       - name: Run existing text-only application tests
         shell: pwsh
         run: |
