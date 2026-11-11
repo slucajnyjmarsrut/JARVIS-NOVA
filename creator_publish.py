@@ -96,11 +96,15 @@ def prepare_publish_package(draft: PublishDraft, output_dir: Path,
     if file.is_symlink() or file.exists():
         raise PublishingError("Черновик уже существует; перезапись запрещена.")
     digest = hashlib.sha256()
+    before = source.stat()
     with source.open("rb") as data:
         for block in iter(lambda: data.read(1024*1024), b""):
             digest.update(block)
-    if not source.is_file():
-        raise PublishingError("MP4 исчез при подготовке публикации.")
+    after = source.stat()
+    if (before.st_size != after.st_size or
+            before.st_mtime_ns != after.st_mtime_ns):
+        raise PublishingError(
+            "Видео изменилось во время проверки; подготовь черновик заново.")
     payload = {
         "schema": "jarvis_publish_draft_v1",
         "platform": draft.platform,
