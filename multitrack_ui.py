@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -33,6 +34,9 @@ class MultitrackWindow(tk.Toplevel):
         self._events=queue.Queue()
         self._busy=False
         self._cancel=threading.Event()
+        self._busy_since=None
+        self._last_busy_second=-1
+        self._last_export=None
         self.protocol("WM_DELETE_WINDOW", self.close)
 
         outer=ttk.Frame(self,style="Studio.TFrame",padding=14)
@@ -125,6 +129,9 @@ class MultitrackWindow(tk.Toplevel):
         self.status=tk.StringVar(value="Выбери основной MP4 и место для нового видео.")
         ttk.Label(footer,textvariable=self.status,
                   style="Studio.Small.TLabel",wraplength=780).pack(anchor="w")
+        self._progress=ttk.Progressbar(
+            footer,mode="indeterminate",style="Studio.Horizontal.TProgressbar")
+        self._progress.pack(fill="x",pady=(5,1))
         actions=ttk.Frame(footer,style="Studio.TFrame")
         actions.pack(fill="x",pady=(7,0))
         self.go=ttk.Button(
@@ -139,6 +146,9 @@ class MultitrackWindow(tk.Toplevel):
         ttk.Button(actions,text="Открыть проект",
                    style="Studio.TButton",
                    command=self.load_project).pack(side="right")
+        ttk.Button(footer,text="Просмотреть готовое видео в Windows-плеере",
+                   style="Studio.TButton",command=self.open_finished_video
+                   ).pack(anchor="w",pady=(4,0))
         self._attach_wheel(body,scroller)
         self.after(130,self._pump)
 
@@ -273,6 +283,9 @@ class MultitrackWindow(tk.Toplevel):
             return
         self._cancel.clear()
         self._busy=True
+        self._busy_since=time.monotonic()
+        self._last_busy_second=-1
+        self._progress.start(14)
         self.go.configure(state="disabled")
         self.status.set("Работает FFmpeg. Проект не отправляется в облако.")
         def worker():
@@ -291,8 +304,11 @@ class MultitrackWindow(tk.Toplevel):
             while True:
                 kind,value=self._events.get_nowait()
                 self._busy=False
+                self._busy_since=None
+                self._progress.stop()
                 self.go.configure(state="normal")
                 if kind=="done":
+                    self._last_export=Path(value["output"])
                     self.status.set(
                         "ГОТОВО: "+value["output"]+
                         " · монтажный лист _MULTITRACK.json сохранён.")
@@ -305,7 +321,34 @@ class MultitrackWindow(tk.Toplevel):
                     messagebox.showerror("Многодорожечный монтаж",value,parent=self)
         except queue.Empty:
             pass
+        if self._busy and self._busy_since is not None:
+            seconds=int(time.monotonic()-self._busy_since)
+            if seconds!=self._last_busy_second:
+                self._last_busy_second=seconds
+                self.status.set(
+                    f"FFmpeg обрабатывает слои: {seconds} с. "
+                    "При ошибке/остановке частичный MP4 удаляется. "
+                    "Нажми ОТМЕНА, чтобы остановить.")
         self.after(130,self._pump)
+
+    def open_finished_video(self):
+        if self._busy:
+            return
+        if self._last_export is None or not self._last_export.is_file():
+            selected=filedialog.askopenfilename(
+                parent=self,title="Выбери готовое MP4 для просмотра",
+                filetypes=[("MP4","*.mp4")])
+            if not selected:
+                return
+            video=Path(selected)
+        else:
+            video=self._last_export
+        try:
+            from video_preview import open_local_mp4
+            opened=open_local_mp4(video,confirmed=True)
+            self.status.set("Видео открыто в системном плеере: "+opened.name)
+        except (OSError,ValueError,PermissionError) as exc:
+            messagebox.showerror("Просмотр готового MP4",str(exc),parent=self)
 
     def cancel(self):
         if self._busy:
