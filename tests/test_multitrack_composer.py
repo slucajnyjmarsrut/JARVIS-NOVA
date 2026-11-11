@@ -42,6 +42,8 @@ class MultitrackTests(unittest.TestCase):
             self.assertEqual(len(view.layer_widths),3)
             self.assertEqual(len(view.layer_opacities),3)
             self.assertFalse(view._busy)
+            self.assertIsNone(view._busy_since)
+            self.assertEqual(str(view._progress.cget("mode")),"indeterminate")
             self.assertEqual(view._events.qsize(),0)
         finally:
             if view is not None:
