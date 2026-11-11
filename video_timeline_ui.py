@@ -42,6 +42,8 @@ class TimelineWindow(tk.Toplevel):
         self._cuts=[]
         self._preview_image=None
         self._latest_video=None
+        self._drag_from=None
+        self._drag_x=None
         self._busy_since=None
         self._last_busy_second=-1
         self._activity_label=""
@@ -72,8 +74,8 @@ class TimelineWindow(tk.Toplevel):
         ttk.Label(root,text="ТАЙМЛАЙН · МОНТАЖ С УПРАВЛЕНИЕМ КАДРАМИ",
                   style="Studio.Heading.TLabel").pack(anchor="w")
         ttk.Label(root,text=(
-            "Перетаскивать клипы не обязательно: меняй порядок стрелками, "
-            "обрезай, ускоряй, добавляй титр. 10 клипов · до 90 секунд."),
+            "Перетаскивай клипы на шкале или меняй порядок стрелками. "
+            "Обрезка, скорость, титры; 10 клипов · до 90 секунд."),
             wraplength=910,style="Studio.Small.TLabel").pack(anchor="w",pady=(3,7))
 
         preview=tk.Frame(root,bg=CARD,padx=8,pady=8)
@@ -96,7 +98,8 @@ class TimelineWindow(tk.Toplevel):
                                   highlightthickness=1,highlightbackground=EDGE)
         self._timeline.pack(fill="x",pady=(0,7))
         self._timeline.bind("<Configure>",lambda event:self._draw_timeline())
-        self._timeline.bind("<Button-1>",self._timeline_clicked)
+        self._timeline.bind("<ButtonPress-1>",self._timeline_pressed)
+        self._timeline.bind("<ButtonRelease-1>",self._timeline_released)
 
         middle=ttk.Frame(root,style="Studio.TFrame")
         middle.pack(fill="both",expand=True)
@@ -284,18 +287,46 @@ class TimelineWindow(tk.Toplevel):
         canvas.create_text(width,63,text=f"{total:.1f} с до переходов",
                            anchor="e",fill="#A9BFCE",font=("Segoe UI",8))
 
-    def _timeline_clicked(self,event):
+    def _timeline_index_at(self,x):
         if not self._cuts:
-            return
+            return None
         total=sum(c.duration for c in self._cuts)
-        t=(event.x-8)/max(1,self._timeline.winfo_width()-16)*total
+        width=max(240,self._timeline.winfo_width()-16)
+        t=max(0.,(x-8)/width)*total
         elapsed=0.
         for i,cut in enumerate(self._cuts):
             elapsed+=cut.duration
-            if t<=elapsed:
-                self._select(i)
-                return
-        self._select(len(self._cuts)-1)
+            if t <= elapsed:
+                return i
+        return len(self._cuts)-1
+
+    def _timeline_pressed(self,event):
+        if self._busy:
+            return
+        self._drag_from=self._timeline_index_at(event.x)
+        self._drag_x=event.x
+        if self._drag_from is not None:
+            self._select(self._drag_from)
+
+    def _timeline_released(self,event):
+        if self._drag_from is None or self._busy:
+            self._drag_from=None
+            self._drag_x=None
+            return
+        source=self._drag_from
+        start_x=self._drag_x
+        self._drag_from=None
+        self._drag_x=None
+        # A click selects a clip; a drag moves it and is undoable.
+        if start_x is None or abs(event.x-start_x)<12:
+            return
+        target=self._timeline_index_at(event.x)
+        if target is None or target == source:
+            return
+        clips=self._cuts.copy()
+        cut=clips.pop(source)
+        clips.insert(target,cut)
+        self._modify(clips,target)
 
     def _modify(self,new,index=None):
         if self._busy:
