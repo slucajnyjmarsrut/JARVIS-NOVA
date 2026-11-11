@@ -23,6 +23,7 @@ MAX_LAYER_BYTES = 3_000_000_000
 IMAGE_TYPES = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 VIDEO_TYPES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".m4v"})
 AUDIO_TYPES = frozenset({".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"})
+MOTIONS = ("static", "fade-in", "slide-left", "slide-right", "rise", "drop")
 POSITIONS = {
     "top-left": ("W*0.03", "H*0.03"),
     "top-right": ("W-w-W*0.03", "H*0.03"),
@@ -45,6 +46,8 @@ class VisualLayer:
     position: str = "bottom-right"
     width_percent: int = 26
     opacity: float = 1.0
+    motion: str = "static"
+    motion_seconds: float = .45
 
 
 @dataclass(frozen=True)
@@ -102,7 +105,10 @@ def validate_project(project: MultitrackProject, *, for_export=True) -> Multitra
                 type(layer.width_percent) is not int or
                 not 10 <= layer.width_percent <= 70 or
                 not all(type(x) in (int,float) and math.isfinite(x)
-                        for x in (layer.start, layer.duration, layer.opacity)) or
+                        for x in (layer.start, layer.duration, layer.opacity,
+                                  layer.motion_seconds)) or
+                type(layer.motion) is not str or layer.motion not in MOTIONS or
+                not .15 <= layer.motion_seconds <= min(1.2,layer.duration) or
                 not 0 <= layer.start < MAX_DURATION or
                 not .3 <= layer.duration <= MAX_DURATION or
                 not .1 <= layer.opacity <= 1.0):
@@ -148,7 +154,8 @@ def save_multitrack(project: MultitrackProject, destination: Path) -> Path:
             "file":str(_safe_media(item.path,IMAGE_TYPES|VIDEO_TYPES)),
             "start":item.start,"duration":item.duration,
             "position":item.position,"width_percent":item.width_percent,
-            "opacity":item.opacity,
+            "opacity":item.opacity,"motion":item.motion,
+            "motion_seconds":item.motion_seconds,
         } for item in project.layers],
         "published":False,
     }
@@ -182,7 +189,9 @@ def load_multitrack(path: Path) -> MultitrackProject:
             layers.append(VisualLayer(
                 path=Path(item["file"]),start=item["start"],
                 duration=item["duration"],position=item["position"],
-                width_percent=item["width_percent"],opacity=item["opacity"]))
+                width_percent=item["width_percent"],opacity=item["opacity"],
+                motion=item.get("motion","static"),
+                motion_seconds=item.get("motion_seconds",.45)))
         music=data.get("music")
         voice=data.get("narration")
         project=MultitrackProject(
@@ -199,6 +208,31 @@ def load_multitrack(path: Path) -> MultitrackProject:
         return validate_project(project,for_export=False)
     except (TypeError,ValueError,OSError) as exc:
         raise MultitrackError("Неверные параметры в JSON-проекте.") from exc
+
+
+def layer_motion_xy(layer: VisualLayer) -> tuple[str, str]:
+    """Validated numeric keyframes expressed as per-frame FFmpeg overlay XY."""
+    if (type(layer.motion) is not str or layer.motion not in MOTIONS or
+            type(layer.motion_seconds) not in (int,float) or
+            not math.isfinite(layer.motion_seconds) or
+            not .15 <= layer.motion_seconds <= min(1.2,layer.duration)):
+        raise MultitrackError("Недопустимая анимация наложения.")
+    x, y = POSITIONS[layer.position]
+    if layer.motion in ("static","fade-in"):
+        return x,y
+    # Two linear keyframes: fully off-screen at start, at requested location
+    # after motion_seconds. Escaped commas survive FFmpeg filtergraph parsing.
+    t = (f"min(1\\,max(0\\,"
+         f"(t-{layer.start:.3f})/{layer.motion_seconds:.3f}))")
+    if layer.motion=="slide-left":
+        x=f"(-w)+(({x})+w)*({t})"
+    elif layer.motion=="slide-right":
+        x=f"W+(({x})-W)*({t})"
+    elif layer.motion=="rise":
+        y=f"H+(({y})-H)*({t})"
+    elif layer.motion=="drop":
+        y=f"(-h)+(({y})+h)*({t})"
+    return x,y
 
 
 def build_filter_graph(project: MultitrackProject, *, duration: float,
@@ -219,13 +253,16 @@ def build_filter_graph(project: MultitrackProject, *, duration: float,
             raise MultitrackError("Слой начинается после окончания ролика.")
         stop = min(duration, layer.start + layer.duration)
         target_width = max(2, int(width * layer.width_percent / 100) // 2 * 2)
+        effect = (
+            f"fade=t=in:st=0:d={layer.motion_seconds:.3f}:alpha=1,"
+            if layer.motion == "fade-in" else "")
         filters.append(
             f"[{n}:v:0]fps=30,scale={target_width}:-2:flags=lanczos,"
             f"format=rgba,colorchannelmixer=aa={layer.opacity:.3f},"
-            f"setpts=PTS-STARTPTS+{layer.start:.3f}/TB[layer{n}]")
-        x, y = POSITIONS[layer.position]
+            f"{effect}setpts=PTS-STARTPTS+{layer.start:.3f}/TB[layer{n}]")
+        x, y = layer_motion_xy(layer)
         filters.append(
-            f"[{current}][layer{n}]overlay=x={x}:y={y}:"
+            f"[{current}][layer{n}]overlay=x='{x}':y='{y}':eval=frame:"
             f"eof_action=pass:repeatlast=0:"
             f"enable='between(t,{layer.start:.3f},{stop:.3f})'[v{n}]")
         current = f"v{n}"
@@ -374,7 +411,8 @@ def render_multitrack(project: MultitrackProject, *,
                 {"file": str(_safe_media(l.path, IMAGE_TYPES|VIDEO_TYPES)),
                  "start": l.start, "duration": l.duration,
                  "position": l.position, "width_percent": l.width_percent,
-                 "opacity": l.opacity} for l in project.layers
+                 "opacity": l.opacity, "motion": l.motion,
+                 "motion_seconds": l.motion_seconds} for l in project.layers
             ],
             "title": project.title,
             "music": str(project.music) if project.music is not None else None,
