@@ -58,8 +58,10 @@ class SafeTestRepairTests(unittest.TestCase):
         self.assertEqual([x.status for x in result.steps],["failed","passed"])
         self.assertEqual(result.steps[-1].tests_run,1)
         self.assertEqual(len(prompts),1)
-        self.assertEqual(result.plan.files[0].content,"def add(a,b): return a+b\n")
-        self.assertEqual(before.files[0].content,"def add(a,b): return a-b\n")
+        files_after={item.path:item.content for item in result.plan.files}
+        files_before={item.path:item.content for item in before.files}
+        self.assertEqual(files_after["app.py"],"def add(a,b): return a+b\n")
+        self.assertEqual(files_before["app.py"],"def add(a,b): return a-b\n")
         self.assertFalse(any(path.exists() for path in workspaces))
 
     def test_missing_docker_stops_without_model_patching(self):
