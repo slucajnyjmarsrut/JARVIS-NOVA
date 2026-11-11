@@ -19,7 +19,7 @@ from code_languages import SUPPORTED, LANGUAGE_LABELS
 from code_checks import check_project
 from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
 from code_project_engine import build_complete_project
-from code_quality_review import review_change_plan
+from code_quality_review import review_change_plan, unified_plan_diff
 from code_test_sandbox import run_python_tests
 
 
@@ -261,6 +261,8 @@ class CodeWindow(tk.Toplevel):
                'Статическая проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
                'Важное ограничение: JARVIS не запускает сгенерированный код и тесты.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],
+               'Предлагаемые изменения (unified diff, без записи в проект):',
+               unified_plan_diff(result.plan,self._target()),
                self._preview_text(result.plan)]
         self.show('\n'.join(lines))
         if result.attempts and result.attempts[-1].status not in ('passed','partial'):
