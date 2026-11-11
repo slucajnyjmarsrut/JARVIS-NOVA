@@ -2,6 +2,7 @@
 """Editable timeline tests: exact trim math, history, safe files, FFmpeg."""
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 import hashlib
 import json
 import shutil
@@ -275,6 +276,14 @@ class TimelineTests(unittest.TestCase):
                 p=self.fixture(tmp)
                 window._modify(list(p.cuts),0)
                 self.assertEqual(len(window._cuts),2)
+                # Real Tk canvas mouse press/release changes the clip order.
+                width=max(240,window._timeline.winfo_width()-16)
+                window._timeline_pressed(SimpleNamespace(x=8+int(width*.20)))
+                window._timeline_released(SimpleNamespace(x=8+int(width*.85)))
+                self.assertEqual(window._cuts[1].path,p.cuts[0].path)
+                window.undo()
+                self.assertEqual(window._cuts[0].path,p.cuts[0].path)
+                window._select(0)
                 window.split_at.set("0.8")
                 window.split()
                 self.assertEqual(len(window._cuts),3)
