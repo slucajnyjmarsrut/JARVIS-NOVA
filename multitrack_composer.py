@@ -201,6 +201,8 @@ def render_multitrack(project: MultitrackProject, *,
     from viral_studio import ffmpeg_tools, _execute, _probe, _make_caption_png
 
     validate_project(project)
+    if cancel is not None and cancel.is_set():
+        raise MultitrackError("Монтаж отменён до чтения видео.")
     ffmpeg, ffprobe = tools if tools else ffmpeg_tools()
     runner = executor or _execute
     base = _safe_media(project.base_video, VIDEO_TYPES)
