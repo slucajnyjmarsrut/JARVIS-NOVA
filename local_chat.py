@@ -73,7 +73,9 @@ class LocalChat:
         self.debate_mode = False
 
     @staticmethod
-    def _request(endpoint: str, payload: dict) -> dict:
+    def _request(endpoint: str, payload: dict, *, timeout: float = 150) -> dict:
+        if type(timeout) not in (int,float) or not 1 <= timeout <= 150:
+            raise LocalChatError("Недопустимое время ожидания Ollama.")
         parts = urlsplit(endpoint)
         if (parts.scheme != "http" or parts.hostname != "127.0.0.1"
                 or not (1 <= (parts.port or 0) <= 65535) or
@@ -88,7 +90,7 @@ class LocalChat:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with opener.open(req, timeout=150) as response:
+        with opener.open(req, timeout=timeout) as response:
             body = response.read(300_001)
         if len(body) > 300_000:
             raise LocalChatError("Слишком длинный ответ модели")

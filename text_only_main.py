@@ -27,6 +27,9 @@ from freellm_client import FreeLLMChat, FreeLLMError
 from update_preferences import load_preferences
 from model_storage import active_model_store, local_model_available, installed_edition
 from chat_first_intent import route_chat_request
+from semantic_intent_router import (
+    classify_local_intent, suitable_for_semantic_routing,
+)
 from agent_core import parse_local
 
 
@@ -106,6 +109,8 @@ class TextJarvis(BaseJarvis):
         self._model_scan_busy=False
         self._model_scan_queue=queue.Queue()
         self._model_scan_cancel=threading.Event()
+        self._semantic_queue=queue.Queue()
+        self._semantic_busy=False
         self._model_download_last_size=0
         self._model_download_last_change=time.monotonic()
         self._last_screenshot_report=""
@@ -629,7 +634,51 @@ class TextJarvis(BaseJarvis):
                        "Пароль, дату рождения и проверочные коды вводи "
                        "самостоятельно на официальном сайте.")
             return
+        if (getattr(self, "engine", None) == "bundled"
+                and bool(getattr(self, "_local_model_ready", False))
+                and not getattr(self, "executing", False)
+                and suitable_for_semantic_routing(text)):
+            if getattr(self, "_semantic_busy", False):
+                self.log("Вы", text)
+                self.reply("Обрабатываю предыдущую команду. Повтори запрос позже.")
+                return
+            self._semantic_busy=True
+            self.status.set("Локальная Qwen определяет действие…")
+            def semantic_worker():
+                try:
+                    intent=classify_local_intent(text, self.runtime)
+                except Exception:
+                    intent=None  # Fail closed; ordinary chat still works.
+                if not self._shutdown.is_set():
+                    self._semantic_queue.put((text,intent))
+            threading.Thread(target=semantic_worker,daemon=True,
+                             name="jarvis-local-intent").start()
+            return
         return super().handle_text(text)
+
+    def _complete_semantic_request(self, text, intent):
+        """Called on the Tk thread only; never trust model-provided arguments."""
+        self._semantic_busy=False
+        if self._closing:
+            return
+        if intent is not None:
+            self._dispatch_chat_first(intent,text)
+        else:
+            # No fabricated success: use the original chat/plan handling.
+            BaseJarvis.handle_text(self,text)
+
+    def pump(self):
+        # BaseJarvis.pump owns the ordinary chat and OS-action queues; this
+        # separate queue only carries inert, validated semantic classifications.
+        if self._closing:
+            return
+        try:
+            while True:
+                text,intent=self._semantic_queue.get_nowait()
+                self._complete_semantic_request(text,intent)
+        except queue.Empty:
+            pass
+        return super().pump()
 
     def open_screenshot_review(self):
         """User selects and marks an image; nothing is captured automatically."""

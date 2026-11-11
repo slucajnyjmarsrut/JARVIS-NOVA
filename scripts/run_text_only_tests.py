@@ -43,6 +43,7 @@ TESTS=(
        "test_text_model_controls.py",
        "test_debate_mode.py",
        "test_chat_first_intent.py",
+       "test_semantic_intent_router.py",
        "test_longform_video.py",
        "test_longform_autoexport.py",
        "test_one_shot_project.py",
