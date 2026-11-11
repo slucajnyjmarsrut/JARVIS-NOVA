@@ -38,6 +38,17 @@ class PublishDraft:
     hashtags: str = ""
 
 
+def is_publish_prep_request(text: str) -> bool:
+    if not isinstance(text,str) or not 4 <= len(text) <= 400:
+        return False
+    value=" ".join(text.casefold().replace("ё","е").split())
+    return any(phrase in value for phrase in (
+        "подготовь публикацию", "подготовь видео к публикации",
+        "загрузи видео на ютуб", "загрузи видео в тикток",
+        "опубликуй ролик в инстаграм", "помоги опубликовать видео",
+    ))
+
+
 def clean_draft(draft: PublishDraft) -> PublishDraft:
     if not isinstance(draft, PublishDraft) or draft.platform not in PORTALS:
         raise PublishingError("Выбери YouTube, TikTok или Instagram.")
