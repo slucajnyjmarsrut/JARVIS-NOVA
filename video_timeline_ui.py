@@ -11,6 +11,7 @@ from io import BytesIO
 from pathlib import Path
 import queue
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -41,6 +42,9 @@ class TimelineWindow(tk.Toplevel):
         self._cuts=[]
         self._preview_image=None
         self._latest_video=None
+        self._busy_since=None
+        self._last_busy_second=-1
+        self._activity_label=""
         self.protocol("WM_DELETE_WINDOW",self.close)
 
         self.aspect=tk.StringVar(value=list(ASPECTS)[0])
@@ -173,6 +177,9 @@ class TimelineWindow(tk.Toplevel):
         footer.pack(fill="x")
         ttk.Label(footer,textvariable=self.status,
                   wraplength=910,style="Studio.Small.TLabel").pack(anchor="w")
+        self._progress=ttk.Progressbar(footer,mode="indeterminate",
+                                       style="Studio.Horizontal.TProgressbar")
+        self._progress.pack(fill="x",pady=(5,2))
         bar=ttk.Frame(footer,style="Studio.TFrame")
         bar.pack(fill="x",pady=(6,0))
         self._export_button=ttk.Button(
@@ -186,6 +193,9 @@ class TimelineWindow(tk.Toplevel):
         ttk.Button(next_actions,text="Дальше: слои / озвучка",
                    command=self.open_layers,style="Studio.TButton").pack(
                        side="left",padx=(0,6))
+        ttk.Button(next_actions,text="Просмотреть готовый MP4",
+                   command=self.open_finished_video,
+                   style="Studio.TButton").pack(side="left",padx=(0,6))
         ttk.Button(next_actions,text="Открыть FilmCraft",
                    command=self.open_filmcraft,
                    style="Studio.TButton").pack(side="left",padx=(0,6))
@@ -486,6 +496,21 @@ class TimelineWindow(tk.Toplevel):
         self._refresh(0)
         self.status.set("Проект загружен. Проверь параметры перед экспортом.")
 
+    def _working(self,label):
+        """Tk main-thread heartbeat, never a fabricated percentage or ETA."""
+        self._busy=True
+        self._busy_since=time.monotonic()
+        self._last_busy_second=-1
+        self._activity_label=label
+        self.status.set(label)
+        self._progress.start(14)
+
+    def _work_finished(self):
+        self._busy=False
+        self._busy_since=None
+        self._progress.stop()
+        self._export_button.configure(state="normal")
+
     def preview_frame(self):
         if self._busy:
             return
@@ -494,8 +519,7 @@ class TimelineWindow(tk.Toplevel):
             return
         cut=self._cuts[index]
         self._cancel.clear()
-        self._busy=True
-        self.status.set("Получаю один кадр через локальный FFmpeg.")
+        self._working("Получаю один кадр через локальный FFmpeg.")
         def worker():
             try:
                 from viral_studio import ffmpeg_tools, _execute
@@ -537,9 +561,8 @@ class TimelineWindow(tk.Toplevel):
             parent=self):
             return
         self._cancel.clear()
-        self._busy=True
+        self._working("Начинаю офлайн-экспорт.")
         self._export_button.configure(state="disabled")
-        self.status.set("Начинаю офлайн-экспорт.")
         def callback(completed,total,label):
             self._events.put(("progress",(
                 completed,total,label)))
@@ -561,10 +584,10 @@ class TimelineWindow(tk.Toplevel):
                 event,value=self._events.get_nowait()
                 if event=="progress":
                     n,total,stage=value
-                    self.status.set(f"{stage} · {n}/{total}")
+                    self._activity_label=f"{stage} · {n}/{total}"
+                    self.status.set(self._activity_label)
                     continue
-                self._busy=False
-                self._export_button.configure(state="normal")
+                self._work_finished()
                 if event=="preview":
                     try:
                         from PIL import Image, ImageTk
@@ -593,12 +616,37 @@ class TimelineWindow(tk.Toplevel):
                     messagebox.showerror("Таймлайн",value,parent=self)
         except queue.Empty:
             pass
+        if self._busy and self._busy_since is not None:
+            seconds=int(time.monotonic()-self._busy_since)
+            if seconds!=self._last_busy_second:
+                self._last_busy_second=seconds
+                self.status.set(
+                    f"{self._activity_label} · {seconds} с. "
+                    "FFmpeg обрабатывает видео; СТОП доступен.")
         self.after(130,self._pump)
 
     def cancel(self):
         if self._busy:
             self._cancel.set()
             self.status.set("Запросил остановку FFmpeg; неполный MP4 не сохраняется.")
+
+    def open_finished_video(self):
+        if self._busy:
+            return
+        video=self._latest_video
+        if video is None or not video.is_file():
+            selected=filedialog.askopenfilename(
+                parent=self,title="Просмотреть уже готовый MP4",
+                filetypes=[("Видео MP4","*.mp4")])
+            if not selected:
+                return
+            video=Path(selected)
+        try:
+            from video_preview import open_local_mp4
+            opened=open_local_mp4(video,confirmed=True)
+            self.status.set("Открыл в системном плеере: "+opened.name)
+        except (OSError,ValueError,PermissionError) as exc:
+            messagebox.showerror("Просмотр готового MP4",str(exc),parent=self)
 
     def open_filmcraft(self):
         if self._busy:
@@ -622,8 +670,7 @@ class TimelineWindow(tk.Toplevel):
             "склейки в установленном FilmCraft? Ничего не публикуется.",
             parent=self):
             return
-        self._busy=True
-        self.status.set("Передаю проверенный MP4 в локальный FilmCraft.")
+        self._working("Передаю проверенный MP4 в локальный FilmCraft.")
         def worker():
             try:
                 from filmcraft_bridge import open_in_filmcraft
