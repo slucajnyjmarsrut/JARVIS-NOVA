@@ -84,6 +84,40 @@ class OneShotCodingTests(unittest.TestCase):
             self.assertIn("a+b",(target/"app.py").read_text())
             self.assertIn("assertEqual",(target/"tests"/"test_app.py").read_text())
 
+    def test_invalid_qwen_json_gets_two_phase_only_retries(self):
+        from code_project_engine import build_complete_project
+        calls=[]
+        normal=self.model(calls)
+        def imperfect(prompt,language):
+            if "Phase 1/3" in prompt and "REJECTED PHASE RESPONSE" not in prompt:
+                return "Sorry: not JSON"
+            if "Phase 2/3" in prompt and "REJECTED PHASE RESPONSE" not in prompt:
+                return offer({"../escape.py":"print('no')"})
+            return normal(prompt,language)
+        result=build_complete_project(
+            "Create a calculator","python",generator=imperfect)
+        self.assertTrue(result.verified)
+        self.assertTrue(any("повторов: 1" in t.diagnostics
+                            for t in result.attempts))
+        self.assertEqual(len(calls),3)
+        self.assertEqual(
+            [a.number for a in result.attempts if a.status=="drafted"],
+            [1,2,3])
+
+    def test_three_bad_phase_responses_fail_without_writing_files(self):
+        from code_project_engine import build_complete_project
+        prompts=[]
+        def broken(prompt,language):
+            prompts.append(prompt)
+            return '{"language":"python","files":[{"path":"../bad.py","content":"x"}]}'
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(WorkspaceError,"трижды"):
+                build_complete_project(
+                    "Create a calculator","python",generator=broken,
+                    workspace=None)
+            self.assertEqual(len(prompts),3)
+            self.assertFalse(list(Path(tmp).iterdir()))
+
     def test_denied_sandbox_never_runs_generated_code(self):
         calls=[]
         result=build_one_shot_project(
