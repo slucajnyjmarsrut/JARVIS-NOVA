@@ -1,11 +1,19 @@
 name: Viral Studio Windows video-render smoke
 on:
   push:
-    branches: [dev/viral-studio-2026-10, dev/modes-video-game-cleanup-2026-10]
+    branches: [jarvis, dev/viral-studio-2026-10, dev/modes-video-game-cleanup-2026-10]
     paths:
       - '.github/workflows/viral-studio-smoke.yml'
       - 'viral_studio.py'
       - 'viral_studio_ui.py'
+      - 'quick_video_brief.py'
+      - 'video_scenario_autonomy.py'
+      - 'local_model_inventory.py'
+      - 'model_storage.py'
+      - 'text_only_main.py'
+      - 'chat_first_intent.py'
+      - 'tests/test_scenario_and_model_route.py'
+      - 'tests/test_model_inventory.py'
       - 'tests/test_viral*'
       - 'tests/test_audience_pipeline.py'
       - 'tests/test_work_modes.py'
@@ -42,6 +50,10 @@ jobs:
           & './assets/bin/ffmpeg.exe' -hide_banner -version
           & './assets/bin/ffprobe.exe' -hide_banner -version
           python -m unittest discover -s tests -p 'test_viral*.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Viral Studio test failed' }
+          python -m unittest discover -s tests -p 'test_scenario_and_model_route.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Scenario generation test failed' }
+          python -m unittest discover -s tests -p 'test_model_inventory.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Viral Studio test failed' }
           python -m unittest discover -s tests -p 'test_audience_pipeline.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Audience-first test failed' }

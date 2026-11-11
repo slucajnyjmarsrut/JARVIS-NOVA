@@ -24,6 +24,11 @@ on:
       - tests/test_self_development.py
       - bundled_vision_runtime.py
       - model_storage.py
+      - local_model_inventory.py
+      - video_scenario_autonomy.py
+      - quick_video_brief.py
+      - tests/test_model_inventory.py
+      - tests/test_scenario_and_model_route.py
       - publisher_trust.py
       - tests/test_publisher_trust.py
       - update_preferences.py

@@ -584,7 +584,7 @@ class ViralStudioWindow(tk.Toplevel):
         self._spawn(work)
 
     def generate(self):
-        from quick_video_brief import select_brief
+        from video_scenario_autonomy import create_checked_scenario
         topic=self.topic.get().strip()
         if not topic:
             if self.profile is None:
@@ -623,7 +623,7 @@ class ViralStudioWindow(tk.Toplevel):
                     note="Тренды недоступны ("+str(exc)[:100]+").\n"
             if self.stop_event.is_set():
                 return
-            brief,message=select_brief(
+            brief,message,assessment,attempts=create_checked_scenario(
                 topic,trends,mode=mode,audience=self.profile,runtime=runtime)
             if self.stop_event.is_set():
                 return
@@ -633,7 +633,10 @@ class ViralStudioWindow(tk.Toplevel):
             if self.profile is not None:
                 (project/"AUDIENCE_EXPERTS_RU.md").write_text(
                     expert_report(self.profile,topic),encoding="utf-8")
-            text=(note+message+"\n\n"
+            text=(note+message+"\n"
+                  +f"Проверка структуры: {'пройдена' if assessment.passed else 'замечания'}"
+                  +f"; попыток: {attempts}. "
+                  +"Это не проверка фактов или художественного качества.\n\n"
                   +"Заголовок: "+brief.title+"\n"
                   +"Зацепка: "+brief.hook+"\n\n"
                   +"СЦЕНАРИЙ:\n"+brief.script+"\n\n"
@@ -724,7 +727,7 @@ class ViralStudioWindow(tk.Toplevel):
         except (ValueError,OSError) as exc:
             messagebox.showerror('Профессиональный монтаж',str(exc),parent=self)
             return
-        from quick_video_brief import select_brief
+        from video_scenario_autonomy import create_checked_scenario
         speed_selector=getattr(self,"scenario_mode",None)
         mode=speed_selector.get() if speed_selector is not None else "legacy"
         runtime=getattr(getattr(self,"parent",None),"runtime",None)
@@ -739,7 +742,7 @@ class ViralStudioWindow(tk.Toplevel):
                     brief=template_brief(topic)
                     note="Локальная модель недоступна; использован шаблон: "+str(exc)[:120]
             else:
-                brief,note=select_brief(
+                brief,note,assessment,attempts=create_checked_scenario(
                     topic,mode=mode,audience=self.profile,runtime=runtime)
             if self.stop_event.is_set():return
             project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])

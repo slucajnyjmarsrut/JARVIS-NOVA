@@ -5,6 +5,7 @@ No voice/microphone/speaker/ASR/TTS engine is ever created.
 Older modules are retained for legacy test coverage, not for app use.
 """
 from __future__ import annotations
+import os
 import queue
 import sys
 import threading
@@ -102,6 +103,9 @@ class TextJarvis(BaseJarvis):
         self._model_download_busy=False
         self._model_download_queue=queue.Queue()
         self._model_download_cancel=threading.Event()
+        self._model_scan_busy=False
+        self._model_scan_queue=queue.Queue()
+        self._model_scan_cancel=threading.Event()
         self._model_download_last_size=0
         self._model_download_last_change=time.monotonic()
         self._last_screenshot_report=""
@@ -147,6 +151,7 @@ class TextJarvis(BaseJarvis):
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
         self.after(250,self._pump_model_download)
+        self.after(300,self._pump_model_scan)
 
     def check_models(self):
         """No speech asset imports. Offer Lite users a consent-gated Qwen pull."""
@@ -161,6 +166,18 @@ class TextJarvis(BaseJarvis):
                     "Загрузка модели уже идёт. Прогресс отображается в чате.",
                     parent=self)
                 return
+            if (not self._model_scan_busy and
+                    messagebox.askyesno(
+                        "Сначала найти уже скачанные модели?",
+                        "JARVIS проверяет только свой кеш. Возможно, Qwen "
+                        "или другие модели находятся на других дисках. "
+                        "Разрешить однократный локальный поиск по всем "
+                        "фиксированным дискам Windows? "
+                        "Системные папки и содержимое документов не читаются; "
+                        "в сеть ничего не отправляется.",
+                        parent=self)):
+                self.scan_models_on_pc(confirmed=True)
+                return
             if messagebox.askyesno("Скачать локальную Qwen?",
                 "Локальная Qwen ещё не установлена.\n\n"
                 "Скачать приблизительно 1,9 ГБ с официального реестра Ollama?\n"
@@ -174,6 +191,106 @@ class TextJarvis(BaseJarvis):
         messagebox.showinfo("Локальная модель готова",
             "Qwen установлена и может отвечать без интернета. "
             "Модель находится в "+str(self.runtime.config.model_store),parent=self)
+
+    def scan_models_on_pc(self, *, confirmed=False):
+        """Explicit read-only inventory across all fixed local Windows disks."""
+        if self._model_scan_busy:
+            self.reply("Поиск моделей уже идёт. Для отмены напиши «останови поиск моделей».")
+            return
+        if os.name!="nt":
+            self.reply("Поиск по всем локальным дискам доступен в Windows-сборке.")
+            return
+        if not confirmed and not messagebox.askyesno(
+            "Искать модели на всём компьютере?",
+            "Проверить ВСЕ локальные жёсткие диски, включая папки вне JARVIS?\n\n"
+            "Будут читаться имена, пути и размеры файлов моделей, а также "
+            "служебный манифест совместимой Qwen. Личные документы "
+            "не открываются, программы не "
+            "запускаются, в сеть ничего не отправляется. Системные папки "
+            "пропускаются. Поиск ограничен 100 секундами, его можно отменить.\n\n"
+            "Разрешить однократный поиск?",
+            parent=self):
+            self.reply("Поиск моделей не запускался.")
+            return
+        self._model_scan_cancel.clear()
+        self._model_scan_busy=True
+        self.reply("Ищу локальные модели на всех доступных дисках. "
+                   "Для отмены напиши «останови поиск моделей».")
+        def worker():
+            try:
+                from local_model_inventory import scan_local_models
+                result=scan_local_models(
+                    confirmed=True,cancel=self._model_scan_cancel,
+                    progress=lambda folders,files,found:
+                        self._model_scan_queue.put(
+                            ("progress",(folders,files,found))))
+                self._model_scan_queue.put(("result",result))
+            except Exception as exc:
+                self._model_scan_queue.put(("error",str(exc)[:220]))
+        threading.Thread(target=worker,daemon=True,
+                         name="jarvis-local-model-inventory").start()
+
+    def cancel_model_scan(self):
+        if self._model_scan_busy:
+            self._model_scan_cancel.set()
+            self.reply("Останавливаю поиск моделей; ничего не изменено.")
+
+    def _pump_model_scan(self):
+        if self._closing:
+            return
+        try:
+            while True:
+                event,data=self._model_scan_queue.get_nowait()
+                if event=="progress":
+                    if self._model_scan_busy:
+                        directories,files,count=data
+                        self.status.set(
+                            f"Модели: {directories} папок, {files} файлов, "
+                            f"найдено {count}")
+                elif event=="result":
+                    from local_model_inventory import summarize_inventory
+                    self._model_scan_busy=False
+                    self.log("Система",summarize_inventory(data))
+                    compatible=[m for m in data.models if m.jarvis_compatible]
+                    if compatible and not data.cancelled:
+                        store=compatible[0].location
+                        if messagebox.askyesno(
+                            "Использовать уже установленную Qwen?",
+                            "Найдена совместимая Qwen в папке:\n"
+                            +str(store)+"\n\n"
+                            "Проверить SHA256 файлов и запомнить путь? "
+                            "Большая модель НЕ копируется, НЕ загружается "
+                            "из сети и НЕ запускается до обычного запроса.",
+                            parent=self):
+                            self._model_scan_busy=True
+                            self.status.set("Проверяю SHA256 найденной модели…")
+                            def adopt():
+                                try:
+                                    from model_storage import remember_existing_model_store
+                                    validated=remember_existing_model_store(
+                                        store,confirmed=True,
+                                        cancel=self._model_scan_cancel)
+                                    self._model_scan_queue.put(("adopted",validated))
+                                except Exception as exc:
+                                    self._model_scan_queue.put(("error",str(exc)[:240]))
+                            threading.Thread(target=adopt,daemon=True,
+                                name="jarvis-existing-model-verification").start()
+                elif event=="adopted":
+                    from dataclasses import replace
+                    self._model_scan_busy=False
+                    self.runtime.config=replace(
+                        self.runtime.config,model_store=data)
+                    self._local_model_ready=True
+                    self.hud_engine.configure(
+                        text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
+                    self.reply("Найдена и проверена готовая Qwen. "
+                               "Теперь JARVIS использует её из прежней папки.")
+                elif event=="error":
+                    self._model_scan_busy=False
+                    self.reply("Поиск или подключение модели не завершены: "+str(data))
+        except queue.Empty:
+            pass
+        self.after(300,self._pump_model_scan)
 
     def download_local_model(self):
         if self._model_download_busy or self._closing:
@@ -351,6 +468,7 @@ class TextJarvis(BaseJarvis):
                 "«сделай 15 минут из двухчасового видео», "
                 "«хочу добавить озвучку», «давай поспорим», "
                 "«открой настройки», «проверь обновления», "
+                "«создай сценарий про Minecraft», «найди модели на всём ПК», "
                 "«хочу показать скриншот» или «открой калькулятор». "
                 "Я открою нужную функцию. Для установки, запуска кода, "
                 "доступа к экрану, сохранения файлов и публикации "
@@ -362,6 +480,10 @@ class TextJarvis(BaseJarvis):
             self.show_update_center()
         elif kind == "model":
             self.check_models()  # Separate explicit download permission.
+        elif kind == "model_scan":
+            self.scan_models_on_pc()
+        elif kind == "cancel_model_scan":
+            self.cancel_model_scan()
         elif kind == "cancel_model":
             self.cancel_local_model_download()
         elif kind == "engine":
@@ -393,6 +515,19 @@ class TextJarvis(BaseJarvis):
                        "Файлы будут сохранены только после подтверждения. "
                        "Запуск и запись файлов "
                        "только после проверки и подтверждения.")
+        elif kind == "scenario":
+            studio=self.open_viral_studio(stage="script")
+            if studio is not None:
+                if value:
+                    studio.topic.set(value)
+                    studio.scenario_mode.set(
+                        "deep" if self._local_model_ready else "fast")
+                    # Entire request creates a script; no second button.
+                    studio.after(70,studio.generate)
+                    self.reply("Создаю сценарий и план кадров по теме. "
+                               "Без доступной Qwen явно обозначу шаблон.")
+                else:
+                    self.reply("Напиши тему сценария.")
         elif kind == "studio":
             self.open_viral_studio(stage="audience")
         elif kind == "filmcraft":
@@ -591,6 +726,7 @@ class TextJarvis(BaseJarvis):
             palette.close()
         self._shutdown.set()
         self._model_download_cancel.set()
+        self._model_scan_cancel.set()
         overlay = getattr(self, "overlay", None)
         if overlay is not None:
             try:
