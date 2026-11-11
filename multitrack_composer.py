@@ -97,11 +97,12 @@ def validate_project(project: MultitrackProject, *, for_export=True) -> Multitra
             raise MultitrackError("Неверная видеодорожка.")
         p = _safe_media(layer.path, IMAGE_TYPES | VIDEO_TYPES)
         used.add(p)
-        if (layer.position not in POSITIONS or
+        if (not isinstance(layer.position,str)
+                or layer.position not in POSITIONS or
                 type(layer.width_percent) is not int or
                 not 10 <= layer.width_percent <= 70 or
-                not all(math.isfinite(x) for x in
-                        (layer.start, layer.duration, layer.opacity)) or
+                not all(type(x) in (int,float) and math.isfinite(x)
+                        for x in (layer.start, layer.duration, layer.opacity)) or
                 not 0 <= layer.start < MAX_DURATION or
                 not .3 <= layer.duration <= MAX_DURATION or
                 not .1 <= layer.opacity <= 1.0):
@@ -194,7 +195,10 @@ def load_multitrack(path: Path) -> MultitrackProject:
         )
     except (KeyError,TypeError,ValueError,UnicodeError,OSError) as exc:
         raise MultitrackError("Повреждённый или неподдерживаемый проект.") from exc
-    return validate_project(project,for_export=False)
+    try:
+        return validate_project(project,for_export=False)
+    except (TypeError,ValueError,OSError) as exc:
+        raise MultitrackError("Неверные параметры в JSON-проекте.") from exc
 
 
 def build_filter_graph(project: MultitrackProject, *, duration: float,
