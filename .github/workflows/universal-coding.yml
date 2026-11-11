@@ -17,7 +17,10 @@ on:
       - code_gui.py
       - code_quality_review.py
       - code_test_sandbox.py
+      - code_test_repair.py
       - tests/test_code_quality_review.py
+      - tests/test_code_test_repair.py
+      - tests/test_code_gui_review.py
       - tests/test_code_test_sandbox.py
       - coding_intent.py
       - freellm_client.py
