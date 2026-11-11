@@ -21,6 +21,8 @@ TESTS=(
        "test_bootstrap.py",
        "test_code_agent.py",
        "test_code_autopilot.py",
+       "test_code_quality_review.py",
+       "test_code_test_sandbox.py",
        "test_code_edits.py",
        "test_code_integration_smoke.py",
        "test_code_intent.py",
