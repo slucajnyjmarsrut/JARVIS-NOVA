@@ -45,7 +45,7 @@ class SemanticTimelineTests(unittest.TestCase):
                 def describe(self,question,data):
                     self_outer.assertTrue(data.startswith(b"\xff\xd8\xff"))
                     self_outer.assertTrue(data.endswith(b"\xff\xd9"))
-                    self_outer.assertIn("одной латинской",question)
+                    self_outer.assertIn("одной латинской",question.casefold())
                     calls.append(("vision",len(data)))
                     return "B"
             self_outer=self
