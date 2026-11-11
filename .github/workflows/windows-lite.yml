@@ -43,6 +43,15 @@ on:
       - video_timeline.py
       - subtitle_tracks.py
       - tests/test_subtitle_tracks.py
+      - tests/test_longform_video.py
+      - tests/test_one_shot_project.py
+      - tests/test_video_timeline.py
+      - code_project_engine.py
+      - code_gui.py
+      - code_test_repair.py
+      - long_video_limits.py
+      - scripts/run_text_only_tests.py
+      - '.github/workflows/windows-lite.yml'
       - video_preview.py
       - tests/test_video_preview.py
       - code_gui.py
