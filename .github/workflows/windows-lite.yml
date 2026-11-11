@@ -45,6 +45,11 @@ on:
       - tests/test_subtitle_tracks.py
       - video_preview.py
       - tests/test_video_preview.py
+      - code_gui.py
+      - code_quality_review.py
+      - code_test_sandbox.py
+      - tests/test_code_quality_review.py
+      - tests/test_code_test_sandbox.py
       - video_timeline_ui.py
       - tests/test_video_timeline.py
       - multitrack_ui.py
