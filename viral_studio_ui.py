@@ -521,7 +521,7 @@ class ViralStudioWindow(tk.Toplevel):
         for widget in (self.make_button,self.edit_button,self.load_button,self.audience_button,
                        self.review_button,self.auto_button,
                        self.filmcraft_button,self.quick_edit_button,
-                       self.multitrack_button):
+                       self.multitrack_button,self.timeline_button):
             widget.configure(state=state)
 
     def _pump_notifications(self):
