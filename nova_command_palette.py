@@ -70,6 +70,8 @@ def entries(app, section="main"):
          lambda: app.open_viral_studio(stage="edits"), None),
         ("◉", "Аккаунты YouTube · TikTok · Instagram",
          lambda: app.open_creator_accounts(), None),
+        ("▤", "Таймлайн · клипы / скорость / титры / переходы",
+         lambda: app.open_timeline(), None),
         ("▤", "Многодорожечный монтаж · видео / логотип / звук",
          lambda: app.open_multitrack(), None),
         ("◈", "Подготовить публикацию · без автозагрузки",
