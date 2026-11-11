@@ -79,13 +79,14 @@ def _safe_media(path: Path, allowed: frozenset[str]) -> Path:
     return raw.resolve()
 
 
-def validate_project(project: MultitrackProject) -> MultitrackProject:
+def validate_project(project: MultitrackProject, *, for_export=True) -> MultitrackProject:
     if not isinstance(project, MultitrackProject):
         raise MultitrackError("Некорректный проект многодорожечного монтажа.")
     base = _safe_media(project.base_video, VIDEO_TYPES)
     raw_output = Path(project.output_video).expanduser()
     if (raw_output.is_symlink() or raw_output.suffix.lower() != ".mp4"
-            or raw_output.exists() or not raw_output.parent.is_dir()):
+            or (for_export and raw_output.exists())
+            or not raw_output.parent.is_dir()):
         raise MultitrackError("Нужен новый MP4, который ещё не существует.")
     out = raw_output.resolve()
     if not isinstance(project.layers, tuple) or len(project.layers) > 3:
@@ -120,9 +121,80 @@ def validate_project(project: MultitrackProject) -> MultitrackProject:
     if out in used:
         raise MultitrackError("Выходной файл не должен совпадать с исходниками.")
     edl = out.with_name(out.stem + "_MULTITRACK.json")
-    if edl.is_symlink() or edl.exists():
+    if for_export and (edl.is_symlink() or edl.exists()):
         raise MultitrackError("Монтажный лист уже существует — перезапись запрещена.")
     return project
+
+
+def save_multitrack(project: MultitrackProject, destination: Path) -> Path:
+    """Write a re-editable project JSON only under a new filename."""
+    validate_project(project,for_export=False)
+    raw=Path(destination).expanduser()
+    if (raw.is_symlink() or raw.exists() or not raw.parent.is_dir()
+            or raw.suffix.casefold() != ".json"):
+        raise MultitrackError("Выбери новое имя JSON; перезапись запрещена.")
+    payload={
+        "format":"jarvis_multitrack_edit_v1",
+        "base":str(_safe_media(project.base_video,VIDEO_TYPES)),
+        "output":str(Path(project.output_video).expanduser().resolve()),
+        "title":project.title,
+        "music":str(_safe_media(project.music,AUDIO_TYPES))
+                 if project.music else None,
+        "narration":str(_safe_media(project.voiceover,AUDIO_TYPES))
+                    if project.voiceover else None,
+        "music_volume":project.music_volume,
+        "layers":[{
+            "file":str(_safe_media(item.path,IMAGE_TYPES|VIDEO_TYPES)),
+            "start":item.start,"duration":item.duration,
+            "position":item.position,"width_percent":item.width_percent,
+            "opacity":item.opacity,
+        } for item in project.layers],
+        "published":False,
+    }
+    encoded=json.dumps(payload,indent=2,ensure_ascii=False)
+    if len(encoded.encode("utf-8"))>80_000:
+        raise MultitrackError("Монтажный лист слишком большой.")
+    with raw.open("x",encoding="utf-8") as output:
+        output.write(encoded+"\n")
+    return raw
+
+
+def load_multitrack(path: Path) -> MultitrackProject:
+    """Accept only vetted local project JSON or own rendered metadata."""
+    raw=Path(path).expanduser()
+    if (raw.is_symlink() or not raw.is_file()
+            or raw.suffix.casefold() != ".json" or
+            raw.stat().st_size>80_000):
+        raise MultitrackError("Недопустимый JSON-проект.")
+    try:
+        data=json.loads(raw.read_text(encoding="utf-8"))
+        if (not isinstance(data,dict) or
+                data.get("format") not in (
+                    "jarvis_multitrack_edit_v1","jarvis_multitrack_v1") or
+                type(data.get("layers")) is not list or
+                len(data["layers"])>3):
+            raise ValueError("schema")
+        layers=[]
+        for item in data["layers"]:
+            if not isinstance(item,dict):
+                raise ValueError("invalid layer")
+            layers.append(VisualLayer(
+                path=Path(item["file"]),start=item["start"],
+                duration=item["duration"],position=item["position"],
+                width_percent=item["width_percent"],opacity=item["opacity"]))
+        music=data.get("music")
+        voice=data.get("narration")
+        project=MultitrackProject(
+            base_video=Path(data["base"]),
+            output_video=Path(data["output"]),
+            layers=tuple(layers),title=data["title"],
+            music=Path(music) if music is not None else None,
+            voiceover=Path(voice) if voice is not None else None,
+            music_volume=data["music_volume"],
+        )
+    except (KeyError,TypeError,ValueError,UnicodeError,OSError) as exc:
+        raise MultitrackError("Повреждённый или неподдерживаемый проект.") from exc
+    return validate_project(project,for_export=False)
 
 
 def build_filter_graph(project: MultitrackProject, *, duration: float,
