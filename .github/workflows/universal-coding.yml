@@ -10,6 +10,7 @@ on:
       - code_project_engine.py
       - code_acceptance_gate.py
       - code_autosave_policy.py
+      - scripts/verify_autonomous_coding_docker.py
       - tests/test_code_acceptance_gate.py
       - tests/test_code_autosave_policy.py
       - roblox_world_builder.py
@@ -58,6 +59,23 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_code_*.py' -v
       - name: Run FreeLLM regression tests
         run: python -m unittest discover -s tests -p test_freellm_client.py -v
+
+  docker-autocoder:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Prepare official Python image for isolated acceptance
+        shell: bash
+        run: |
+          docker version
+          docker image inspect python:3.12-slim > /dev/null 2>&1 ||
+            docker pull python:3.12-slim
+      - name: Real autonomous build, independent Docker tests, self-fix and consented save
+        run: python scripts/verify_autonomous_coding_docker.py
 
   windows-tests:
     runs-on: windows-2022

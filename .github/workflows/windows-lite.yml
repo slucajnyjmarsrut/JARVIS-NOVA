@@ -56,6 +56,7 @@ on:
       - code_test_repair.py
       - long_video_limits.py
       - smart_highlight_selection.py
+      - scripts/verify_longform_2hour_e2e.py
       - code_acceptance_gate.py
       - code_autosave_policy.py
       - tests/test_smart_highlight_selection.py
@@ -164,6 +165,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Real editable timeline FFmpeg export failed' }
           python -m unittest discover -s tests -p test_subtitle_tracks.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Real SRT subtitle burn failed' }
+      - name: Real 2-hour footage to 15-minute montage end-to-end
+        timeout-minutes: 18
+        shell: pwsh
+        run: |
+          python scripts/verify_longform_2hour_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Long-form 2h-to-15min render failed' }
       - name: Generate original Windows icon and Lite installer artwork
         shell: pwsh
         run: |

@@ -90,6 +90,28 @@ class AutonomousScenarioTests(TestCase):
         self.assertIn("Qwen",note)
         self.assertEqual(brief.generator,"локальная Qwen3-VL")
 
+    def test_qwen_shortens_hook_timing_without_rewriting_ai_scenes(self):
+        original=quick_brief("minecraft")
+        slow=replace(
+            original,generator="локальная Qwen3-VL",
+            shots=(replace(original.shots[0],seconds=8),*original.shots[1:]))
+        brief,note,review,attempts=create_checked_scenario(
+            "minecraft",mode="deep",max_revisions=0,
+            ai_generator=lambda *args,**kw:slow)
+        self.assertTrue(review.passed,review.issues)
+        self.assertEqual(brief.shots[0].seconds,3.)
+        self.assertEqual(brief.shots[0].film,slow.shots[0].film)
+        self.assertEqual(brief.script,slow.script)
+        self.assertEqual(attempts,1)
+
+    def test_non_ai_generator_is_never_reported_as_qwen(self):
+        brief,note,review,attempts=create_checked_scenario(
+            "minecraft",mode="deep",max_revisions=0,
+            ai_generator=lambda *a,**k:quick_brief("minecraft"))
+        self.assertNotIn("Qwen",brief.generator)
+        self.assertIn("БЕЗ нейросети",note)
+        self.assertTrue(review.passed)
+
     def test_bad_model_never_claims_ai_success(self):
         calls=[]
         def generator(*a,**kw):

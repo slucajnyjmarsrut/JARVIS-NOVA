@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from viral_studio import (Trend, Shot, Brief, ViralStudioError, research_trends,
                           template_brief, save_brief, load_brief, create_local_brief,
-                          render_video, ffmpeg_tools)
+                          render_video, ffmpeg_tools, SCENARIO_JSON_SCHEMA)
 
 RSS='''<?xml version="1.0" encoding="UTF-8"?><rss xmlns:ht="https://trends.google.com/trending/rss">
 <channel><item><title>Камеры</title><ht:approx_traffic>5000+</ht:approx_traffic><pubDate>Sun, 18 Oct 2026 06:00 GMT</pubDate><link>https://evil.example</link></item></channel></rss>'''.encode()
@@ -74,10 +74,28 @@ class ViralTests(unittest.TestCase):
         def requester(url, payload):
             self.assertEqual(url,'http://127.0.0.1:1234/api/generate')
             self.assertEqual(payload['model'],'qwen3-vl:2b-instruct')
+            self.assertEqual(payload['format'],SCENARIO_JSON_SCHEMA)
+            self.assertEqual(payload['format']['properties']['shots']['minItems'],5)
+            self.assertEqual(payload['format']['properties']['shots']['maxItems'],5)
+            self.assertFalse(payload['format']['additionalProperties'])
             return {'response':json.dumps(mock_response,ensure_ascii=False)}
         b=create_local_brief('Камеры',model_runtime=runtime,requester=requester)
         self.assertIn('Qwen3',b.generator)
         runtime.stop.assert_called_once()
+    def test_ai_bad_storyboard_is_rejected_not_marked_successful(self):
+        runtime=Mock()
+        runtime.start.return_value='http://127.0.0.1:1234'
+        broken={
+            'title':'Тест','hook':'Смотри','script':'Слишком мало сцен',
+            'shots':[],'call_to_action':'Конец',
+        }
+        with self.assertRaisesRegex(ViralStudioError,'2–10 кадров'):
+            create_local_brief(
+                'Minecraft',model_runtime=runtime,
+                requester=lambda url,payload:{
+                    'response':json.dumps(broken,ensure_ascii=False)})
+        runtime.stop.assert_called_once()
+
     def test_ai_failure_stops_process(self):
         runtime=Mock();runtime.start.return_value='http://127.0.0.1:1234'
         with self.assertRaises(ViralStudioError):

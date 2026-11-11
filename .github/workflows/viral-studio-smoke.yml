@@ -8,6 +8,10 @@ on:
       - 'viral_studio_ui.py'
       - 'quick_video_brief.py'
       - 'video_scenario_autonomy.py'
+      - 'scripts/verify_longform_2hour_e2e.py'
+      - 'video_timeline.py'
+      - 'smart_highlight_selection.py'
+      - 'pro_montage.py'
       - 'local_model_inventory.py'
       - 'model_storage.py'
       - 'text_only_main.py'
@@ -68,5 +72,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Profile mode tests failed' }
           python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Game and video stage tests failed' }
+      - name: Real long-form timeline render (synthetic 2h -> 15min)
+        timeout-minutes: 18
+        shell: pwsh
+        run: |
+          python scripts/verify_longform_2hour_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real long-form montage benchmark failed' }
       - name: Compile UI and editing modules
         run: python -m py_compile viral_studio.py viral_studio_ui.py channel_audience.py creator_experts.py video_forecast.py main.py work_modes.py game_catalog.py

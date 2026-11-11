@@ -6,7 +6,7 @@ quality or factual truth. No internet, external accounts, or user footage are
 ever used by this module. Fast fallback is honestly labeled non-AI.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 
 from viral_studio import Brief, ViralStudioError, validate_brief
@@ -27,6 +27,8 @@ def assess_scenario(brief: Brief) -> ScenarioAssessment:
         return ScenarioAssessment(False,(str(exc)[:140],),0.)
     issues=[]
     total=sum(s.seconds for s in brief.shots)
+    if not 20 <= total <= 50:
+        issues.append("Суммарная длительность должна быть 20–50 секунд.")
     if brief.shots[0].seconds>3:
         issues.append("Первый кадр длиннее 3 секунд.")
     if len(brief.shots)<3:
@@ -85,6 +87,15 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                     +" Начни с зацепки, сделай разные сцены, конкретный сюжет "
                     "по теме и ясный финал. Не выдумывай факты.")
             brief=ai_generator(topic,trends,**call_kwargs)
+            if not isinstance(brief,Brief):
+                raise ViralStudioError("ИИ не вернул сценарий.")
+            if not brief.generator.startswith("локальная Qwen"):
+                raise ViralStudioError("Модель вернула не-ИИ шаблон.")
+            if brief.shots and 3 < brief.shots[0].seconds <= 12:
+                # Editorial timing adjustment, never invents text or scenes:
+                # keep the AI-written hook but show it within 3 seconds.
+                first=replace(brief.shots[0],seconds=3.0)
+                brief=replace(brief,shots=(first,*brief.shots[1:]))
             report=assess_scenario(brief)
             if report.passed:
                 return brief,(
