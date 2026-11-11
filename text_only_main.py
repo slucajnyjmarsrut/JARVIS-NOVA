@@ -654,7 +654,7 @@ class TextJarvis(BaseJarvis):
             threading.Thread(target=semantic_worker,daemon=True,
                              name="jarvis-local-intent").start()
             return
-        return super().handle_text(text)
+        return BaseJarvis.handle_text(self,text)
 
     def _complete_semantic_request(self, text, intent):
         """Called on the Tk thread only; never trust model-provided arguments."""
@@ -678,7 +678,7 @@ class TextJarvis(BaseJarvis):
                 self._complete_semantic_request(text,intent)
         except queue.Empty:
             pass
-        return super().pump()
+        return BaseJarvis.pump(self)
 
     def open_screenshot_review(self):
         """User selects and marks an image; nothing is captured automatically."""

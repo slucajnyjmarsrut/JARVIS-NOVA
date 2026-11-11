@@ -129,7 +129,7 @@ class SemanticIntentSafetyTests(unittest.TestCase):
         with mock.patch.object(BaseJarvis,"handle_text") as fallback:
             TextJarvis._complete_semantic_request(app,
                 "можешь открыть настройки",None)
-        fallback.assert_called_once_with("можешь открыть настройки")
+        fallback.assert_called_once_with(app,"можешь открыть настройки")
         self.assertFalse(app._semantic_busy)
         app._dispatch_chat_first.assert_not_called()
 
@@ -175,7 +175,7 @@ class SemanticIntentSafetyTests(unittest.TestCase):
             TextJarvis.pump(app)
         app._complete_semantic_request.assert_called_once_with(
             "можешь показать настройки",ChatIntent("settings"))
-        base.assert_called_once_with()
+        base.assert_called_once_with(app)
 
     def test_shortcut_precedes_ai_and_no_local_model_does_not_start_semantics(self):
         app=mock.Mock()
@@ -189,7 +189,7 @@ class SemanticIntentSafetyTests(unittest.TestCase):
              mock.patch.object(BaseJarvis,"handle_text") as fallback:
             TextJarvis.handle_text(app,phrase)
         worker.assert_not_called()
-        fallback.assert_called_once_with(phrase)
+        fallback.assert_called_once_with(app,phrase)
 
 
 if __name__ == "__main__":
