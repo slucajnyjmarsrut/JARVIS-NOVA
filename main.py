@@ -515,6 +515,18 @@ class Jarvis(tk.Tk):
         self._creator_accounts_window=CreatorAccountsWindow(self)
         return self._creator_accounts_window
 
+    def open_timeline(self):
+        """Editable timeline: non-destructive trims, ordering and final render."""
+        if self._closing:
+            return None
+        from video_timeline_ui import TimelineWindow
+        previous=getattr(self,"_timeline_window",None)
+        if previous is not None and previous.winfo_exists():
+            previous.lift()
+            return previous
+        self._timeline_window=TimelineWindow(self)
+        return self._timeline_window
+
     def open_multitrack(self):
         """Genuine local multi-track compositor; no media leaves this computer."""
         if self._closing:
