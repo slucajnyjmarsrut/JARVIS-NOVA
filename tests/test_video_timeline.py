@@ -127,6 +127,22 @@ class TimelineTests(unittest.TestCase):
                 validate_timeline(p)
             self.assertEqual(p.output.read_bytes(),b"existing")
 
+    def test_srt_after_final_duration_fails_before_ffmpeg_probe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            project=self.fixture(tmp)
+            subtitle=root/"long_after_cut.srt"
+            subtitle.write_text(
+                "1\\n00:00:06,000 --> 00:00:07,000\\nToo late\\n".replace(
+                    "\\\\n","\\n"),encoding="utf-8")
+            project=replace(project,subtitles=subtitle)
+            with mock.patch("viral_studio._probe") as probe:
+                with self.assertRaisesRegex(TimelineError,"SRT"):
+                    render_timeline(
+                        project,tools=("ffmpeg","ffprobe"))
+                probe.assert_not_called()
+            self.assertFalse(project.output.exists())
+
     def test_abort_before_probe_does_not_touch_input(self):
         with tempfile.TemporaryDirectory() as tmp:
             p=self.fixture(tmp)
@@ -250,6 +266,8 @@ class TimelineTests(unittest.TestCase):
             window=TimelineWindow(root)
             window.update_idletasks()
             self.assertFalse(window._busy)
+            self.assertIsNone(window._busy_since)
+            self.assertEqual(str(window._progress.cget("mode")),"indeterminate")
             self.assertEqual(window._cuts,[])
             self.assertEqual(window._events.qsize(),0)
             with tempfile.TemporaryDirectory() as tmp:
