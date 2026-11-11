@@ -304,6 +304,8 @@ class MultitrackWindow(tk.Toplevel):
             "Основа: "+Path(project.base_video).name+
             "\nДополнительных слоёв: "+str(layers)+
             "\nНовый файл: "+str(project.output_video)+
+            ("\nМузыка приглушается под голос: да" if project.duck_music else
+             "\nМузыка приглушается под голос: нет")+
             "\n\nЗапустить FFmpeg? Исходники не изменяются. "
             "Видео и музыка никуда не публикуются.",
             parent=self,
