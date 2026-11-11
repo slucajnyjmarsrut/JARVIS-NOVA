@@ -59,6 +59,10 @@ on:
       - long_video_limits.py
       - smart_highlight_selection.py
       - audio_highlight_signal.py
+      - timeline_coverage_audit.py
+      - video_frame_audit.py
+      - video_audio_audit.py
+      - tests/test_timeline_coverage_audit.py
       - tests/test_audio_highlight_signal.py
       - scripts/verify_video_audio_selection.py
       - scripts/verify_longform_2hour_e2e.py

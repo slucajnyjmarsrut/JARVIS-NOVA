@@ -79,12 +79,20 @@ def main() -> int:
             # avoid a 20-minute high-res benchmark on GitHub shared CI.
             with patch.dict(ASPECTS,{"YouTube / Gaming 16:9":(160,90)}):
                 result=render_timeline(
-                    project,tools=(ffmpeg,ffprobe))
+                    project,tools=(ffmpeg,ffprobe),audit_coverage=True)
             if abs(result.get("duration",0)-900)>2:
                 raise RuntimeError("Exported MP4 duration is incorrect: "
                                    +str(result.get("duration")))
             if not result.get("technical_quality",{}).get("quality_checked"):
                 raise RuntimeError("Finished MP4 did not pass FFprobe gate.")
+            coverage=result.get("quality_coverage") or {}
+            regions=coverage.get("regions",[])
+            if not coverage.get("checked") or len(regions)!=5:
+                raise RuntimeError("Distributed output audit did not run.")
+            if not (regions[0]["at_seconds"]<10 and
+                    regions[-1]["at_seconds"]>890 and
+                    all(0<=entry["black_fraction"]<=1 for entry in regions)):
+                raise RuntimeError("Distributed audit did not cover the whole MP4.")
             sidecar=project.output.with_name(
                 project.output.stem+"_TIMELINE.json")
             report=json.loads(sidecar.read_text("utf-8"))

@@ -676,7 +676,8 @@ class TimelineWindow(tk.Toplevel):
         def worker():
             try:
                 result=render_timeline(
-                    project,cancel=self._cancel,progress=callback)
+                    project,cancel=self._cancel,progress=callback,
+                    audit_coverage=approved)
                 self._events.put(("done",result))
             except Exception as exc:
                 self._events.put(("error",str(exc)[:300]))
@@ -734,14 +735,24 @@ class TimelineWindow(tk.Toplevel):
                     self.status.set("FilmCraft открыт: "+value)
                 elif event=="done":
                     self._latest_video=Path(value["output"])
+                    quality=value.get("quality_coverage") or {}
+                    warnings=quality.get("warnings") or []
                     self.status.set(
                         "ГОТОВО: "+value["output"]+
-                        " · монтажный лист _TIMELINE.json. Можно добавить слои.")
-                    messagebox.showinfo(
-                        "Монтаж завершён",
-                        "MP4 создан и прошёл техническую проверку.\n"+
-                        value["output"]+"\nИсходные файлы не изменены.",
-                        parent=self)
+                        " · монтажный лист _TIMELINE.json. "
+                        +("Проверь замечания аудита." if warnings else
+                          "Можно добавить слои."))
+                    message=(
+                        "MP4 создан и прошёл техническую проверку.\n"
+                        +value["output"]+"\nИсходные файлы не изменены.")
+                    if quality.get("checked"):
+                        message+=(
+                            "\nПроверено начало, середина и конец видео."
+                            if not warnings else
+                            "\nЗамечания к диагностике:\n"
+                            +"\n".join(warnings[:5]))
+                    (messagebox.showwarning if warnings else messagebox.showinfo)(
+                        "Монтаж завершён",message,parent=self)
                 else:
                     self._auto_export_token=None
                     self.status.set("Экспорт/предпросмотр не завершён: "+value)

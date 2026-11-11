@@ -82,6 +82,24 @@ class AutoLongformTests(TestCase):
         error.assert_called_once()
         w._project.assert_called_once_with(export=True)
 
+    def test_single_approval_enables_distributed_quality_audit(self):
+        token=object()
+        w=dummy_window(token)
+        with mock.patch("video_timeline_ui.estimate_seconds",
+                        return_value=900.), \
+             mock.patch("video_timeline_ui.render_timeline",
+                        return_value={"output":"new.mp4"}) as render, \
+             mock.patch("video_timeline_ui.messagebox.askyesno") as ask, \
+             mock.patch("video_timeline_ui.threading.Thread") as thread:
+            TimelineWindow.export(w,_approved_token=token)
+            ask.assert_not_called()
+            self.assertIsNone(w._auto_export_token)
+            thread.return_value.start.assert_called_once()
+            thread.call_args.kwargs["target"]()
+            render.assert_called_once()
+            self.assertIs(render.call_args.kwargs["audit_coverage"],True)
+            self.assertEqual(w._events.get_nowait()[0],"done")
+
     def test_stop_and_close_clear_pending_authorization(self):
         w=dummy_window(object())
         TimelineWindow.cancel(w)

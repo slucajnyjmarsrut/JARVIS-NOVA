@@ -15,6 +15,10 @@ on:
       - 'tests/test_chat_first_intent.py'
       - 'smart_highlight_selection.py'
       - 'audio_highlight_signal.py'
+      - 'timeline_coverage_audit.py'
+      - 'video_frame_audit.py'
+      - 'video_audio_audit.py'
+      - 'tests/test_timeline_coverage_audit.py'
       - 'tests/test_audio_highlight_signal.py'
       - 'scripts/verify_video_audio_selection.py'
       - 'pro_montage.py'
@@ -70,6 +74,11 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_audio_highlight_signal.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Audio-driven selection unit test failed' }
+      - name: Check full-timeline distributed diagnostics offline
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_timeline_coverage_audit.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Distributed video audit failed' }
       - name: Obtain exact audited FFmpeg for offline installer
         shell: pwsh
         run: ./scripts/prepare_ffmpeg.ps1

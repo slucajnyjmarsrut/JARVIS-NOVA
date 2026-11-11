@@ -293,7 +293,8 @@ def _segment_graph(aspect, color, speed, seconds, has_audio, *, caption_index=No
 
 
 def render_timeline(project: TimelineProject, *, cancel: threading.Event | None = None,
-                    tools=None, executor=None, progress=None):
+                    tools=None, executor=None, progress=None,
+                    audit_coverage=False):
     """Render and independently verify MP4 before exclusive final write."""
     from viral_studio import ffmpeg_tools, _execute, _probe, _make_caption_png
     validate_timeline(project)
@@ -379,6 +380,15 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
             staged, ffprobe, size=(width, height),
             expected_seconds=finish["expected_seconds"],
             executor=runner, cancel=cancel, max_duration=MAX_TOTAL)
+        coverage=None
+        if audit_coverage:
+            from timeline_coverage_audit import audit_coverage as inspect_coverage
+            if progress:
+                progress(len(parts),len(parts),
+                         "Проверяю начало, середину и конец видео")
+            coverage=inspect_coverage(
+                staged,technical["duration"],ffmpeg=ffmpeg,
+                executor=runner,cancel=cancel)
         metadata = _format_snapshot(project)
         metadata.update({
             "output": str(out), "duration": technical["duration"],
@@ -388,6 +398,8 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
             "created_utc": datetime.now(timezone.utc).isoformat(),
             "published": False,
         })
+        if coverage is not None:
+            metadata["quality_coverage"]=coverage
         temp_json = work / "timeline.json"
         temp_json.write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
