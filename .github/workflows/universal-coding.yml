@@ -8,6 +8,10 @@ on:
       - code_languages.py
       - code_checks.py
       - code_project_engine.py
+      - code_acceptance_gate.py
+      - code_autosave_policy.py
+      - tests/test_code_acceptance_gate.py
+      - tests/test_code_autosave_policy.py
       - roblox_world_builder.py
       - roblox_asset_pipeline.py
       - code_workspace.py

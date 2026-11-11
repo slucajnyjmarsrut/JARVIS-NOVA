@@ -358,21 +358,26 @@ class TimelineWindow(tk.Toplevel):
             messagebox.showerror("Видео",str(exc),parent=self)
             return
         self._cancel.clear()
-        self._working("Проверяю длительность исходников…")
+        self._working("Анализирую исходники локально (без загрузки в сеть)…")
         def worker():
             try:
-                from viral_studio import ffmpeg_tools, _probe
-                _,ffprobe=ffmpeg_tools()
+                from viral_studio import ffmpeg_tools, _probe, _execute
+                from smart_highlight_selection import select_active_cuts
+                ffmpeg,ffprobe=ffmpeg_tools()
                 sources=tuple((path,_probe(path,ffprobe,cancel=self._cancel)[0])
                               for path in paths)
-                cuts=draft_longform_cuts(sources,target_seconds=target_seconds)
+                def report(n,total,stage):
+                    self._events.put(("progress",(n,total,stage)))
+                cuts,analysis=select_active_cuts(
+                    sources,target_seconds=target_seconds,ffmpeg=ffmpeg,
+                    executor=_execute,cancel=self._cancel,progress=report)
                 out=paths[0].parent/"JARVIS_LONGFORM_15min.mp4"
                 suffix=1
                 while out.exists() or out.with_name(
                         out.stem+"_TIMELINE.json").exists():
                     suffix+=1
                     out=paths[0].parent/f"JARVIS_LONGFORM_15min_{suffix}.mp4"
-                self._events.put(("longform",(cuts,out)))
+                self._events.put(("longform",(cuts,out,analysis)))
             except Exception as exc:
                 self._events.put(("error",str(exc)[:300]))
         threading.Thread(target=worker,daemon=True,
@@ -670,16 +675,17 @@ class TimelineWindow(tk.Toplevel):
                     except (OSError,ValueError) as exc:
                         self.status.set("Предпросмотр не готов: "+str(exc)[:100])
                 elif event=="longform":
-                    cuts,target=value
+                    cuts,target,analysis=value
                     self._history=TimelineHistory()
                     self._cuts=list(cuts)
                     self.fade.set("0")
                     self.output.set(str(target))
                     self._refresh(0)
                     self.status.set(
-                        f"Подготовлен черновик: {len(cuts)} фрагментов, "
-                        "около 15 минут. Отбор равномерный, не распознавание "
-                        "интересных моментов. Проверь и подтверди экспорт.")
+                        f"Черновик: {len(cuts)} фрагментов на 15 минут. "
+                        f"Проверено мини-сцен: {analysis.usable}/{analysis.examined}. "
+                        "Отбор по движению/детализации, не понимание сюжета. "
+                        "Проверь монтаж и подтверди экспорт.")
                 elif event=="filmcraft":
                     self.status.set("FilmCraft открыт: "+value)
                 elif event=="done":

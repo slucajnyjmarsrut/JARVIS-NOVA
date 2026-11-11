@@ -48,6 +48,7 @@ class CodeWindow(tk.Toplevel):
         self.model_kind=tk.StringVar(value='house')
         self._generation_busy=False
         self._last_test_gate_status=None
+        self._auto_save_target=None
         frame=ttk.Frame(self,padding=16)
         frame.pack(fill='both',expand=True)
         ttk.Label(frame,text='Язык программирования').pack(anchor='w')
@@ -207,7 +208,7 @@ class CodeWindow(tk.Toplevel):
     def create_roblox_model(self):
         self._roblox_asset('model')
 
-    def generate(self):
+    def generate(self, *, auto_save=False):
         try:
             root=self._target()
             language=self.language.get()
@@ -228,7 +229,23 @@ class CodeWindow(tk.Toplevel):
                 parent=self):
                 return
         sandbox_consent=False
-        if full_project and language=="python" and not existing:
+        auto_write=False
+        self._auto_save_target=None
+        if auto_save and full_project and language=="python" and not existing:
+            from code_autosave_policy import safe_new_project_folder
+            if safe_new_project_folder(root):
+                auto_write=messagebox.askyesno(
+                    "Автономное создание нового проекта",
+                    "Разрешить одним подтверждением проверить Python-код "
+                    "в изолированном Docker без сети (до 5 попыток исправления) "
+                    "и, только если независимые тесты пройдут, сохранить "
+                    f"НОВЫЕ файлы в папку:\n{root}\n\n"
+                    "Существующие файлы не перезаписываются. "
+                    "Тесты не запускаются на Windows. "
+                    "Docker изолирует не абсолютно; требуется локальный образ.",
+                    parent=self)
+                sandbox_consent=auto_write
+        elif full_project and language=="python" and not existing:
             sandbox_consent=messagebox.askyesno(
                 "Автопроверка Python за один запуск",
                 "После генерации проверять проект в изолированном Docker "
@@ -245,6 +262,7 @@ class CodeWindow(tk.Toplevel):
         self.tests_button.configure(state='disabled')
         self.repair_button.configure(state='disabled')
         self._last_test_gate_status=None
+        self._auto_save_target=root if auto_write else None
         self.result=None
         self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
         def worker():
@@ -305,6 +323,26 @@ class CodeWindow(tk.Toplevel):
             state='normal' if allowed_python else 'disabled')
         self.repair_button.configure(
             state='normal' if allowed_python else 'disabled')
+        target=self._auto_save_target
+        self._auto_save_target=None  # Never reuse approval across requests.
+        if target is not None:
+            from code_autosave_policy import save_approved_one_shot
+            try:
+                if self._target().resolve()!=target.resolve():
+                    raise WorkspaceError('Папка проекта изменилась.')
+                written=save_approved_one_shot(
+                    result,target,authorized=True)
+                self.log.insert('end',
+                    '\n\nПроект автоматически сохранён после тестов:\n'
+                    + '\n'.join(written)
+                    + '\nКод на Windows не запускался.\n')
+                self.write.configure(state='disabled')
+            except Exception as exc:
+                self.log.insert('end',
+                    '\n\nАвтосохранение не выполнено: '
+                    + str(exc)[:400]
+                    + '\nПроверь отчёт и повтори вручную.\n')
+            self.log.see('end')
 
     def repair_using_test_feedback(self):
         """Use a bounded Docker-only diagnostic repair loop; never auto-install."""

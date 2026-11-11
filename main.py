@@ -223,11 +223,11 @@ class Jarvis(tk.Tk):
                 window.prefill(language,task)
                 window.focus_force()
                 if auto_start and task:
-                    window.after(50,window.generate)
+                    window.after(50,lambda w=window:w.generate(auto_save=True))
                 return
             self._code_window=CodeWindow(self,language=language,task=task)
             if auto_start and task:
-                self._code_window.after(50,self._code_window.generate)
+                self._code_window.after(50,lambda w=self._code_window:w.generate(auto_save=True))
         except Exception as exc:
             messagebox.showerror("Программирование",str(exc),parent=self)
 

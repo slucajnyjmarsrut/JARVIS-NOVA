@@ -42,6 +42,9 @@ TESTS=(
        "test_chat_first_intent.py",
        "test_longform_video.py",
        "test_one_shot_project.py",
+       "test_smart_highlight_selection.py",
+       "test_code_acceptance_gate.py",
+       "test_code_autosave_policy.py",
        "test_screenshot_review.py",
        "test_self_development.py",
        

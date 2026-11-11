@@ -32,6 +32,15 @@ class OneShotCodingTests(unittest.TestCase):
                     "class CalculatorTests(unittest.TestCase):\n"
                     "    def test_sum(self):\n"
                     "        self.assertEqual(calculate(2,3),5)\n"})
+            if "INDEPENDENT ACCEPTANCE TESTS" in request:
+                return offer({"tests/test_acceptance_calculator.py":
+                    "import unittest\nfrom app import calculate\n"
+                    "class AcceptanceTests(unittest.TestCase):\n"
+                    "    def test_positive(self):\n"
+                    "        self.assertEqual(calculate(2,3),5)\n"
+                    "    def test_negative(self):\n"
+                    "        self.assertEqual(calculate(-2,1),-1)\n"
+                })
             if "Repair Python project" in request:
                 return offer({"app.py":"def calculate(a,b): return a+b\n"})
             raise AssertionError("Unexpected model prompt: "+request[:90])
@@ -45,10 +54,11 @@ class OneShotCodingTests(unittest.TestCase):
             root=Path(root)
             folders.append(root)
             self.assertTrue((root/"tests"/"test_app.py").exists())
+            self.assertTrue((root/"tests"/"test_acceptance_calculator.py").exists())
             source=(root/"app.py").read_text()
-            return (TestGateReport("passed",1,"Ran 1 test in 0.01s OK",3)
+            return (TestGateReport("passed",3,"Ran 3 tests in 0.01s OK",4)
                     if "a+b" in source else
-                    TestGateReport("failed",1,"Ran 1 test in 0.01s FAILED",3))
+                    TestGateReport("failed",3,"Ran 3 tests in 0.01s FAILED",4))
         with tempfile.TemporaryDirectory() as tmp:
             target=Path(tmp)
             result=build_one_shot_project(
@@ -57,13 +67,13 @@ class OneShotCodingTests(unittest.TestCase):
             self.assertTrue(result.verified)
             self.assertEqual([entry.status for entry in result.attempts[-2:]],
                              ["failed","passed"])
-            self.assertEqual(len(requests),4)
+            self.assertEqual(len(requests),5)
             self.assertEqual(list(target.iterdir()),[])
             self.assertFalse(any(path.exists() for path in folders))
             with self.assertRaises(PermissionError):
                 install_reviewed(result,target)
             installed=install_reviewed(result,target,confirmed=True)
-            self.assertEqual(len(installed),3)
+            self.assertEqual(len(installed),4)
             self.assertIn("a+b",(target/"app.py").read_text())
             self.assertIn("assertEqual",(target/"tests"/"test_app.py").read_text())
 
@@ -86,10 +96,43 @@ class OneShotCodingTests(unittest.TestCase):
             allow_sandbox_tests=True,test_runner=runner)
         self.assertFalse(result.verified)
         self.assertEqual(result.attempts[-1].status,"skipped")
-        self.assertEqual(len(requests),3)
+        self.assertEqual(len(requests),4)
         with tempfile.TemporaryDirectory() as temp:
             with self.assertRaises(WorkspaceError):
                 install_reviewed(result,Path(temp),confirmed=True)
+
+    def test_weak_independent_oracles_are_not_certified(self):
+        calls=[]
+        def bad_acceptance(prompt,language):
+            if "INDEPENDENT ACCEPTANCE TESTS" in prompt:
+                return offer({"tests/test_acceptance_fake.py":
+                    "import unittest\\nclass Checks(unittest.TestCase):\\n"
+                    "    def test_fake(self): self.assertTrue(True)\\n"})
+            return self.model(calls)(prompt,language)
+        result=build_one_shot_project(
+            "Build real calculator","python",generator=bad_acceptance,
+            allow_sandbox_tests=True,
+            test_runner=lambda *a,**kw:self.fail("Weak tests cannot run"))
+        self.assertFalse(result.verified)
+        self.assertEqual(result.attempts[-1].status,"blocked")
+        self.assertIn("функциональные тесты",result.attempts[-1].diagnostics)
+
+    def test_syntax_repair_cannot_weaken_generated_tests(self):
+        from code_project_engine import build_complete_project
+        def model(prompt,language):
+            if "Phase 1/3" in prompt:
+                return offer({"app.py":"def broken(:\n pass\n"})
+            if "Phase 2/3" in prompt:
+                return offer({"app.py":"def broken(:\n pass\n"})
+            if "Phase 3/3" in prompt:
+                return offer({"tests/test_app.py":
+                    "import unittest\nclass Checks(unittest.TestCase):\n"
+                    "    def test_example(self): self.assertTrue(True)\n"})
+            if "Repair the COMPLETE" in prompt:
+                return offer({"tests/test_app.py":"# tests have been deleted\n"})
+            raise AssertionError(prompt[:80])
+        with self.assertRaisesRegex(WorkspaceError,"не может менять тесты"):
+            build_complete_project("Fix implementation","python",generator=model)
 
     def test_static_only_for_other_languages_does_not_run_python_tests(self):
         calls=[]
