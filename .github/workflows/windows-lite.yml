@@ -92,6 +92,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_multitrack_composer.py -v
       - name: Test offline upload drafts and official portals
         run: python -m unittest discover -s tests -p test_creator_publish.py -v
+      - name: Test editable clip timeline and project safety
+        run: python -m unittest discover -s tests -p test_video_timeline.py -v
       - name: Run existing text-only application tests
         shell: pwsh
         run: |
@@ -119,6 +121,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Popular-edit FFmpeg output verification failed' }
           python -m unittest discover -s tests -p test_multitrack_composer.py -v
           if ($LASTEXITCODE -ne 0) { throw 'Real multitrack FFmpeg output verification failed' }
+          python -m unittest discover -s tests -p test_video_timeline.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Real editable timeline FFmpeg export failed' }
       - name: Generate original Windows icon and Lite installer artwork
         shell: pwsh
         run: |
