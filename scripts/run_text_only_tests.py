@@ -45,6 +45,8 @@ TESTS=(
        "test_pro_video_integration.py",
        "test_popular_edits.py",
        "test_creator_accounts.py",
+       "test_multitrack_composer.py",
+       "test_creator_publish.py",
        "test_roblox_asset_pipeline.py",
        "test_roblox_world_builder.py",
        "test_self_improve.py",
