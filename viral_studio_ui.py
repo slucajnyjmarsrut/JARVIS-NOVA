@@ -208,6 +208,14 @@ class ViralStudioWindow(tk.Toplevel):
         ttk.Button(tools,text="Справка FFmpeg",
             command=self.study_editing,style="Studio.TButton").grid(
             row=0,column=1,sticky="ew",padx=4,pady=4)
+        self.multitrack_button=ttk.Button(
+            tools,text="МНОГОДОРОЖЕЧНЫЙ МОНТАЖ",
+            command=self.open_multitrack,style="Studio.Primary.TButton")
+        self.multitrack_button.grid(row=1,column=0,sticky="ew",padx=4,pady=4)
+        ttk.Button(tools,text="Подготовить публикацию",
+                   command=self.open_publish_preparation,
+                   style="Studio.TButton").grid(
+            row=1,column=1,sticky="ew",padx=4,pady=4)
         # Results should stay readable while tool options scroll separately.
         resultbar=tk.Frame(self,bg=BG)
         resultbar.pack(fill="x",padx=17,pady=(5,5))
@@ -335,6 +343,27 @@ class ViralStudioWindow(tk.Toplevel):
                     'После правок сохрани новый .fcproj и экспортируй видео в FilmCraft.')
             self._notify(done)
         self._spawn(worker)
+
+    def open_multitrack(self):
+        """Standalone offline compositor, separate from basic auto montage."""
+        previous=getattr(self,"_multitrack_window",None)
+        if previous is not None and previous.winfo_exists():
+            previous.lift()
+            return previous
+        from multitrack_ui import MultitrackWindow
+        self._multitrack_window=MultitrackWindow(self)
+        return self._multitrack_window
+
+    def open_publish_preparation(self):
+        """User prepares video details locally, then uploads it manually."""
+        previous=getattr(self,"_publish_window",None)
+        if previous is not None and previous.winfo_exists():
+            previous.lift()
+            return previous
+        from creator_publish_ui import PublishWindow
+        video=self.rendered_video if self.rendered_video and self.rendered_video.is_file() else None
+        self._publish_window=PublishWindow(self,video=video)
+        return self._publish_window
 
     def open_creator_accounts(self):
         """Only open fixed official sites in the owner's regular browser."""
@@ -476,7 +505,8 @@ class ViralStudioWindow(tk.Toplevel):
         state='disabled' if value else 'normal'
         for widget in (self.make_button,self.edit_button,self.load_button,self.audience_button,
                        self.review_button,self.auto_button,
-                       self.filmcraft_button,self.quick_edit_button):
+                       self.filmcraft_button,self.quick_edit_button,
+                       self.multitrack_button):
             widget.configure(state=state)
 
     def _pump_notifications(self):
