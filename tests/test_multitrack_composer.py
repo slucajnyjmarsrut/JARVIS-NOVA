@@ -86,6 +86,12 @@ class MultitrackTests(unittest.TestCase):
             restored=load_multitrack(second)
             self.assertEqual(restored.layers[0].motion,"slide-left")
             self.assertEqual(restored.layers[0].motion_seconds,.6)
+            faded=replace(project,layers=(replace(
+                project.layers[0],motion="fade-in-out",motion_seconds=.4),))
+            fade_json=Path(root)/"fade_in_out.json"
+            save_multitrack(faded,fade_json)
+            self.assertEqual(load_multitrack(fade_json).layers[0].motion,
+                             "fade-in-out")
             with self.assertRaises(MultitrackError):
                 save_multitrack(project,filename)
             corrupted=Path(root)/"corrupted.json"
@@ -99,7 +105,7 @@ class MultitrackTests(unittest.TestCase):
                     replace(project,layers=(
                         replace(project.layers[0],start="nan"),)))
 
-    def test_six_keyframe_motion_presets_build_trusted_ffmpeg_graphs(self):
+    def test_eight_motion_presets_build_trusted_ffmpeg_graphs(self):
         with tempfile.TemporaryDirectory() as root:
             base=self.fixture(root)
             for motion in MOTIONS:
@@ -114,8 +120,10 @@ class MultitrackTests(unittest.TestCase):
                     self.assertIn("eval=frame",graph)
                     self.assertEqual(graph.count("overlay="),2)
                     x,y=layer_motion_xy(layer)
-                    if motion=="fade-in":
+                    if motion in ("fade-in", "fade-in-out"):
                         self.assertIn("fade=t=in:st=0:d=0.450:alpha=1",graph)
+                    if motion in ("fade-out", "fade-in-out"):
+                        self.assertIn("fade=t=out:st=0.750:d=0.450:alpha=1",graph)
                     if motion in ("slide-left","slide-right","rise","drop"):
                         self.assertIn(f"t-{layer.start:.3f}",x+y)
             for motion in ("unknown","fade=in;movie=http://evil.example"):
@@ -126,6 +134,19 @@ class MultitrackTests(unittest.TestCase):
                 validate_project(replace(
                     base,layers=(replace(base.layers[0],
                         motion_seconds=float("nan")),)))
+
+    def test_short_layer_uses_nonoverlapping_fades(self):
+        with tempfile.TemporaryDirectory() as root:
+            base=self.fixture(root)
+            layer=replace(base.layers[0],start=2.7,duration=.3,
+                          motion="fade-in-out",motion_seconds=.3)
+            project=replace(base,layers=(layer,))
+            validate_project(project)
+            graph,_,_=build_filter_graph(
+                project,duration=3.,width=720,height=1280,
+                has_base_audio=True,title_index=2,silent_index=None)
+            self.assertIn("fade=t=in:st=0:d=0.150:alpha=1",graph)
+            self.assertIn("fade=t=out:st=0.150:d=0.150:alpha=1",graph)
 
     def test_all_positions_and_multiple_track_graphs(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -251,7 +272,7 @@ class MultitrackTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
                          "Real FFmpeg missing on this runner")
-    def test_real_all_six_motion_presets_render_and_preserve_originals(self):
+    def test_real_all_eight_motion_presets_render_and_preserve_originals(self):
         from PIL import Image
         ffmpeg=shutil.which("ffmpeg")
         ffprobe=shutil.which("ffprobe")

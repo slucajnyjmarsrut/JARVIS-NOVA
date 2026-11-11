@@ -102,6 +102,28 @@ class SafeTestRepairTests(unittest.TestCase):
         self.assertEqual(len(result.steps),3)
         self.assertEqual(len(count),2)
 
+    def test_model_cannot_weaken_or_replace_tests(self):
+        seen=[]
+        def runner(root,*,confirmed):
+            seen.append((Path(root)/"tests/test_app.py").read_text(
+                encoding="utf-8"))
+            return TestGateReport("failed",1,"Ran 1 test in 0.01s\nFAILED",3)
+        for path in ("tests/test_app.py","tests/helpers.py",
+                     "src/tests/test_hidden.py","test_app.py"):
+            with self.subTest(path=path):
+                patch=json.dumps({"language":"python","files":[{
+                    "path":path,
+                    "content":"import unittest\nclass Tests(unittest.TestCase): pass\n",
+                }]})
+                with self.assertRaisesRegex(WorkspaceError,
+                                            "не может изменять тесты"):
+                    repair_after_tests(
+                        "fix",example(),confirmed=True,runner=runner,
+                        generator=lambda *args: patch,max_repairs=1)
+        self.assertEqual(len(seen),4)
+        self.assertTrue(all("self.assertEqual(add(2,3),5)" in x
+                            for x in seen))
+
     def test_generated_malicious_paths_and_languages_rejected(self):
         def fail_test(root,*,confirmed):
             return TestGateReport("failed",1,"Ran 1 test in 0.01s\nFAILED",3)

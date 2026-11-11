@@ -123,7 +123,7 @@ class MultitrackWindow(tk.Toplevel):
             ttk.Combobox(animation,textvariable=motion,values=MOTIONS,
                          state="readonly",width=16,
                          style="Studio.TCombobox").pack(side="left",padx=(6,15))
-            ttk.Label(animation,text="Время движения, с:",
+            ttk.Label(animation,text="Время анимации, с:",
                       style="Studio.TLabel").pack(side="left")
             ttk.Entry(animation,textvariable=motion_time,width=7,
                       style="Studio.TEntry").pack(side="left",padx=(6,0))

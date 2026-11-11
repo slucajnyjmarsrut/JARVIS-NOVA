@@ -23,7 +23,7 @@ MAX_LAYER_BYTES = 3_000_000_000
 IMAGE_TYPES = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 VIDEO_TYPES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".m4v"})
 AUDIO_TYPES = frozenset({".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"})
-MOTIONS = ("static", "fade-in", "slide-left", "slide-right", "rise", "drop")
+MOTIONS = ("static", "fade-in", "fade-out", "fade-in-out", "slide-left", "slide-right", "rise", "drop")
 POSITIONS = {
     "top-left": ("W*0.03", "H*0.03"),
     "top-right": ("W-w-W*0.03", "H*0.03"),
@@ -226,7 +226,7 @@ def layer_motion_xy(layer: VisualLayer) -> tuple[str, str]:
             not .15 <= layer.motion_seconds <= min(1.2,layer.duration)):
         raise MultitrackError("Недопустимая анимация наложения.")
     x, y = POSITIONS[layer.position]
-    if layer.motion in ("static","fade-in"):
+    if layer.motion in ("static","fade-in","fade-out","fade-in-out"):
         return x,y
     # Two linear keyframes: fully off-screen at start, at requested location
     # after motion_seconds. Escaped commas survive FFmpeg filtergraph parsing.
@@ -261,9 +261,17 @@ def build_filter_graph(project: MultitrackProject, *, duration: float,
             raise MultitrackError("Слой начинается после окончания ролика.")
         stop = min(duration, layer.start + layer.duration)
         target_width = max(2, int(width * layer.width_percent / 100) // 2 * 2)
-        effect = (
-            f"fade=t=in:st=0:d={layer.motion_seconds:.3f}:alpha=1,"
-            if layer.motion == "fade-in" else "")
+        # Fades use the layer-local timeline before setpts shifts it.
+        # Paired fades must not overlap when a clip is short.
+        fade_seconds = (min(layer.motion_seconds, (stop-layer.start)/2)
+                        if layer.motion == "fade-in-out" else layer.motion_seconds)
+        effect = ""
+        if layer.motion in ("fade-in", "fade-in-out"):
+            effect += f"fade=t=in:st=0:d={fade_seconds:.3f}:alpha=1,"
+        if layer.motion in ("fade-out", "fade-in-out"):
+            fade_start = max(0.0, stop-layer.start-fade_seconds)
+            effect += (f"fade=t=out:st={fade_start:.3f}:"
+                       f"d={fade_seconds:.3f}:alpha=1,")
         filters.append(
             f"[{n}:v:0]fps=30,scale={target_width}:-2:flags=lanczos,"
             f"format=rgba,colorchannelmixer=aa={layer.opacity:.3f},"
