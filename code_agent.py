@@ -42,6 +42,36 @@ class _RejectModelRedirect(urllib.request.HTTPRedirectHandler):
             'Локальная модель предложила перенаправление: передача отменена.')
 
 
+def _project_schema(language: str) -> dict:
+    """Ask local Ollama to constrain the shape of project files.
+
+    Path safety, extension rules, content size and language are STILL checked
+    by parse_model_proposal, not entrusted to the model or JSON grammar.
+    """
+    if language not in SUPPORTED:
+        raise WorkspaceError('Неподдерживаемый язык проекта')
+    return {
+        'type':'object',
+        'properties':{
+            'language':{'type':'string','enum':[language]},
+            'files':{
+                'type':'array','minItems':1,'maxItems':60,
+                'items':{
+                    'type':'object',
+                    'properties':{
+                        'path':{'type':'string'},
+                        'content':{'type':'string'},
+                    },
+                    'required':['path','content'],
+                    'additionalProperties':False,
+                },
+            },
+        },
+        'required':['language','files'],
+        'additionalProperties':False,
+    }
+
+
 def request_local_model(task: str, language: str, *, endpoint: str = 'http://127.0.0.1:11434',
                         model: str = 'qwen2.5-coder:7b', transport=None) -> str:
     """Only loopback Ollama is supported; no user code is sent to the cloud."""
@@ -60,7 +90,8 @@ def request_local_model(task: str, language: str, *, endpoint: str = 'http://127
     if (not isinstance(model,str) or
             re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}',model) is None):
         raise WorkspaceError('Недопустимое имя локальной модели.')
-    payload = {'model': model, 'stream': False, 'format': 'json',
+    payload = {'model': model, 'stream': False,
+               'format': _project_schema(language),
                'messages': [{'role': 'system', 'content': SYSTEM},
                             {'role': 'user', 'content': f'Language: {language}\nTask: {task}'}],
                'options': {'temperature': 0.1, 'num_predict': 8192}}

@@ -15,6 +15,9 @@ on:
       - 'local_chat.py'
       - 'scripts/verify_text_vision_e2e.py'
       - 'scripts/verify_local_scenario_e2e.py'
+      - 'scripts/verify_real_qwen_coding_e2e.py'
+      - 'tests/test_real_qwen_coding_contract.py'
+      - 'code_agent.py'
       - 'video_scenario_autonomy.py'
       - 'quick_video_brief.py'
       - 'scripts/run_text_only_tests.py'
@@ -234,6 +237,12 @@ jobs:
         run: |
           python scripts/verify_local_scenario_e2e.py
           if ($LASTEXITCODE -ne 0) { throw 'Real local Qwen scenario could not pass acceptance' }
+      - name: REAL Qwen-generated Python project static acceptance
+        shell: pwsh
+        timeout-minutes: 25
+        run: |
+          python scripts/verify_real_qwen_coding_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real Qwen could not write a valid small Python project' }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
       - name: Generate original dark NOVA installer wizard graphics

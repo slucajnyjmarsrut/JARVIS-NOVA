@@ -56,6 +56,8 @@ on:
       - code_project_engine.py
       - local_coder_models.py
       - tests/test_local_coder_models.py
+      - tests/test_real_qwen_coding_contract.py
+      - scripts/verify_real_qwen_coding_e2e.py
       - tests/test_code_agent.py
       - code_gui.py
       - code_test_repair.py

@@ -47,7 +47,12 @@ class AgentTests(unittest.TestCase):
     def test_request_schema(self):
         def fake(url, payload):
             self.assertEqual(url, 'http://127.0.0.1:11434/api/chat')
-            self.assertEqual(payload['format'], 'json')
+            schema=payload['format']
+            self.assertEqual(schema['properties']['language']['enum'],['java'])
+            self.assertEqual(schema['properties']['files']['items']['required'],
+                             ['path','content'])
+            self.assertFalse(schema['additionalProperties'])
+            self.assertEqual(schema['properties']['files']['maxItems'],60)
             return {'message': {'content': '{"language":"java","files":[{"path":"Main.java","content":"class Main {}"}]}'}}
         self.assertIn('Main.java', request_local_model('Create Java', 'java', transport=fake))
     def test_propose_requires_approval(self):
