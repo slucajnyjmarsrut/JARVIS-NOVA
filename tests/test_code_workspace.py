@@ -5,6 +5,33 @@ from code_workspace import (WorkspaceError, ChangePlan, ProposedFile, starter_pr
                             apply_plan, preview, parse_model_proposal)
 
 class WorkspaceTests(unittest.TestCase):
+    def test_model_double_escaped_lines_become_real_python_only_if_valid(self):
+        import ast
+        import json
+        raw=json.dumps({"language":"python","files":[{
+            "path":"calculator.py",
+            "content":r"def add(a,b):\n    return a+b\n"}]})
+        project=parse_model_proposal(raw)
+        code=project.files[0].content
+        self.assertEqual(code,"def add(a,b):\n    return a+b\n")
+        ast.parse(code)
+
+    def test_legitimate_escape_sequences_never_rewritten(self):
+        import json
+        code=r"LINE = '\\n'"
+        raw=json.dumps({"language":"python","files":[{
+            "path":"values.py","content":code}]})
+        self.assertEqual(
+            parse_model_proposal(raw).files[0].content,code)
+
+    def test_nonrepairable_code_keeps_original_error_for_reprompting(self):
+        import json
+        code=r"def greet():\n    return 'broken\ntext'"
+        raw=json.dumps({"language":"python","files":[{
+            "path":"broken.py","content":code}]})
+        self.assertEqual(
+            parse_model_proposal(raw).files[0].content,code)
+
     def test_java(self):
         with tempfile.TemporaryDirectory() as d:
             p = starter_project('java', 'Demo')

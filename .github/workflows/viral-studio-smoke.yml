@@ -15,6 +15,8 @@ on:
       - 'tests/test_chat_first_intent.py'
       - 'smart_highlight_selection.py'
       - 'audio_highlight_signal.py'
+      - 'semantic_video_selection.py'
+      - 'tests/test_semantic_video_selection.py'
       - 'timeline_coverage_audit.py'
       - 'video_frame_audit.py'
       - 'video_audio_audit.py'
@@ -79,6 +81,11 @@ jobs:
         run: |
           python -m unittest discover -s tests -p 'test_timeline_coverage_audit.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Distributed video audit failed' }
+      - name: Verify bounded local Qwen frame comparisons without real model
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p 'test_semantic_video_selection.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Vision frame-comparison safety failed' }
       - name: Obtain exact audited FFmpeg for offline installer
         shell: pwsh
         run: ./scripts/prepare_ffmpeg.ps1

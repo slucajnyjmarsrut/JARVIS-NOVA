@@ -4,6 +4,7 @@
 No arbitrary shell commands, automatic publishing or silent overwrites.
 """
 from __future__ import annotations
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 import json
@@ -126,6 +127,32 @@ def starter_project(language: str, name: str) -> ChangePlan:
         ProposedFile('README.md', f'# {name}\n\nRoblox Studio: import `src/server/Main.server.luau` into ServerScriptService, or use Rojo with `default.project.json`. Test with Play in Roblox Studio before publishing.\n'),
     ))
 
+def _unescape_invalid_python_lines(content: str) -> str:
+    """Repair ONLY real-model code with double-escaped newlines.
+
+    A small model can serialize JSON content as literal \\n characters.
+    Real Python line breaks are decoded by json.loads already, so leave
+    all valid Python untouched. An invalid draft is normalized ONLY if the
+    proposed multiline file then parses as Python. NEVER execute it here.
+    """
+    if (not isinstance(content,str) or len(content)>100_000
+            or "\\n" not in content or "\n" in content):
+        return content
+    try:
+        ast.parse(content)
+        return content
+    except SyntaxError:
+        pass
+    fixed=content.replace("\\r\\n","\n").replace("\\n","\n")
+    # Some models emit a leading literal \\t in the same escaped lines.
+    fixed=fixed.replace("\\t","\t")
+    try:
+        ast.parse(fixed)
+    except (SyntaxError,ValueError):
+        return content
+    return fixed
+
+
 def parse_model_proposal(raw: str) -> ChangePlan:
     """Strictly parse model output; model text is data, never an executable command."""
     if not isinstance(raw, str) or len(raw) > MAX_BYTES * 2:
@@ -138,7 +165,12 @@ def parse_model_proposal(raw: str) -> ChangePlan:
         for item in obj['files']:
             if not isinstance(item, dict) or set(item) != {'path', 'content'}:
                 raise ValueError('file schema')
-            files.append(ProposedFile(item['path'], item['content']))
+            content=item['content']
+            if (obj.get('language')=='python'
+                    and isinstance(item['path'],str)
+                    and item['path'].lower().endswith('.py')):
+                content=_unescape_invalid_python_lines(content)
+            files.append(ProposedFile(item['path'], content))
         return validate_plan(ChangePlan(obj['language'], tuple(files)))
     except (ValueError, TypeError, KeyError) as exc:
         raise WorkspaceError('Неверный формат проекта от модели') from exc

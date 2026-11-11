@@ -26,7 +26,10 @@ SYSTEM = ("You are a senior software engineer building a complete, maintainable 
           "standard libraries; record required dependencies but do not install them. "
           "For Roblox create Luau scripts and explain Rojo/Studio placement, "
           "models and map generation. Never embed secrets or API keys. "
-          "Never claim to have tested or launched code unless validated by tools.")
+          "Never claim to have tested or launched code unless validated by tools. "
+          "For Python, write correct real multiline source inside each JSON content "
+          "string: JSON escapes each newline ONCE; do not output literal slash-n "
+          "characters as a substitute for Python line breaks.")
 
 @dataclass(frozen=True)
 class CodeResult:
@@ -90,7 +93,7 @@ def request_local_model(task: str, language: str, *, endpoint: str = 'http://127
     if (not isinstance(model,str) or
             re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}',model) is None):
         raise WorkspaceError('Недопустимое имя локальной модели.')
-    payload = {'model': model, 'stream': False,
+    payload = {'model': model, 'stream': False, 'think': False,
                'format': _project_schema(language),
                'messages': [{'role': 'system', 'content': SYSTEM},
                             {'role': 'user', 'content': f'Language: {language}\nTask: {task}'}],

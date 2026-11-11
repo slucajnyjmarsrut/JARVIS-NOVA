@@ -370,7 +370,10 @@ class TimelineWindow(tk.Toplevel):
                 f"Исходников: {len(paths)}. Создать из них 15-минутный MP4 "
                 "автоматически, без второго подтверждения?\n\n"
                 "JARVIS локально проанализирует небольшие выборки кадров, "
-                "соберёт монтаж в формате YouTube 16:9 и технически проверит "
+                "звук и (при подключённой Qwen) до шести пар мини-кадров "
+                "на их визуальную информативность. Нейросеть работает "
+                "ТОЛЬКО локально, без отправки видео в сеть. "
+                "JARVIS соберёт монтаж в формате YouTube 16:9 и проверит "
                 "результат. Файл будет создан в папке первого исходника "
                 "под новым именем JARVIS_LONGFORM_15min*.mp4.\n\n"
                 "Исходники НЕ перезаписываются; в сеть ничего не отправляется. "
@@ -398,6 +401,28 @@ class TimelineWindow(tk.Toplevel):
                     sources,target_seconds=target_seconds,ffmpeg=ffmpeg,
                     executor=_execute,cancel=self._cancel,progress=report,
                     audio_sources=source_audio)
+                semantic=None
+                if (consent is not None
+                        and getattr(self.master,"_local_model_ready",False) is True):
+                    try:
+                        from semantic_video_selection import review_longform_offsets
+                        from vision_engine import LocalOllamaVision, VisionConfig
+                        runtime=self.master.runtime
+                        endpoint=runtime.start()
+                        model=LocalOllamaVision(VisionConfig(
+                            model=runtime.config.model,endpoint=endpoint,
+                            timeout_seconds=40))
+                        model.initialize()
+                        cuts,semantic=review_longform_offsets(
+                            cuts,sources,target_seconds=target_seconds,
+                            ffmpeg=ffmpeg,executor=_execute,vision=model,
+                            confirmed=True,cancel=self._cancel,progress=report)
+                    except InterruptedError:
+                        raise
+                    except Exception:
+                        # Qwen is optional; audio + motion remains a valid
+                        # documented fallback and does not need internet.
+                        semantic=None
                 out=paths[0].parent/"JARVIS_LONGFORM_15min.mp4"
                 suffix=1
                 while out.exists() or out.with_name(
@@ -406,7 +431,7 @@ class TimelineWindow(tk.Toplevel):
                     out=paths[0].parent/f"JARVIS_LONGFORM_15min_{suffix}.mp4"
                 if self._cancel.is_set():
                     raise InterruptedError("Автомонтаж отменён.")
-                self._events.put(("longform",(cuts,out,analysis,consent)))
+                self._events.put(("longform",(cuts,out,analysis,consent,semantic)))
             except Exception as exc:
                 self._events.put(("error",str(exc)[:300]))
         threading.Thread(target=worker,daemon=True,
@@ -708,7 +733,12 @@ class TimelineWindow(tk.Toplevel):
                     except (OSError,ValueError) as exc:
                         self.status.set("Предпросмотр не готов: "+str(exc)[:100])
                 elif event=="longform":
-                    cuts,target,analysis,token=value
+                    cuts,target,analysis,token=value[:4]
+                    semantic=value[4] if len(value)>4 else None
+                    vision_note=(
+                        f" Qwen: {semantic.compared} сравнений, "
+                        f"заменено {semantic.chosen_alternative} мини-сцен. "
+                        if semantic is not None else "")
                     approved=(token is not None
                               and token is self._auto_export_token
                               and not self._cancel.is_set())
@@ -723,7 +753,8 @@ class TimelineWindow(tk.Toplevel):
                         f"Черновик: {len(cuts)} фрагментов на 15 минут. "
                         f"Мини-сцен: {analysis.usable}/{analysis.examined}; "
                         f"аудио: {analysis.audio_usable}/{analysis.audio_examined}. "
-                        "Отбор по движению и наличию звука, не понимание сюжета. "
+                        +vision_note+
+                        "Движение и звук — эвристики, мини-кадры не раскрывают весь сюжет. "
                         + ("Экспортирую автоматически по выданному разрешению."
                          if approved else
                          "Проверь монтаж и подтверди экспорт."))

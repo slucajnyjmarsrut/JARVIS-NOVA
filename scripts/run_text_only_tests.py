@@ -47,6 +47,7 @@ TESTS=(
        "test_one_shot_project.py",
        "test_smart_highlight_selection.py",
        "test_audio_highlight_signal.py",
+       "test_semantic_video_selection.py",
        "test_timeline_coverage_audit.py",
        "test_model_inventory.py",
        "test_scenario_and_model_route.py",
