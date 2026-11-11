@@ -11,7 +11,7 @@ import threading
 import unittest
 
 from popular_edits import (
-    STYLES, STYLE_BY_NAME, PopularEditError,
+    STYLES, STYLE_BY_NAME, MAX_CLIPS, PopularEditError,
     source_clips, select_style, speed_for,
     _segment_filter, render_popular_edit, verify_edit_output_media,
     is_popular_edit_request,
@@ -92,14 +92,14 @@ class PopularEditTests(unittest.TestCase):
             source=root/"source"
             source.mkdir()
             files=[]
-            for i in range(10):
+            for i in range(MAX_CLIPS):
                 path=source/f"{i:02d}.mp4"
                 path.write_bytes(b"x"*2500)
                 files.append(path)
             actual=source_clips(source)
             self.assertEqual([p.name for p in actual],[p.name for p in files])
             self.assertTrue(all(a.samefile(b) for a,b in zip(actual,files)))
-            extra=source/"11.mp4"
+            extra=source/"extra.mp4"
             extra.write_bytes(b"x"*2500)
             with self.assertRaises(PopularEditError):
                 source_clips(source)

@@ -343,7 +343,8 @@ def _probe(clip, ffprobe, cancel=None):
         if not videos:
             raise ValueError('No video stream')
         duration=float(info.get('format',{}).get('duration') or videos[0].get('duration') or 0)
-        if not 0.5 <= duration <= 18000:
+        from long_video_limits import MAX_SOURCE_SECONDS
+        if not 0.5 <= duration <= MAX_SOURCE_SECONDS:
             raise ValueError('Invalid duration')
         return duration, any(s.get('codec_type')=='audio' for s in streams)
     except (ValueError,TypeError) as exc:

@@ -23,9 +23,11 @@ PHASES=(
      "error handling, modules and integrations. Return only new or modified "
      "files, with complete contents."),
     ("Tests, documentation and polish",
-     "Create useful unit-test SOURCE FILES and README instructions, address "
-     "common edge cases, and refine incomplete code. Tests must be authored "
-     "but never executed automatically by JARVIS."),
+     "Create meaningful tests and README instructions, address "
+     "common edge cases, and refine incomplete code. For Python write "
+     "discoverable standard-library unittest classes in tests/test_*.py "
+     "with assertions of real behavior. Do not fabricate test outcomes; "
+     "test execution requires an explicit sandbox permission."),
 )
 def _context(files: dict[str,str],max_chars=18000):
     items=[]
@@ -120,3 +122,34 @@ def build_complete_project(task: str,language: str,*,generator,
     output=validate_plan(ChangePlan(language,tuple(
         ProposedFile(path,content) for path,content in sorted(new_files.items()))))
     return AutopilotResult(output,attempts,result["status"]=="passed",workspace,expected)
+
+
+def build_one_shot_project(task: str, language: str, *, generator,
+                           workspace: Path | None = None,
+                           allow_sandbox_tests=False,
+                           test_runner=None, max_test_repairs=5):
+    """One generation request performs implementation, static checks, and,
+    after one opt-in, isolated tests/repairs. Never installs or executes on host.
+
+    Only new Python projects have the trusted sandbox repair path. Other
+    languages receive syntax/structural verification, never 'tested' claims.
+    """
+    initial=build_complete_project(
+        task,language,generator=generator,workspace=workspace,repair_rounds=3)
+    if (not initial.verified or language!="python" or workspace is not None
+            or allow_sandbox_tests is not True):
+        return initial
+    from code_test_repair import repair_after_tests
+    from code_test_sandbox import run_python_tests
+    runner=test_runner if test_runner is not None else run_python_tests
+    repaired=repair_after_tests(
+        task,initial.plan,generator=generator,runner=runner,
+        confirmed=True,max_repairs=max_test_repairs)
+    attempts=list(initial.attempts)
+    for step in repaired.steps:
+        attempts.append(Attempt(
+            len(attempts)+1,step.status,
+            f"Docker: {step.tests_run} tests. {step.diagnostics[-1200:]}"))
+    return AutopilotResult(
+        repaired.plan,attempts,repaired.success,
+        initial.workspace,initial.expected_sha)

@@ -17,7 +17,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from video_timeline import (
     ASPECTS, COLORS, MAX_CUTS, TimelineCut, TimelineError, TimelineHistory,
-    TimelineProject, _input_video, estimate_seconds,
+    TimelineProject, _input_video, estimate_seconds, draft_longform_cuts,
     load_timeline, render_timeline, save_timeline, validate_timeline,
 )
 from pro_montage import SAFE_TRANSITIONS
@@ -74,8 +74,9 @@ class TimelineWindow(tk.Toplevel):
         ttk.Label(root,text="ТАЙМЛАЙН · МОНТАЖ С УПРАВЛЕНИЕМ КАДРАМИ",
                   style="Studio.Heading.TLabel").pack(anchor="w")
         ttk.Label(root,text=(
-            "Перетаскивай клипы на шкале или меняй порядок стрелками. "
-            "Обрезка, скорость, титры; 10 клипов · до 90 секунд."),
+            "Короткие и длинные ролики: исходники на несколько часов, "
+            "итоговая сборка на 15 минут и дольше. Перетаскивай фрагменты, "
+            "управляй обрезкой, титрами и переходами."),
             wraplength=910,style="Studio.Small.TLabel").pack(anchor="w",pady=(3,7))
 
         preview=tk.Frame(root,bg=CARD,padx=8,pady=8)
@@ -339,17 +340,55 @@ class TimelineWindow(tk.Toplevel):
         self._refresh(index)
         self.status.set("Таймлайн изменён. Экспорт ещё не выполнялся.")
 
+    def prepare_longform(self, target_seconds=900.0):
+        """Pick hour-long media, then draft a 15-minute timeline without rendering."""
+        if self._busy:
+            return
+        names=filedialog.askopenfilenames(
+            parent=self,title="Исходники для 15-минутного монтажа",
+            filetypes=[("Видео","*.mp4 *.mov *.mkv *.webm *.avi *.m4v")])
+        if not names:
+            return
+        if len(names)>MAX_CUTS:
+            messagebox.showerror("Видео",f"Не больше {MAX_CUTS} исходников.",parent=self)
+            return
+        try:
+            paths=tuple(_input_video(Path(name)) for name in names)
+        except (OSError,TimelineError) as exc:
+            messagebox.showerror("Видео",str(exc),parent=self)
+            return
+        self._cancel.clear()
+        self._working("Проверяю длительность исходников…")
+        def worker():
+            try:
+                from viral_studio import ffmpeg_tools, _probe
+                _,ffprobe=ffmpeg_tools()
+                sources=tuple((path,_probe(path,ffprobe,cancel=self._cancel)[0])
+                              for path in paths)
+                cuts=draft_longform_cuts(sources,target_seconds=target_seconds)
+                out=paths[0].parent/"JARVIS_LONGFORM_15min.mp4"
+                suffix=1
+                while out.exists() or out.with_name(
+                        out.stem+"_TIMELINE.json").exists():
+                    suffix+=1
+                    out=paths[0].parent/f"JARVIS_LONGFORM_15min_{suffix}.mp4"
+                self._events.put(("longform",(cuts,out)))
+            except Exception as exc:
+                self._events.put(("error",str(exc)[:300]))
+        threading.Thread(target=worker,daemon=True,
+                         name="jarvis-longform-probe").start()
+
     def add_videos(self):
         if self._busy:
             return
         names=filedialog.askopenfilenames(
-            parent=self,title="Выбери свои видеоклипы (до 10)",
+            parent=self,title="Выбери исходные видеоклипы",
             filetypes=[("Видео","*.mp4 *.mov *.mkv *.webm *.avi *.m4v")])
         if not names:
             return
         try:
             if len(self._cuts)+len(names)>MAX_CUTS:
-                raise TimelineError("Максимум 10 клипов.")
+                raise TimelineError(f"Максимум {MAX_CUTS} фрагментов.")
             files=[_input_video(Path(name)) for name in names]
             cuts=self._cuts+[TimelineCut(p) for p in files]
             self._modify(cuts,len(cuts)-1)
@@ -367,7 +406,7 @@ class TimelineWindow(tk.Toplevel):
         if index is None:
             return
         if len(self._cuts)>=MAX_CUTS:
-            messagebox.showwarning("Клипы","Максимум 10 клипов.",parent=self)
+            messagebox.showwarning("Клипы",f"Максимум {MAX_CUTS} фрагментов.",parent=self)
             return
         self._modify(
             self._cuts[:index+1]+[self._cuts[index]]+self._cuts[index+1:],
@@ -392,15 +431,15 @@ class TimelineWindow(tk.Toplevel):
                 duration=float(self.trim_length.get()),
                 speed=float(self.speed.get()),
                 caption=self.caption.get().strip())
-            if (not 0<=cut.source_start<=18000 or
-                    not .75<=cut.duration<=15 or
+            if (not 0<=cut.source_start<=24*3600 or
+                    not .75<=cut.duration<=8*3600 or
                     not .5<=cut.speed<=2 or
                     not len(cut.caption)<=110):
                 raise ValueError("start/duration/speed/title")
             self._modify(self._cuts[:index]+[cut]+self._cuts[index+1:],index)
         except (ValueError,OverflowError):
             messagebox.showerror(
-                "Клип","Начало от 0, длина 0.75–15 сек, скорость 0.5–2, "
+                "Клип","Начало от 0, длина до 8 часов, скорость 0.5–2, "
                 "титр до 110 символов.",parent=self)
 
     def split(self):
@@ -408,7 +447,7 @@ class TimelineWindow(tk.Toplevel):
         if index is None:
             return
         if len(self._cuts)>=MAX_CUTS:
-            messagebox.showwarning("Разделить","Максимум 10 клипов.",parent=self)
+            messagebox.showwarning("Разделить",f"Максимум {MAX_CUTS} фрагментов.",parent=self)
             return
         cut=self._cuts[index]
         try:
@@ -581,7 +620,7 @@ class TimelineWindow(tk.Toplevel):
             return
         if not messagebox.askyesno(
             "Подтвердить экспорт таймлайна?",
-            f"Клипов: {len(project.cuts)} · ~{length:.1f} секунд\n"
+            f"Клипов: {len(project.cuts)} · ~{length/60:.1f} минут\n"
             f"Размер: {ASPECTS[project.aspect]}\n"
             f"Цвет: {project.color} · переход: {project.transition}\n"
             f"Музыка: {Path(project.music).name if project.music else 'нет'}\n"
@@ -630,6 +669,17 @@ class TimelineWindow(tk.Toplevel):
                         self.status.set("Предпросмотр исходного кадра готов.")
                     except (OSError,ValueError) as exc:
                         self.status.set("Предпросмотр не готов: "+str(exc)[:100])
+                elif event=="longform":
+                    cuts,target=value
+                    self._history=TimelineHistory()
+                    self._cuts=list(cuts)
+                    self.fade.set("0")
+                    self.output.set(str(target))
+                    self._refresh(0)
+                    self.status.set(
+                        f"Подготовлен черновик: {len(cuts)} фрагментов, "
+                        "около 15 минут. Отбор равномерный, не распознавание "
+                        "интересных моментов. Проверь и подтверди экспорт.")
                 elif event=="filmcraft":
                     self.status.set("FilmCraft открыт: "+value)
                 elif event=="done":

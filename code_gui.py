@@ -9,6 +9,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
+from uuid import uuid4
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -18,7 +19,7 @@ from code_agent import CodeResult, request_local_model
 from code_languages import SUPPORTED, LANGUAGE_LABELS
 from code_checks import check_project
 from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
-from code_project_engine import build_complete_project
+from code_project_engine import build_one_shot_project
 from code_quality_review import review_change_plan, unified_plan_diff
 from code_test_sandbox import run_python_tests
 from code_test_repair import repair_after_tests
@@ -35,7 +36,9 @@ class CodeWindow(tk.Toplevel):
         self.protocol('WM_DELETE_WINDOW', self._close)
         self.geometry('800x650')
         self.language=tk.StringVar(value=language if language in SUPPORTED else 'python')
-        self.folder=tk.StringVar()
+        # Draft destination only; not created until the user approves writing.
+        self.folder=tk.StringVar(value=str(
+            Path.home() / "JARVIS-NOVA-Projects" / ("Project-" + uuid4().hex[:8])))
         self.task=tk.StringVar(value=task)
         self.result=None
         self.modify_existing=tk.BooleanVar(value=False)
@@ -62,7 +65,7 @@ class CodeWindow(tk.Toplevel):
         ttk.Label(frame,text='Задача (для генерации) или имя проекта (для шаблона)').pack(anchor='w',pady=(8,0))
         ttk.Entry(frame,textvariable=self.task).pack(fill='x')
         bar=ttk.Frame(frame);bar.pack(fill='x',pady=8)
-        self.gen=ttk.Button(bar,text='Создать и проверить код',command=self.generate)
+        self.gen=ttk.Button(bar,text='Создать проект и проверить за один запуск',command=self.generate)
         self.gen.pack(side='left')
         self.starter_button=ttk.Button(bar,text='Создать шаблон',command=self.starter)
         self.starter_button.pack(side='left',padx=6)
@@ -97,9 +100,10 @@ class CodeWindow(tk.Toplevel):
         ttk.Label(frame,text='Предварительный просмотр кода и результаты проверки:').pack(anchor='w')
         self.log=tk.Text(frame,wrap='word',font=('Consolas',10))
         self.log.pack(fill='both',expand=True)
-        self.show('Выбери пустую папку, опиши задачу, затем проверь код и подтверди запись.\n'
-                  'Компиляторы и проверки работают только если установлены. '
-                  'Roblox Studio Play Test, запуск и проверка функций выполняются отдельно.')
+        self.show('Опиши задачу: JARVIS создаст архитектуру, реализацию и тесты '
+                  'за один запуск. Новая папка предложена автоматически; '
+                  'файлы появятся только после подтверждения записи. '
+                  'Внешние среды и Roblox Play Test проверяются отдельно.')
 
     def _close(self):
         self.destroy()
@@ -223,6 +227,17 @@ class CodeWindow(tk.Toplevel):
                 "Не отправляйте пароли, токены и конфиденциальные данные. Продолжить?",
                 parent=self):
                 return
+        sandbox_consent=False
+        if full_project and language=="python" and not existing:
+            sandbox_consent=messagebox.askyesno(
+                "Автопроверка Python за один запуск",
+                "После генерации проверять проект в изолированном Docker "
+                "без интернета и пробовать до пяти самостоятельных "
+                "исправлений? Код запускается только в ограниченном "
+                "контейнере, не на компьютере. Изоляция не абсолютна. "
+                "Требуется уже установленный Docker и локальный "
+                "образ python:3.12-slim. Без согласия останется только "
+                "проверка синтаксиса.",parent=self)
         self._generation_busy=True
         self.gen.configure(state='disabled')
         self.starter_button.configure(state='disabled')
@@ -235,8 +250,10 @@ class CodeWindow(tk.Toplevel):
         def worker():
             try:
                 if full_project:
-                    result=build_complete_project(task,language,
-                        generator=self._model_generator,workspace=root if existing else None)
+                    result=build_one_shot_project(
+                        task,language,generator=self._model_generator,
+                        workspace=root if existing else None,
+                        allow_sandbox_tests=sandbox_consent)
                 else:
                     result=generate_and_check(task,language,
                         generator=self._model_generator,
@@ -270,8 +287,9 @@ class CodeWindow(tk.Toplevel):
         lines=['Язык: '+LANGUAGE_LABELS.get(result.plan.language,result.plan.language),
                'Инженерная рецензия (AST, без запуска): '+review.summary(),
                *findings[:30],
-               'Статическая проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
-               'Тесты выполняются только по запросу в Docker; проверка синтаксиса не равна функциональной.',
+               'Проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
+               'Для Python автоматические тесты идут в Docker только после согласия; '
+               'проверка синтаксиса других языков не доказывает полную работоспособность.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],
                'Предлагаемые изменения (unified diff, без записи в проект):',
                unified_plan_diff(result.plan,self._target()),

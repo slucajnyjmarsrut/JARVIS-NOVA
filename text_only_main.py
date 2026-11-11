@@ -387,8 +387,10 @@ class TextJarvis(BaseJarvis):
                 self.reply("Назови один язык программирования — например "
                            "Python, Java, JavaScript или Roblox Luau.")
                 return
-            self.open_code_assistant(value, text)
-            self.reply("Открываю подготовку проекта. Запуск и запись файлов "
+            self.open_code_assistant(value, text, auto_start=True)
+            self.reply("Запустил создание полноценного проекта с внутренней проверкой. "
+                       "Файлы будут сохранены только после подтверждения. "
+                       "Запуск и запись файлов "
                        "только после проверки и подтверждения.")
         elif kind == "studio":
             self.open_viral_studio(stage="audience")
@@ -396,6 +398,12 @@ class TextJarvis(BaseJarvis):
             self.open_filmcraft()
         elif kind == "timeline":
             self.open_timeline()
+        elif kind == "longform":
+            window=self.open_timeline()
+            if window is not None:
+                window.after(80,window.prepare_longform)
+            self.reply("Готовлю черновой 15-минутный монтаж из длинных исходников. "
+                       "Выбери локальные видео; перед экспортом покажу фрагменты.")
         elif kind == "multitrack":
             self.open_multitrack()
         elif kind == "edits":

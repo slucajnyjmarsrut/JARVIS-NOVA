@@ -56,8 +56,9 @@ STYLES = (
 )
 STYLE_BY_NAME = {style.name: style for style in STYLES}
 VIDEO_EXTENSIONS = frozenset({".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"})
-MAX_INPUT_BYTES = 10_000_000_000
-MAX_CLIPS = 10
+from long_video_limits import (
+    MAX_INPUT_BYTES, MAX_TIMELINE_CUTS, MAX_OUTPUT_SECONDS, encode_timeout)
+MAX_CLIPS = MAX_TIMELINE_CUTS
 
 
 def is_popular_edit_request(message: str) -> bool:
@@ -99,7 +100,7 @@ def source_clips(folder: Path) -> list[Path]:
     if not clips:
         raise PopularEditError("Нужен минимум один ролик MP4, MOV, MKV, WEBM или AVI.")
     if len(clips) > MAX_CLIPS:
-        raise PopularEditError("Для одного эдита выбери папку максимум с 10 видео.")
+        raise PopularEditError(f"Для одного эдита выбери не больше {MAX_CLIPS} исходников.")
     for clip in clips:
         if not 2_000 <= clip.stat().st_size <= MAX_INPUT_BYTES:
             raise PopularEditError("Некорректный или слишком большой клип: " + clip.name[:80])
@@ -137,7 +138,7 @@ def _segment_filter(style: EditStyle, *, speed: float, seconds: float,
 
 def verify_edit_output_media(file: Path, ffprobe: str, *,
                              size: tuple[int,int], expected_seconds: float,
-                             executor, cancel=None) -> dict:
+                             executor, cancel=None, max_duration=95.) -> dict:
     """Validate H264/AAC and exact dimensions across vertical, wide and square."""
     from viral_studio import ViralStudioError
     raw=executor([ffprobe,"-v","error","-show_format","-show_streams",
@@ -147,7 +148,11 @@ def verify_edit_output_media(file: Path, ffprobe: str, *,
         video=next(s for s in data["streams"] if s.get("codec_type")=="video")
         audio=next(s for s in data["streams"] if s.get("codec_type")=="audio")
         duration=float(data["format"]["duration"])
-        if (not math.isfinite(duration) or not .7<=duration<=95 or
+        if (not math.isfinite(duration) or
+                not isinstance(max_duration, (int, float)) or
+                not math.isfinite(max_duration) or
+                not .7 <= max_duration <= 8 * 3600 or
+                not .7<=duration<=max_duration or
                 abs(duration-expected_seconds)>max(.5,expected_seconds*.1) or
                 video.get("codec_name")!="h264" or
                 audio.get("codec_name")!="aac" or
@@ -248,7 +253,7 @@ def render_popular_edit(
                     "-c:a", "aac", "-ar", "48000", "-ac", "2",
                     "-b:a", "128k", str(part),
                 ])
-                runner(cmd, timeout=240, cancel=cancel)
+                runner(cmd, timeout=encode_timeout(seconds), cancel=cancel)
                 parts.append(part)
                 lengths.append(seconds)
                 decisions.append({
@@ -259,12 +264,14 @@ def render_popular_edit(
             exported = work / "finished.mp4"
             finish = finish_video(
                 parts, lengths, exported, ffmpeg,
-                options=opts, executor=runner, cancel=cancel)
+                options=opts, executor=runner, cancel=cancel,
+                max_clips=MAX_CLIPS, max_duration=MAX_OUTPUT_SECONDS)
             output_duration, _ = _probe(exported, ffprobe, cancel=cancel)
             technical = verify_edit_output_media(
                 exported, ffprobe, size=preset.size,
                 expected_seconds=finish["expected_seconds"],
-                executor=runner, cancel=cancel)
+                executor=runner, cancel=cancel,
+                max_duration=MAX_OUTPUT_SECONDS)
             if output_duration < .7 or exported.stat().st_size < 1000:
                 raise PopularEditError("Итоговый MP4 не прошёл техническую проверку.")
             metadata = {

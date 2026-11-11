@@ -40,6 +40,8 @@ TESTS=(
        "test_local_chat.py",
        "test_debate_mode.py",
        "test_chat_first_intent.py",
+       "test_longform_video.py",
+       "test_one_shot_project.py",
        "test_screenshot_review.py",
        "test_self_development.py",
        

@@ -73,8 +73,8 @@ def repair_after_tests(
         raise PermissionError("Проверка и исправление требуют явного разрешения.")
     if not isinstance(task, str) or not 1 <= len(task.strip()) <= 3000:
         raise WorkspaceError("Задача проекта должна быть 1–3000 символов.")
-    if type(max_repairs) is not int or not 0 <= max_repairs <= 2:
-        raise WorkspaceError("Разрешено не более двух циклов исправления.")
+    if type(max_repairs) is not int or not 0 <= max_repairs <= 5:
+        raise WorkspaceError("Разрешено не более пяти циклов исправления.")
     validate_plan(initial)
     if initial.language != "python":
         raise WorkspaceError("Проверка тестами сейчас только для Python.")

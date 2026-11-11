@@ -11,7 +11,7 @@ import threading
 import unittest
 
 from multitrack_composer import (
-    MultitrackError, MultitrackProject, VisualLayer, POSITIONS, MOTIONS,
+    MultitrackError, MultitrackProject, VisualLayer, POSITIONS, MOTIONS, MAX_DURATION,
     layer_motion_xy, build_filter_graph, validate_project, render_multitrack,
     is_multitrack_request, save_multitrack, load_multitrack,
 )
@@ -197,7 +197,7 @@ class MultitrackTests(unittest.TestCase):
                 replace(project,title="A"*121),
                 replace(project,layers=(replace(project.layers[0],opacity=0.0),)),
                 replace(project,layers=(replace(project.layers[0],position=";rm -rf"),)),
-                replace(project,layers=(replace(project.layers[0],start=89.,duration=1.),)*4),
+                replace(project,layers=(replace(project.layers[0],start=MAX_DURATION+1,duration=1.),)),
                 replace(project,output_video=project.base_video),
             ):
                 with self.subTest(broken=broken), self.assertRaises(MultitrackError):

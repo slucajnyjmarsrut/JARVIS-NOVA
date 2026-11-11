@@ -18,8 +18,10 @@ import threading
 
 from popular_edits import PopularEditError, _copy_export_with_cancel, verify_edit_output_media
 
-MAX_DURATION = 90.0
-MAX_LAYER_BYTES = 3_000_000_000
+from long_video_limits import MAX_OUTPUT_SECONDS, MAX_INPUT_BYTES, encode_timeout
+
+MAX_DURATION = float(MAX_OUTPUT_SECONDS)
+MAX_LAYER_BYTES = MAX_INPUT_BYTES
 IMAGE_TYPES = frozenset({".png", ".jpg", ".jpeg", ".webp"})
 VIDEO_TYPES = frozenset({".mp4", ".mov", ".mkv", ".webm", ".m4v"})
 AUDIO_TYPES = frozenset({".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"})
@@ -79,7 +81,7 @@ def _safe_media(path: Path, allowed: frozenset[str]) -> Path:
     if raw.is_symlink() or not raw.is_file() or raw.suffix.casefold() not in allowed:
         raise MultitrackError("Недоступный медиафайл или неподдерживаемый формат.")
     if not 100 <= raw.stat().st_size <= MAX_LAYER_BYTES:
-        raise MultitrackError("Файл слишком маленький или превышает лимит 3 ГБ.")
+        raise MultitrackError("Медиафайл пустой или превышает ресурсный предел.")
     return raw.resolve()
 
 
@@ -358,7 +360,7 @@ def render_multitrack(project: MultitrackProject, *,
     base = _safe_media(project.base_video, VIDEO_TYPES)
     duration, has_audio = _probe(base, ffprobe, cancel=cancel)
     if not .7 <= duration <= MAX_DURATION:
-        raise MultitrackError("Для монтажа выбери ролик длиной от 0,7 до 90 секунд.")
+        raise MultitrackError("Нужен ролик длиной не более 8 часов.")
     probe_data = runner([ffprobe, "-v", "error", "-select_streams", "v:0",
                          "-show_entries", "stream=width,height", "-of", "json",
                          str(base)], timeout=30, cancel=cancel)
@@ -424,10 +426,11 @@ def render_multitrack(project: MultitrackProject, *,
             "-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2",
             "-movflags", "+faststart", str(export),
         ]
-        runner(command, timeout=900, cancel=cancel)
+        runner(command, timeout=encode_timeout(duration), cancel=cancel)
         technical = verify_edit_output_media(
             export, ffprobe, size=(width, height),
-            expected_seconds=duration, executor=runner, cancel=cancel)
+            expected_seconds=duration, executor=runner, cancel=cancel,
+            max_duration=MAX_DURATION)
         metadata = {
             "format": "jarvis_multitrack_v1",
             "base": str(base),

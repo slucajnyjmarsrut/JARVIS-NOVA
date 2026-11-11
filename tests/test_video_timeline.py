@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 from video_timeline import (
-    ASPECTS, MAX_CUTS, TimelineCut, TimelineError, TimelineHistory,
+    ASPECTS, MAX_CUTS, MAX_TOTAL, MAX_PROJECT_BYTES, TimelineCut, TimelineError, TimelineHistory,
     TimelineProject, _segment_graph, estimate_seconds,
     save_timeline, load_timeline, validate_timeline, render_timeline,
 )
@@ -100,7 +100,7 @@ class TimelineTests(unittest.TestCase):
             with self.assertRaises(TimelineError):
                 load_timeline(attack)
             overlarge=Path(tmp)/"large.json"
-            overlarge.write_bytes(b"z"*120_001)
+            overlarge.write_bytes(b"z"*(MAX_PROJECT_BYTES+1))
             with self.assertRaises(TimelineError):
                 load_timeline(overlarge)
 
@@ -110,7 +110,7 @@ class TimelineTests(unittest.TestCase):
             for broken in (
                 replace(p,cuts=()),
                 replace(p,cuts=p.cuts*(MAX_CUTS+1)),
-                replace(p,cuts=(replace(p.cuts[0],duration=100),)),
+                replace(p,cuts=(replace(p.cuts[0],duration=MAX_TOTAL+1),)),
                 replace(p,cuts=(replace(p.cuts[0],speed=100),)),
                 replace(p,cuts=(replace(p.cuts[0],speed=float("nan")),)),
                 replace(p,cuts=(replace(p.cuts[0],caption="a"*111),)),

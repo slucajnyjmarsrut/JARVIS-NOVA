@@ -22,9 +22,14 @@ from pro_montage import (
     ProOptions, SAFE_TRANSITIONS, color_filter, finish_video, validate_options,
 )
 
-MAX_CUTS = 10
-MAX_TOTAL = 90.
-MAX_PROJECT_BYTES = 120_000
+from long_video_limits import (
+    MAX_SOURCE_SECONDS, MAX_OUTPUT_SECONDS, MAX_INPUT_BYTES,
+    MAX_TIMELINE_CUTS, encode_timeout,
+)
+
+MAX_CUTS = MAX_TIMELINE_CUTS
+MAX_TOTAL = float(MAX_OUTPUT_SECONDS)
+MAX_PROJECT_BYTES = 1_000_000
 ASPECTS = {
     "Shorts / Reels / TikTok 9:16": (720, 1280),
     "YouTube / Gaming 16:9": (1280, 720),
@@ -84,8 +89,8 @@ def _input_video(path):
     file = Path(path).expanduser()
     if (file.is_symlink() or not file.is_file() or
             file.suffix.casefold() not in VIDEO_EXTENSIONS or
-            not 2_000 <= file.stat().st_size <= 10_000_000_000):
-        raise TimelineError("Нужен локальный видеофайл до 10 ГБ.")
+            not 2_000 <= file.stat().st_size <= MAX_INPUT_BYTES):
+        raise TimelineError("Нужен локальный видеофайл; проверь формат и доступный объём диска.")
     return file.resolve()
 
 
@@ -94,7 +99,7 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
         raise TimelineError("Неверный формат таймлайна.")
     if (type(project.cuts) is not tuple or
             not 1 <= len(project.cuts) <= MAX_CUTS):
-        raise TimelineError("На таймлайне должно быть от 1 до 10 клипов.")
+        raise TimelineError(f"На таймлайне должно быть от 1 до {MAX_CUTS} фрагментов.")
     if (not isinstance(project.aspect,str)
             or not isinstance(project.color,str)
             or project.aspect not in ASPECTS or project.color not in COLORS):
@@ -109,16 +114,16 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
         if not isinstance(cut, TimelineCut):
             raise TimelineError("Неверный элемент таймлайна.")
         inputs.add(_input_video(cut.path))
-        if not (_finite(cut.source_start, 0, 18000)
-                and _finite(cut.duration, .75, 15)
+        if not (_finite(cut.source_start, 0, MAX_SOURCE_SECONDS)
+                and _finite(cut.duration, .75, MAX_TOTAL)
                 and _finite(cut.speed, .5, 2.)):
-            raise TimelineError("Обрезка 0.75–15 с, скорость 0.5–2.0.")
+            raise TimelineError("Проверь начало и длительность фрагмента, скорость 0.5–2.0.")
         if (not isinstance(cut.caption, str) or len(cut.caption) > 110
                 or any(ord(x) < 32 for x in cut.caption)):
             raise TimelineError("Титр не должен содержать управляющие символы.")
         total += cut.duration
     if total > MAX_TOTAL:
-        raise TimelineError("Один ролик не может превышать 90 секунд.")
+        raise TimelineError("Монтаж превышает предел ресурсоёмкой обработки (8 часов).")
     overlap = (min(project.transition_seconds,
                    max(0.,min(c.duration for c in project.cuts)-.705))
                if len(project.cuts)>1 else 0.)
@@ -140,7 +145,7 @@ def validate_timeline(project: TimelineProject, *, for_export=True):
             # Reject captions past the actual cut *before* rendering
             # every clip. A tiny tolerance covers FFmpeg frame rounding.
             load_srt(project.subtitles,
-                     max_time=min(MAX_TOTAL,predicted_duration+.04))
+                     max_time=predicted_duration+.04)
         except (SubtitleError,ValueError,OSError,TypeError) as exc:
             raise TimelineError("Недопустимый SRT: проверь время и текст субтитров.") from exc
         inputs.add(Path(project.subtitles).expanduser().resolve())
@@ -335,7 +340,7 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
                 "-r", "30", "-c:a", "aac", "-ar", "48000", "-ac", "2",
                 "-b:a", "128k", str(part),
             ]
-            runner(cmd, timeout=240, cancel=cancel)
+            runner(cmd, timeout=encode_timeout(cut.duration), cancel=cancel)
             parts.append(part)
             lengths.append(cut.duration)
             decisions.append({
@@ -354,7 +359,8 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
             semantic=False, transition_style=project.transition))
         staged = work / "finished.mp4"
         finish = finish_video(parts, lengths, staged, ffmpeg, options=options,
-                              executor=runner, cancel=cancel)
+                              executor=runner, cancel=cancel,
+                              max_clips=MAX_CUTS, max_duration=MAX_TOTAL)
         cues = ()
         if project.subtitles is not None:
             from subtitle_tracks import load_srt, burn_subtitles
@@ -365,14 +371,14 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
                 staged, captioned, cues,
                 ffmpeg=ffmpeg, width=width, height=height,
                 seconds=finish["expected_seconds"], executor=runner,
-                cancel=cancel)
+                cancel=cancel, max_duration=MAX_TOTAL)
             staged = captioned
         if progress:
             progress(len(parts), len(parts), "Проверяю готовое MP4")
         technical = verify_edit_output_media(
             staged, ffprobe, size=(width, height),
             expected_seconds=finish["expected_seconds"],
-            executor=runner, cancel=cancel)
+            executor=runner, cancel=cancel, max_duration=MAX_TOTAL)
         metadata = _format_snapshot(project)
         metadata.update({
             "output": str(out), "duration": technical["duration"],
@@ -402,3 +408,52 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
         if progress:
             progress(len(parts), len(parts), "Готово")
         return metadata
+
+
+def draft_longform_cuts(sources, *, target_seconds=900.0):
+    """Create a reviewable 15-minute-first timeline from hour-long footage.
+
+    The drafts sample the entire duration evenly rather than pretending to
+    identify semantic highlights. Each FFmpeg render seeks straight into the
+    source file: full two-hour files are not decoded into RAM.
+    """
+    if not isinstance(sources,(tuple,list)) or not 1 <= len(sources) <= MAX_CUTS:
+        raise TimelineError("Выбери от одного до 64 длинных исходников.")
+    if not _finite(target_seconds, .75, MAX_TOTAL):
+        raise TimelineError("Длина итогового ролика должна быть положительной.")
+    checked=[]
+    for item in sources:
+        if not isinstance(item,(tuple,list)) or len(item)!=2:
+            raise TimelineError("Неверное описание исходника.")
+        path,length=item
+        if not _finite(length,.75,MAX_SOURCE_SECONDS):
+            raise TimelineError("Не удалось определить длительность исходника.")
+        checked.append((_input_video(path),float(length)))
+    duration_total=sum(x[1] for x in checked)
+    if duration_total+.01 < target_seconds:
+        raise TimelineError("Общая длительность исходников меньше запрошенного ролика.")
+    # The number of pieces depends on the final video, not source length.
+    count=max(len(checked),min(MAX_CUTS,max(12,math.ceil(target_seconds/38))))
+    counts=[1]*len(checked)
+    for _ in range(count-len(checked)):
+        j=max(range(len(checked)),key=lambda k:checked[k][1]/counts[k])
+        counts[j]+=1
+    plans=[]
+    for (path,source_seconds),n in zip(checked,counts):
+        budget=target_seconds*source_seconds/duration_total
+        chunk=budget/n
+        if chunk<.75:
+            raise TimelineError("Фрагменты слишком короткие; уменьши число исходников.")
+        spacing=source_seconds/n
+        for pos in range(n):
+            start=max(0.,min(source_seconds-chunk,
+                             (pos+.5)*spacing-chunk/2))
+            plans.append(TimelineCut(
+                path,source_start=round(start,3),
+                duration=round(chunk,3),speed=1.0))
+    # Minimize rounding drift so 900 seconds means 900 seconds.
+    drift=round(target_seconds-sum(c.duration for c in plans),3)
+    if abs(drift)>.001:
+        last=plans[-1]
+        plans[-1]=replace(last,duration=round(last.duration+drift,3))
+    return tuple(plans)

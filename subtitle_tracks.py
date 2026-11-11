@@ -14,7 +14,7 @@ import tempfile
 import threading
 
 MAX_SRT_BYTES = 80_000
-MAX_CUES = 24
+MAX_CUES = 200
 TIMECODE = re.compile(
     r"^(\d{2}):([0-5]\d):([0-5]\d)[,.](\d{3})\s*-->\s*"
     r"(\d{2}):([0-5]\d):([0-5]\d)[,.](\d{3})$")
@@ -40,7 +40,7 @@ def parse_srt(text: str, *, max_time=90.):
         raise SubtitleError("Субтитры должны быть UTF-8 и короче 80 КБ.")
     blocks=re.split(r"\n\s*\n",text.replace("\r\n","\n").replace("\r","\n").strip())
     if not blocks or len(blocks)>MAX_CUES:
-        raise SubtitleError("Допустимо от 1 до 24 блоков SRT.")
+        raise SubtitleError(f"Допустимо от 1 до {MAX_CUES} блоков SRT.")
     cues=[]
     for i,block in enumerate(blocks):
         lines=block.strip().split("\n")
@@ -79,12 +79,17 @@ def burn_subtitles(
     movie: Path, output: Path, cues: tuple[SubtitleCue,...], *,
     ffmpeg: str, width: int, height: int, seconds: float,
     executor, cancel: threading.Event | None = None,
+    max_duration=95.,
 ):
     """Burn caption bitmaps into an intermediate MP4 with original AAC copy."""
     from viral_studio import _make_caption_png
 
     if (not 128 <= width <= 3840 or not 128 <= height <= 3840
-            or not math.isfinite(seconds) or not .7<=seconds<=95
+            or not math.isfinite(seconds)
+            or not isinstance(max_duration,(int,float))
+            or not math.isfinite(max_duration)
+            or not .7<=max_duration<=8*3600
+            or not .7<=seconds<=max_duration
             or not 1<=len(cues)<=MAX_CUES):
         raise SubtitleError("Недопустимая длительность или размер фильма.")
     original = Path(movie).expanduser()
@@ -128,5 +133,6 @@ def burn_subtitles(
             "-pix_fmt","yuv420p","-r","30","-c:a","copy",
             "-movflags","+faststart",str(output),
         ]
-        executor(inputs,timeout=900,cancel=cancel)
+        from long_video_limits import encode_timeout
+        executor(inputs,timeout=encode_timeout(seconds),cancel=cancel)
     return Path(output)

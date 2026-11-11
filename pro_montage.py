@@ -11,6 +11,8 @@ from pathlib import Path
 import math
 import re
 
+from long_video_limits import MAX_OUTPUT_SECONDS, encode_timeout
+
 MUSIC_EXTS=frozenset({'.mp3','.m4a','.wav','.flac','.ogg','.aac'})
 
 @dataclass(frozen=True)
@@ -139,19 +141,27 @@ def semantic_highlight_start(clip,duration,length,task,ffmpeg,*,describe,executo
     return best[2],{'mode':'local_vision','sampled':len(ratings),
                     'score_heuristic':best[0]}
 
-def finish_video(parts,lengths,output,ffmpeg,*,options,executor,cancel=None):
+def finish_video(parts,lengths,output,ffmpeg,*,options,executor,cancel=None,
+                 max_clips=10, max_duration=95.):
     """Real CFR H264 video xfade + stereo AAC acrossfade, optionally mix music."""
     validate_options(options)
-    if not 1<=len(parts)<=10 or len(parts)!=len(lengths):
+    if (type(max_clips) is not int or not 1<=max_clips<=128 or
+            not isinstance(max_duration,(int,float)) or
+            not math.isfinite(max_duration) or
+            not .7<=max_duration<=MAX_OUTPUT_SECONDS):
+        raise ValueError('Недопустимые пределы монтажа')
+    if not 1<=len(parts)<=max_clips or len(parts)!=len(lengths):
         raise ValueError('Неожиданное число фрагментов')
-    if any(not math.isfinite(x) or not .68<=x<=15. for x in lengths):
+    if any(not isinstance(x,(int,float)) or not math.isfinite(x)
+           or not .68<=x<=max_duration for x in lengths):
         raise ValueError('Некорректная длительность фрагмента')
     # Leave every screen-caption interval at least 0.70 s after overlap.
     # Extremely short source clips fall back to a clean hard cut.
     fade=min(options.transition,max(0.,min(lengths)-.705)) if len(parts)>1 else 0.
     if fade<.05:fade=0.
     total=sum(lengths)-fade*(len(parts)-1)
-    if total>95.01:raise ValueError('Ролик длиннее безопасного ограничения')
+    if total>max_duration+.01:
+        raise ValueError('Монтаж длиннее указанного ограничения проекта')
     cmd=[ffmpeg,'-hide_banner','-loglevel','error','-nostdin','-y']
     for source in parts:
         if not Path(source).is_file():raise FileNotFoundError(str(source))
@@ -188,7 +198,7 @@ def finish_video(parts,lengths,output,ffmpeg,*,options,executor,cancel=None):
           '-c:v','libx264','-preset','veryfast','-crf','21','-pix_fmt','yuv420p',
           '-r','30','-c:a','aac','-b:a','160k','-ar','48000','-ac','2',
           '-movflags','+faststart','-t',f'{total:.3f}',str(output)]
-    executor(cmd,timeout=900,cancel=cancel)
+    executor(cmd,timeout=encode_timeout(total),cancel=cancel)
     return {'transition':options.transition_style if fade else 'none',
             'transition_seconds':round(fade,3),
             'expected_seconds':round(total,3),'music_used':has_music,

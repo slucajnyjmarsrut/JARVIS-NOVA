@@ -34,6 +34,16 @@ class ChatFirstTests(unittest.TestCase):
                 self.assertIsNotNone(intent)
                 self.assertEqual((intent.kind,intent.value),(kind,value))
 
+    def test_longform_chat_starts_preparation_only(self):
+        request="хочу сделать 15 минут из двухчасового видео"
+        intent=route_chat_request(request)
+        self.assertEqual(intent.kind,"longform")
+        app=Mock()
+        TextJarvis._dispatch_chat_first(app,intent,request)
+        app.open_timeline.assert_called_once()
+        app.open_timeline.return_value.after.assert_called_once()
+        app.execute_plan.assert_not_called()
+
     def test_code_language_and_ambiguous_tasks(self):
         for phrase,language in (
             ("хочу написать программу на Python","python"),

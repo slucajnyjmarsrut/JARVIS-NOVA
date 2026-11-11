@@ -214,7 +214,7 @@ class Jarvis(tk.Tk):
         from windows_titlebar import install_dark_titlebar
         install_dark_titlebar(self, background="#070D17")
 
-    def open_code_assistant(self, language="java", task=""):
+    def open_code_assistant(self, language="java", task="", *, auto_start=False):
         """Open an integrated coding dialog; user approves changes explicitly."""
         try:
             from code_gui import CodeWindow
@@ -222,8 +222,12 @@ class Jarvis(tk.Tk):
             if window is not None and window.winfo_exists():
                 window.prefill(language,task)
                 window.focus_force()
+                if auto_start and task:
+                    window.after(50,window.generate)
                 return
             self._code_window=CodeWindow(self,language=language,task=task)
+            if auto_start and task:
+                self._code_window.after(50,self._code_window.generate)
         except Exception as exc:
             messagebox.showerror("Программирование",str(exc),parent=self)
 
@@ -920,7 +924,7 @@ class Jarvis(tk.Tk):
         from coding_intent import detect_coding_intent
         coding=detect_coding_intent(text)
         if coding is not None:
-            self.open_code_assistant(coding.language,coding.task)
+            self.open_code_assistant(coding.language,coding.task,auto_start=True)
             self.reply("Открываю программирование. Проверь проект и подтверди запись файлов.")
             return
         if text.casefold().strip(" .!?,") in {
