@@ -154,6 +154,78 @@ class ViralTests(unittest.TestCase):
                 "Не Minecraft",model_runtime=runtime,requester=requester,
                 previous_brief=prior)
 
+    def test_caption_schema_matches_editorial_bounds_and_reports_bad_frame(self):
+        from dataclasses import replace
+        from viral_studio import validate_brief
+        prop=SCENARIO_JSON_SCHEMA['properties']['scenes']['properties']['hook']
+        self.assertEqual(prop['properties']['caption']['maxLength'],100)
+        self.assertEqual(prop['properties']['caption']['minLength'],1)
+        base=template_brief('Кофе')
+        invalid=replace(base,shots=(
+            replace(base.shots[0],caption='А'*101), *base.shots[1:]))
+        with self.assertRaisesRegex(
+                ViralStudioError,r'Текст на экране: недопустимая длина.*кадр 1, длина 101'):
+            validate_brief(invalid)
+
+    def test_invalid_real_qwen_draft_is_revised_instead_of_silent_template(self):
+        from video_scenario_autonomy import create_checked_scenario
+        from viral_studio import RejectedScenarioDraft
+        topic='Организация рабочего места'
+        descriptions=(
+            'Показать до начала уборки запутанные провода',
+            'Показать стол до сортировки вещей',
+            'Уложить кабели за монитор',
+            'Сравнить рабочую поверхность до и после',
+            'Завершить показом аккуратно сложенных предметов',
+        )
+        roles=('hook','setup','action','result','ending')
+        data={
+            'title':'Порядок на рабочем месте',
+            'hook':'Что можно изменить за минуту?',
+            'script':('На рабочем столе мешают провода и лишние вещи. '
+                      'Показываю исходную проблему, затем убираю предметы '
+                      'и аккуратно укладываю кабели. В конце сравниваю '
+                      'пространство до и после и проверяю результат.'),
+            'scenes':{
+                role:{'seconds':3 if idx==0 else 6,
+                      'film':descriptions[idx], 'caption':f'Шаг {idx+1}'}
+                for idx,role in enumerate(roles)},
+            'call_to_action':'Сохрани идею и проверь свой стол.',
+        }
+        invalid=dict(data,title='Х'*125)
+        runtime=Mock()
+        runtime.start.return_value='http://127.0.0.1:1234'
+        prompts=[]
+        def requester(url,payload):
+            self.assertEqual(url,'http://127.0.0.1:1234/api/generate')
+            prompts.append(payload['prompt'])
+            response=invalid if len(prompts)==1 else data
+            return {'response':json.dumps(response,ensure_ascii=False)}
+        def generator(topic,trends,**kwargs):
+            return create_local_brief(
+                topic,trends,model_runtime=runtime,requester=requester,
+                stop_runtime=False,**kwargs)
+        brief,note,assessment,attempts=create_checked_scenario(
+            topic,mode='deep',ai_generator=generator)
+        self.assertTrue(assessment.passed,assessment.issues)
+        self.assertEqual(brief.generator,'локальная Qwen3-VL')
+        self.assertEqual(brief.title,data['title'])
+        self.assertEqual(attempts,2)
+        self.assertEqual(len(prompts),2)
+        self.assertIn('Заголовок: недопустимая длина',prompts[1])
+        self.assertIn('ПРЕДЫДУЩИЙ ЧЕРНОВИК',prompts[1])
+        self.assertIn('Х'*80,prompts[1])
+        self.assertIn('Qwen',note)
+        self.assertTrue(issubclass(RejectedScenarioDraft,ViralStudioError))
+        invalid_previous=template_brief(topic)
+        from dataclasses import replace
+        invalid_previous=replace(invalid_previous,title='Х'*125)
+        with self.assertRaises(ViralStudioError):
+            create_local_brief(
+                topic,model_runtime=runtime,requester=requester,
+                previous_brief=invalid_previous,
+                quality_feedback='Заголовок: недопустимая длина')
+
     def test_long_qwen_overlay_is_shortened_without_weakening_story_checks(self):
         from viral_studio import _parse_model_brief, _short_ai_caption
         paragraph="Текст для экрана крупным планом " * 9
