@@ -87,6 +87,15 @@ def burn_subtitles(
             or not math.isfinite(seconds) or not .7<=seconds<=95
             or not 1<=len(cues)<=MAX_CUES):
         raise SubtitleError("Недопустимая длительность или размер фильма.")
+    original = Path(movie).expanduser()
+    target = Path(output).expanduser()
+    # This helper is also callable outside the reviewed timeline renderer:
+    # never let its internal ffmpeg invocation overwrite user footage.
+    if (original.is_symlink() or not original.is_file() or
+            target.is_symlink() or target.exists() or
+            not target.parent.is_dir() or
+            original.resolve() == target.resolve()):
+        raise SubtitleError("Субтитры сохраняются только в новый отдельный MP4.")
     if cancel is not None and cancel.is_set():
         raise SubtitleError("Операция прервана до обработки субтитров.")
     for cue in cues:
@@ -95,7 +104,7 @@ def burn_subtitles(
     with tempfile.TemporaryDirectory(prefix=".nova-subtitle-",dir=str(Path(output).parent)) as tmp:
         work=Path(tmp)
         inputs=[ffmpeg,"-hide_banner","-loglevel","error",
-                "-nostdin","-y","-i",str(movie)]
+                "-nostdin","-n","-i",str(original)]
         filters=["[0:v:0]fps=30,format=yuv420p[base]"]
         previous="base"
         for idx,cue in enumerate(cues,1):
