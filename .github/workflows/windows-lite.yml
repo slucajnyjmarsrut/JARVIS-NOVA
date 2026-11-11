@@ -6,6 +6,8 @@ on:
       - jarvis_nova.spec
       - bootstrap.py
       - text_only_main.py
+      - semantic_intent_router.py
+      - tests/test_semantic_intent_router.py
       - text_only_ui.py
       - main.py
       - nova_command_palette.py
