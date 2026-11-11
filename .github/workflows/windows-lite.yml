@@ -48,7 +48,11 @@ on:
       - code_gui.py
       - code_quality_review.py
       - code_test_sandbox.py
+      - code_test_repair.py
+      - code_gui.py
       - tests/test_code_quality_review.py
+      - tests/test_code_test_repair.py
+      - tests/test_code_gui_review.py
       - tests/test_code_test_sandbox.py
       - video_timeline_ui.py
       - tests/test_video_timeline.py
