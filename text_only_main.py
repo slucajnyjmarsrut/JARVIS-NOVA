@@ -348,6 +348,14 @@ class TextJarvis(BaseJarvis):
                        "проверь предложенный код и подтверди запись. "
                        "Обновление EXE выполняется только через проверенный релиз.")
             return
+        from video_timeline import is_timeline_request
+        if is_timeline_request(text):
+            self.log("Вы",text)
+            self.open_timeline()
+            self.reply("Открыл редактор таймлайна: порядок клипов, точная "
+                       "обрезка, скорость, титры, музыка и переходы. "
+                       "Экспорт начнётся только после твоего подтверждения.")
+            return
         from multitrack_composer import is_multitrack_request
         from creator_publish import is_publish_prep_request
         if is_multitrack_request(text):
