@@ -132,6 +132,42 @@ class AutonomousScenarioTests(TestCase):
         self.assertIn("БЕЗ нейросети",note)
         self.assertTrue(review.passed)
 
+    def test_russian_topic_inflections_not_falsely_rejected(self):
+        topic="Безопасная организация компьютерного рабочего места"
+        shots=(
+            Shot(3,"Показать провода под столом","Проблема"),
+            Shot(6,"Снять вид сверху на стол","Первый шаг"),
+            Shot(6,"Уложить кабели за монитор","Порядок"),
+            Shot(6,"Показать организованный экран и стол","Результат"),
+            Shot(6,"Снять финальную композицию предметов","Проверка"),
+        )
+        relevant=Brief(
+            "Порядок рядом с компьютером",topic,
+            "Посмотри, как стало удобно работать!",
+            "Раньше на рабочем столе рядом с компьютером всё было "
+            "разложено неудобно. Теперь убираю лишнее, укладываю "
+            "кабели и проверяю, удобно ли пользоваться мышью. "
+            "Показываю результат в конце.",
+            shots,"Сохрани идею.","локальная Qwen3-VL")
+        verdict=assess_scenario(relevant)
+        self.assertTrue(verdict.passed,verdict.issues)
+        unrelated=replace(
+            relevant,title="Салат за минуту",hook="Что приготовим на ужин?",
+            script="Сначала нужно нарезать огурцы и помидоры, затем "
+                   "размешать заправку в миске. Добавляем немного масла, "
+                   "перемешиваем ингредиенты и сервируем тарелку "
+                   "для подачи готовой еды.",
+            shots=(
+                Shot(3,"Снять свежие овощи","Начало"),
+                Shot(6,"Показать острый нож","Подготовка"),
+                Shot(6,"Нарезать овощи на доске","Нарезка"),
+                Shot(6,"Положить ингредиенты в миску","Соус"),
+                Shot(6,"Показать салат на тарелке","Ужин"),
+            ))
+        verdict=assess_scenario(unrelated)
+        self.assertFalse(verdict.passed)
+        self.assertIn("Тема пользователя", "; ".join(verdict.issues))
+
     def test_bad_model_never_claims_ai_success(self):
         calls=[]
         def generator(*a,**kw):

@@ -41,11 +41,23 @@ def assess_scenario(brief: Brief) -> ScenarioAssessment:
     films=[re.sub(r"\s+"," ",s.film.casefold()).strip() for s in brief.shots]
     if len(set(films))<len(films):
         issues.append("Повторяются инструкции для съёмки.")
-    topic_words=[w for w in re.findall(r"[\w]{4,}",brief.topic.casefold())
-                 if w not in {"видео","ролик","шортс","создай","сделай"}]
-    seen=(" ".join([brief.title,brief.hook,brief.script]+
-                   [s.film for s in brief.shots])).casefold()
-    if topic_words and not any(word in seen for word in topic_words[:6]):
+    # Match word stems, not literal Russian inflections. For example,
+    # "рабочего" and "рабочем", "компьютерного" and "компьютера"
+    # describe the same subject. Require a word-boundary match; do not
+    # accept an accidental substring in an unrelated compound word.
+    stopwords={"видео","ролик","шортс","создай","сделай","хочу",
+               "как","для","это","тема","про","мое","мои","наше"}
+    topic_words=[w for w in re.findall(r"[^\W_]{3,}",brief.topic.casefold())
+                 if w not in stopwords][:8]
+    words=set(re.findall(
+        r"[^\W_]{3,}",
+        (" ".join([brief.title,brief.hook,brief.script]+
+                  [s.film for s in brief.shots])).casefold()))
+    # Cap stemming to a conservative four trailing characters, rather
+    # than silently accepting a completely unrelated story.
+    roots=[w[:max(4,len(w)-4)] for w in topic_words]
+    if roots and not any(word.startswith(root)
+                         for root in roots for word in words):
         issues.append("Тема пользователя не отражена в сценарии.")
     if not brief.call_to_action.strip(" .!?"):
         issues.append("Нет понятного завершения.")
