@@ -139,9 +139,7 @@ class TextJarvis(BaseJarvis):
         self.hud_settings_button.configure(command=self.show_settings_menu)
         self.bind("<F10>", self.show_settings_menu)
 
-        self.log("Система", "JARVIS готов. Просто напиши, что хочешь сделать, "
-                 "и нажми Enter: например «хочу смонтировать видео», "
-                 "«создай программу», «открой настройки».")
+        self.log("Система", "JARVIS готов. Напиши, что нужно сделать, и нажми Enter.")
         if not self._local_model_ready:
             self.log("Система", "Qwen не установлена. Для полноценного разговора "
                      "напиши «установи Qwen». Загрузка только с твоего разрешения.")
