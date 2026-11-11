@@ -49,6 +49,7 @@ class TimelineWindow(tk.Toplevel):
         self.fade=tk.StringVar(value="0.17")
         self.volume=tk.StringVar(value="0.18")
         self.music=tk.StringVar()
+        self.subtitles=tk.StringVar()
         self.output=tk.StringVar()
         self.trim_start=tk.StringVar(value="0")
         self.trim_length=tk.StringVar(value="2.0")
@@ -149,6 +150,16 @@ class TimelineWindow(tk.Toplevel):
         ttk.Button(audio,text="Выбрать",command=self.choose_music,
                    style="Studio.TButton").pack(side="left")
         ttk.Button(audio,text="Очистить",command=lambda:self.music.set(""),
+                   style="Studio.TButton").pack(side="left",padx=(4,0))
+        subrow=ttk.Frame(root,style="Studio.TFrame")
+        subrow.pack(fill="x",pady=(0,5))
+        ttk.Label(subrow,text="SRT:",style="Studio.TLabel").pack(side="left")
+        ttk.Entry(subrow,textvariable=self.subtitles,
+                  style="Studio.TEntry").pack(side="left",fill="x",
+                                             expand=True,padx=5)
+        ttk.Button(subrow,text="Субтитры",command=self.choose_subtitles,
+                   style="Studio.TButton").pack(side="left")
+        ttk.Button(subrow,text="Очистить",command=lambda:self.subtitles.set(""),
                    style="Studio.TButton").pack(side="left",padx=(4,0))
         outrow=ttk.Frame(root,style="Studio.TFrame")
         outrow.pack(fill="x",pady=(0,5))
@@ -391,6 +402,13 @@ class TimelineWindow(tk.Toplevel):
         if selected:
             self.music.set(selected)
 
+    def choose_subtitles(self):
+        selected=filedialog.askopenfilename(
+            parent=self,title="Выбери свой UTF-8 файл субтитров SRT",
+            filetypes=[("SubRip subtitles","*.srt")])
+        if selected:
+            self.subtitles.set(selected)
+
     def choose_output(self):
         selected=filedialog.asksaveasfilename(
             parent=self,title="Создать НОВЫЙ MP4, без перезаписи",
@@ -407,7 +425,9 @@ class TimelineWindow(tk.Toplevel):
                 transition=self.transition.get(),
                 transition_seconds=float(self.fade.get()),
                 music=Path(self.music.get()) if self.music.get().strip() else None,
-                music_volume=float(self.volume.get()))
+                music_volume=float(self.volume.get()),
+                subtitles=Path(self.subtitles.get()) if
+                          self.subtitles.get().strip() else None)
         except (ValueError,TypeError) as exc:
             raise TimelineError("Проверь числовые настройки перехода и музыки.") from exc
         return validate_timeline(project,for_export=export)
@@ -452,6 +472,7 @@ class TimelineWindow(tk.Toplevel):
         self.fade.set(str(project.transition_seconds))
         self.volume.set(str(project.music_volume))
         self.music.set(str(project.music) if project.music else "")
+        self.subtitles.set(str(project.subtitles) if project.subtitles else "")
         output=Path(project.output)
         if output.exists() or output.with_name(
                 output.stem+"_TIMELINE.json").exists():
@@ -504,6 +525,7 @@ class TimelineWindow(tk.Toplevel):
             f"Размер: {ASPECTS[project.aspect]}\n"
             f"Цвет: {project.color} · переход: {project.transition}\n"
             f"Музыка: {Path(project.music).name if project.music else 'нет'}\n"
+            f"Субтитры: {Path(project.subtitles).name if project.subtitles else 'нет'}\n"
             f"Новый MP4: {project.output}\n\n"
             "FFmpeg обработает выбранные файлы локально. Оригиналы не "
             "изменятся. Никакой публикации или загрузки в интернет.",
