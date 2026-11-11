@@ -95,13 +95,16 @@ class MultitrackWindow(tk.Toplevel):
                       style="Studio.TEntry").pack(side="left",padx=(5,14))
             ttk.Label(row,text="Длина (сек):",style="Studio.TLabel").pack(side="left")
             ttk.Entry(row,textvariable=duration,width=6,
-                      style="Studio.TEntry").pack(side="left",padx=(5,8))
-            ttk.Label(row,text="Ширина %:",style="Studio.TLabel").pack(side="left")
-            ttk.Entry(row,textvariable=width,width=4,
-                      style="Studio.TEntry").pack(side="left",padx=(5,8))
-            ttk.Label(row,text="Прозр. 0.1–1:",style="Studio.TLabel").pack(side="left")
-            ttk.Entry(row,textvariable=opacity,width=4,
                       style="Studio.TEntry").pack(side="left",padx=(5,0))
+            options=ttk.Frame(body,style="Studio.TFrame")
+            options.pack(fill="x",pady=(0,9))
+            ttk.Label(options,text="Размер %:",style="Studio.TLabel").pack(side="left")
+            ttk.Entry(options,textvariable=width,width=6,
+                      style="Studio.TEntry").pack(side="left",padx=(6,15))
+            ttk.Label(options,text="Прозрачность (0.1–1):",
+                      style="Studio.TLabel").pack(side="left")
+            ttk.Entry(options,textvariable=opacity,width=6,
+                      style="Studio.TEntry").pack(side="left",padx=(6,0))
 
         ttk.Label(body,text="03 · ТИТР НА ЭКРАНЕ (необязательно)",
                   style="Studio.TLabel").pack(anchor="w")
