@@ -34,6 +34,40 @@ class ChatFirstTests(unittest.TestCase):
                 self.assertIsNotNone(intent)
                 self.assertEqual((intent.kind,intent.value),(kind,value))
 
+    def test_model_commands_accept_ui_text_and_natural_infinitives(self):
+        # These phrases are shown to users by JARVIS or typed in the chat.
+        phrases={
+            "проверить локальную модель":"model",
+            "проверь локальную модель":"model",
+            "скачать модель":"model",
+            "скачай модель":"model",
+            "скачать Qwen":"model",
+            "проверить Qwen":"model",
+            "найди модели":"model_scan",
+            "найти модели":"model_scan",
+            "найди модели на всех дисках":"model_scan",
+        }
+        for phrase,kind in phrases.items():
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.kind,kind)
+                app=Mock()
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                method="check_models" if kind=="model" else "scan_models_on_pc"
+                getattr(app,method).assert_called_once_with()
+                app.execute_plan.assert_not_called()
+                app.download_local_model.assert_not_called()
+
+    def test_model_questions_negations_do_not_start_model_actions(self):
+        for phrase in (
+            "как скачать модель", "почему проверить локальную модель",
+            "не скачай модель", "не надо скачивать модель",
+            "объясни как установить qwen", "если я напишу скачать модель",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIsNone(route_chat_request(phrase))
+
     def test_longform_chat_requests_one_permission_autoexport(self):
         request="хочу сделать 15 минут из двухчасового видео"
         intent=route_chat_request(request)
