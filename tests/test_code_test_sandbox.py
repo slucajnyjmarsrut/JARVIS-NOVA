@@ -117,6 +117,30 @@ class DockerTestGateTests(unittest.TestCase):
                 result=run_python_tests(root,confirmed=True)
                 self.assertEqual(result.status,"skipped")
 
+    def test_docker_timeout_forcibly_removes_only_own_named_container(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=self.project(directory)
+            calls=[]
+            def fake_run(argv,**kwargs):
+                calls.append(argv)
+                if argv[1:3]==["image","inspect"]:
+                    return subprocess.CompletedProcess(argv,0,"","")
+                if argv[1]=="run":
+                    self.assertIn("--name",argv)
+                    self.assertIn("--rm",argv)
+                    raise subprocess.TimeoutExpired(argv,kwargs.get("timeout",10))
+                if argv[1:3]==["rm","-f"]:
+                    return subprocess.CompletedProcess(argv,0,"","")
+                self.fail("Unexpected Docker action: "+str(argv))
+            result=run_python_tests(root,confirmed=True,docker_cli="docker",
+                                    executor=fake_run)
+            self.assertEqual(result.status,"failed")
+            self.assertEqual([x[1] for x in calls],["image","run","rm"])
+            name=calls[1][calls[1].index("--name")+1]
+            self.assertTrue(name.startswith("jarvis-nova-review-"))
+            self.assertEqual(calls[2],["docker","rm","-f",name])
+            self.assertIn("остановлен",result.output)
+
     def test_rejects_symlinked_project_and_never_imports_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
