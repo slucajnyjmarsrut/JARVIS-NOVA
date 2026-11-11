@@ -15,6 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import uuid
 
 from code_workspace import WorkspaceError
 
@@ -130,8 +131,10 @@ def run_python_tests(
                 " нет. Автоматическая загрузка запрещена; тесты не запускались.", count)
         # No implicit pull, no published ports, no added privileges, no host
         # source mount, no Docker socket mount, no network or writable source.
+        container_name = "jarvis-nova-review-" + uuid.uuid4().hex[:16]
         command = [
-            cli, "run", "--rm", "--pull", "never",
+            cli, "run", "--rm", "--name", container_name,
+            "--pull", "never",
             "--network", "none", "--read-only",
             "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
             "--pids-limit", "64", "--memory", "512m", "--cpus", "1",
@@ -147,8 +150,22 @@ def run_python_tests(
         try:
             result = _call(executor, command, timeout)
         except subprocess.TimeoutExpired:
-            return TestGateReport("failed", 0,
-                "Контейнер превысил лимит времени. Успех НЕ подтверждён.", count)
+            # Killing the Docker CLI does NOT necessarily stop its container.
+            # Force-delete only the uniquely named review container, never
+            # other user's containers. The action is bounded too.
+            cleanup_ok = False
+            try:
+                cleanup = _call(
+                    executor, [cli, "rm", "-f", container_name], 15)
+                cleanup_ok = cleanup.returncode == 0
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            text = (
+                "Контейнер превысил лимит времени и был остановлен."
+                if cleanup_ok else
+                "Контейнер превысил лимит времени. Автоматическая очистка "
+                "не подтверждена: проверь Docker-контейнер " + container_name)
+            return TestGateReport("failed", 0, text, count)
         except OSError as exc:
             return TestGateReport("skipped", 0,
                 "Docker не смог запустить контейнер: " + str(exc)[:250], count)
