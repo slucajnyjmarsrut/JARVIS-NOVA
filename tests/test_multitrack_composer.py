@@ -11,8 +11,8 @@ import threading
 import unittest
 
 from multitrack_composer import (
-    MultitrackError, MultitrackProject, VisualLayer, POSITIONS,
-    build_filter_graph, validate_project, render_multitrack,
+    MultitrackError, MultitrackProject, VisualLayer, POSITIONS, MOTIONS,
+    layer_motion_xy, build_filter_graph, validate_project, render_multitrack,
     is_multitrack_request, save_multitrack, load_multitrack,
 )
 
@@ -41,6 +41,8 @@ class MultitrackTests(unittest.TestCase):
             self.assertEqual(len(view.layer_files),3)
             self.assertEqual(len(view.layer_widths),3)
             self.assertEqual(len(view.layer_opacities),3)
+            self.assertEqual(len(view.layer_motions),3)
+            self.assertEqual(len(view.layer_motion_times),3)
             self.assertFalse(view._busy)
             self.assertIsNone(view._busy_since)
             self.assertEqual(str(view._progress.cget("mode")),"indeterminate")
@@ -75,6 +77,15 @@ class MultitrackTests(unittest.TestCase):
             self.assertTrue(loaded.layers[0].path.samefile(project.layers[0].path))
             self.assertEqual(loaded.layers[0].width_percent,26)
             self.assertEqual(loaded.layers[0].opacity,1.)
+            self.assertEqual(loaded.layers[0].motion,"static")
+            animated=replace(project,layers=(
+                replace(project.layers[0],motion="slide-left",
+                        motion_seconds=.6),))
+            second=Path(root)/"motion.json"
+            save_multitrack(animated,second)
+            restored=load_multitrack(second)
+            self.assertEqual(restored.layers[0].motion,"slide-left")
+            self.assertEqual(restored.layers[0].motion_seconds,.6)
             with self.assertRaises(MultitrackError):
                 save_multitrack(project,filename)
             corrupted=Path(root)/"corrupted.json"
@@ -87,6 +98,34 @@ class MultitrackTests(unittest.TestCase):
                 validate_project(
                     replace(project,layers=(
                         replace(project.layers[0],start="nan"),)))
+
+    def test_six_keyframe_motion_presets_build_trusted_ffmpeg_graphs(self):
+        with tempfile.TemporaryDirectory() as root:
+            base=self.fixture(root)
+            for motion in MOTIONS:
+                layer=replace(base.layers[0],motion=motion,motion_seconds=.45)
+                with self.subTest(motion=motion):
+                    project=replace(base,layers=(layer,))
+                    validate_project(project)
+                    graph,_,_=build_filter_graph(
+                        project,duration=3.,width=720,height=1280,
+                        has_base_audio=True,title_index=2,silent_index=None)
+                    self.assertIn("overlay=x=",graph)
+                    self.assertIn("eval=frame",graph)
+                    self.assertEqual(graph.count("overlay="),2)
+                    x,y=layer_motion_xy(layer)
+                    if motion=="fade-in":
+                        self.assertIn("fade=t=in:st=0:d=0.450:alpha=1",graph)
+                    if motion in ("slide-left","slide-right","rise","drop"):
+                        self.assertTrue("t-0.000" in x+y)
+            for motion in ("unknown","fade=in;movie=http://evil.example"):
+                with self.assertRaises(MultitrackError):
+                    validate_project(replace(
+                        base,layers=(replace(base.layers[0],motion=motion),)))
+            with self.assertRaises(MultitrackError):
+                validate_project(replace(
+                    base,layers=(replace(base.layers[0],
+                        motion_seconds=float("nan")),)))
 
     def test_all_positions_and_multiple_track_graphs(self):
         with tempfile.TemporaryDirectory() as directory:
