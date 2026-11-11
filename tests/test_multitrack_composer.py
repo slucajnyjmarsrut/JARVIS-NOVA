@@ -152,14 +152,22 @@ class MultitrackTests(unittest.TestCase):
             voice=root/"voice.wav"
             music.write_bytes(b"music"*50)
             voice.write_bytes(b"voice"*50)
-            project=replace(project,music=music,voiceover=voice)
+            project=replace(project,music=music,voiceover=voice,
+                            duck_music=True)
             graph,video,audio=build_filter_graph(
                 project,duration=4.0,width=1280,height=720,
                 has_base_audio=False,title_index=2,silent_index=5)
             self.assertIn("[5:a:0]aresample",graph)
             self.assertIn("amix=inputs=3",graph)
             self.assertIn("volume=0.220[music]",graph)
+            self.assertIn("asplit=2[voice_detector][voice_for_mix]",graph)
+            self.assertIn("sidechaincompress=threshold=0.020",graph)
+            self.assertIn("[ducked_music][voice_for_mix]amix",graph)
             self.assertEqual(audio,"finalaudio")
+            with self.assertRaises(MultitrackError):
+                validate_project(replace(self.fixture(directory),duck_music=True))
+            with self.assertRaises(MultitrackError):
+                validate_project(replace(project,duck_music="yes"))
 
     def test_banned_sources_bad_values_and_existing_output(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -225,7 +233,8 @@ class MultitrackTests(unittest.TestCase):
                 base_video=base,output_video=root/"ready.mp4",
                 layers=(VisualLayer(logo,start=.2,duration=1.5,
                                     position="top-left",width_percent=35),),
-                title="NOVA",voiceover=voice,music=music)
+                title="NOVA",voiceover=voice,music=music,
+                duck_music=True)
             result=render_multitrack(project,tools=(ffmpeg,ffprobe))
             output=Path(result["output"])
             self.assertTrue(output.is_file())
@@ -234,6 +243,7 @@ class MultitrackTests(unittest.TestCase):
             self.assertEqual(result["technical_quality"]["width"],320)
             self.assertEqual(result["technical_quality"]["height"],180)
             self.assertEqual(len(result["layers"]),1)
+            self.assertTrue(result["duck_music"])
             self.assertTrue(output.with_name("ready_MULTITRACK.json").is_file())
             self.assertEqual(hashlib.sha256(base.read_bytes()).hexdigest(),digest)
             with self.assertRaises(MultitrackError):
