@@ -143,8 +143,10 @@ def build_text_interface(app):
     for role,color in (("JARVIS",CYAN),("Вы",GREEN),("Система",MUTED),("Профиль",AMBER)):
         app.history.tag_configure(role,foreground=color,font=("Segoe UI",9,"bold"))
     app.history.tag_configure("error",foreground=AMBER)
-    _label(shell, "ИЛИ НАПИШИ СВОИМИ СЛОВАМИ И НАЖМИ ENTER",
-           fg=CYAN_DIM,size=8).pack(anchor="w",pady=(0,4))
+    entry_prompt = _label(
+        shell, "ИЛИ НАПИШИ СВОИМИ СЛОВАМИ И НАЖМИ ENTER",
+        fg=CYAN_DIM,size=8)
+    entry_prompt.pack(anchor="w",pady=(0,4))
     writer = tk.Frame(shell,bg=BG)
     writer.pack(fill="x",pady=(0,7))
     app.entry = tk.Entry(writer,bg=SURFACE_ALT,fg=TEXT,insertbackground=CYAN,
@@ -162,6 +164,18 @@ def build_text_interface(app):
     app.hud_access.pack(side="left")
     app.hud_footer = _label(footer,"●  ПЕЧАТАЙ СООБЩЕНИЕ",fg=GREEN,size=8)
     app.hud_footer.pack(side="right")
+
+    # Reserve footer and text entry BEFORE allocating remaining height to chat.
+    # Tk pack allocates in order: a growing history must never push the input
+    # below the screen on compact or high-DPI Windows laptops.
+    footer.pack_forget()
+    writer.pack_forget()
+    entry_prompt.pack_forget()
+    card.pack_forget()
+    footer.pack(side="bottom",fill="x")
+    writer.pack(side="bottom",fill="x",pady=(0,7))
+    entry_prompt.pack(side="bottom",anchor="w",pady=(0,4))
+    card.pack(fill="both",expand=True,pady=(0,7))
 
     def tick():
         if getattr(app,"_closing",False):
