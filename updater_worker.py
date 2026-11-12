@@ -65,8 +65,9 @@ def record_status(folder: Path, status: str, version: str, reason: str="") -> No
             f.flush();os.fsync(f.fileno())
         os.replace(name,folder/"update-status.json")
     finally:
-        if os.path.exists(name):
-            os.unlink(name)
+        # The owner requested no automatic deletion, including incomplete
+        # status files. Keep the staged file for manual inspection.
+        pass
 
 
 def apply_update(installer: Path, application: Path, expected_version: str,

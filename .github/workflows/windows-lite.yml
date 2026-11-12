@@ -6,6 +6,8 @@ on:
       - jarvis_nova.spec
       - bootstrap.py
       - text_only_main.py
+      - manual_file_deletion.py
+      - tests/test_manual_file_deletion.py
       - intuitive_start.py
       - tests/test_intuitive_start.py
       - tests/test_text_model_controls.py

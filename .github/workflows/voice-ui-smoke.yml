@@ -41,7 +41,7 @@ jobs:
       - name: Minimal text and image test dependencies (NO microphone or TTS)
         run: python -m pip install numpy pillow
       - name: Compile text-only and developer modules
-        run: python -m compileall -q intuitive_start.py semantic_intent_router.py bootstrap.py main.py text_only_main.py text_only_ui.py text_only_overlay.py screenshot_review.py local_chat.py freellm_client.py code_gui.py code_agent.py code_workspace.py code_project_engine.py code_languages.py code_checks.py roblox_world_builder.py roblox_asset_pipeline.py viral_studio.py viral_studio_ui.py filmcraft_bridge.py filmcraft_installer.py
+        run: python -m compileall -q manual_file_deletion.py intuitive_start.py semantic_intent_router.py bootstrap.py main.py text_only_main.py text_only_ui.py text_only_overlay.py screenshot_review.py local_chat.py freellm_client.py code_gui.py code_agent.py code_workspace.py code_project_engine.py code_languages.py code_checks.py roblox_world_builder.py roblox_asset_pipeline.py viral_studio.py viral_studio_ui.py filmcraft_bridge.py filmcraft_installer.py
       - name: Three complete text UI, coding and security regression passes
         shell: pwsh
         run: |
@@ -62,6 +62,7 @@ jobs:
                                  'test_text_model_controls.py',
                                  'test_intuitive_start.py',
                                  'test_chat_first_intent.py',
+                                 'test_manual_file_deletion.py',
                                  'test_semantic_intent_router.py',
                                  'test_screenshot_review.py',
                                  'test_popular_edits.py',
