@@ -167,6 +167,27 @@ class ViralTests(unittest.TestCase):
                 ViralStudioError,r'Текст на экране: недопустимая длина.*кадр 1, длина 101'):
             validate_brief(invalid)
 
+    def test_ai_ending_schema_is_bounded_and_editorially_shortened(self):
+        from viral_studio import _short_ai_ending, validate_brief
+        from dataclasses import replace
+        prop=SCENARIO_JSON_SCHEMA["properties"]["call_to_action"]
+        self.assertEqual(prop["maxLength"],160)
+        self.assertEqual(prop["minLength"],5)
+        self.assertEqual(SCENARIO_JSON_SCHEMA["properties"]["title"]["maxLength"],120)
+        self.assertEqual(SCENARIO_JSON_SCHEMA["properties"]["script"]["minLength"],100)
+        self.assertEqual(
+            _short_ai_ending("Напиши своё мнение? "+("А"*180)),
+            "Напиши своё мнение?")
+        self.assertLessEqual(len(_short_ai_ending("Сохрани и покажи результат " * 20)),160)
+        self.assertEqual(_short_ai_ending("Напиши мнение?"),"Напиши мнение?")
+        with self.assertRaises(ViralStudioError):
+            _short_ai_ending("")
+        with self.assertRaises(ViralStudioError):
+            _short_ai_ending(123)
+        authored=replace(template_brief("Рецепт"),call_to_action="М"*201)
+        with self.assertRaises(ViralStudioError):
+            validate_brief(authored)
+
     def test_invalid_real_qwen_draft_is_revised_instead_of_silent_template(self):
         from video_scenario_autonomy import create_checked_scenario
         from viral_studio import RejectedScenarioDraft

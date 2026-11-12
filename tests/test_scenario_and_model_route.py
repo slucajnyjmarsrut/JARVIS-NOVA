@@ -90,6 +90,17 @@ class AutonomousScenarioTests(TestCase):
         self.assertIn("Qwen",note)
         self.assertEqual(brief.generator,"локальная Qwen3-VL")
 
+    def test_duplicate_feedback_names_the_actual_scene_roles(self):
+        candidate=replace(quick_brief("салат"),
+                          generator="локальная Qwen3-VL")
+        shots=list(candidate.shots)
+        shots[2]=replace(shots[2],caption=shots[0].caption,
+                         film=shots[1].film)
+        verdict=assess_scenario(replace(candidate,shots=tuple(shots)))
+        self.assertFalse(verdict.passed)
+        self.assertIn("Повторяются подписи кадров (hook=action)",verdict.issues)
+        self.assertIn("Повторяются инструкции для съёмки (setup=action)",verdict.issues)
+
     def test_revision_contains_rejected_ai_shots_not_just_generic_feedback(self):
         original=replace(quick_brief("minecraft"),generator="локальная Qwen3-VL")
         repeated=replace(original,shots=(

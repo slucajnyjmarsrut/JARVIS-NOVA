@@ -35,12 +35,26 @@ def assess_scenario(brief: Brief) -> ScenarioAssessment:
         issues.append("Мало кадров для завязки, развития и финала.")
     if len(brief.script)<85:
         issues.append("Сценарий недостаточно подробный.")
+    roles=("hook","setup","action","result","ending")
+    def duplicate_pairs(values):
+        first={}
+        repeated=[]
+        for index,value in enumerate(values):
+            if value in first:
+                original=first[value]
+                name=lambda idx: roles[idx] if idx<len(roles) else str(idx+1)
+                repeated.append(name(original)+"="+name(index))
+            else:
+                first[value]=index
+        return ", ".join(repeated[:4])
     captions=[s.caption.casefold().strip() for s in brief.shots]
-    if len(set(captions))<len(captions):
-        issues.append("Повторяются подписи кадров.")
+    same_captions=duplicate_pairs(captions)
+    if same_captions:
+        issues.append("Повторяются подписи кадров ("+same_captions+").")
     films=[re.sub(r"\s+"," ",s.film.casefold()).strip() for s in brief.shots]
-    if len(set(films))<len(films):
-        issues.append("Повторяются инструкции для съёмки.")
+    same_films=duplicate_pairs(films)
+    if same_films:
+        issues.append("Повторяются инструкции для съёмки ("+same_films+").")
     # Match word stems, not literal Russian inflections. For example,
     # "рабочего" and "рабочем", "компьютерного" and "компьютера"
     # describe the same subject. Require a word-boundary match; do not

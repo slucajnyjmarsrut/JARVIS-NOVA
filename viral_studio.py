@@ -63,9 +63,9 @@ _SCENE_GUIDANCE = (
 SCENARIO_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "title": {"type": "string"},
-        "hook": {"type": "string"},
-        "script": {"type": "string"},
+        "title": {"type": "string", "minLength": 5, "maxLength": 120},
+        "hook": {"type": "string", "minLength": 5, "maxLength": 200},
+        "script": {"type": "string", "minLength": 100, "maxLength": 2200},
         "scenes": {
             "type": "object",
             "properties": {
@@ -75,7 +75,7 @@ SCENARIO_JSON_SCHEMA = {
             "required": list(_SCENE_ROLES),
             "additionalProperties": False,
         },
-        "call_to_action": {"type": "string"},
+        "call_to_action": {"type": "string", "minLength": 5, "maxLength": 160},
     },
     "required": ["title", "hook", "script", "scenes", "call_to_action"],
     "additionalProperties": False,
@@ -224,6 +224,34 @@ def _short_ai_caption(value, *, limit=68) -> str:
     return excerpt.strip().rstrip(',;:')
 
 
+def _short_ai_ending(value, *, limit=160) -> str:
+    """Editorially bound only AI-written endings; don't invent a new CTA.
+
+    Model instructions and JSON grammar also cap the text. If a known
+    provider disregards the limit, keep its first complete sentence when
+    available; otherwise cut on a word boundary, never accepting empty text.
+    User-authored briefs remain unchanged and strictly validated.
+    """
+    if not isinstance(value,str):
+        raise ViralStudioError('Финал должен быть строкой')
+    text=re.sub(r'\s+',' ',value).strip()
+    if not text:
+        raise ViralStudioError('Пустой финал')
+    if len(text)<=limit:
+        return text
+    # Preserve an AI-written complete question/sentence when possible.
+    for match in re.finditer(r'[.!?](?=\s|$)', text[:limit+1]):
+        if match.end()>=20:
+            return text[:match.end()].strip()
+    excerpt=text[:limit+1]
+    split=excerpt.rfind(' ')
+    if split>=max(20,limit//2):
+        excerpt=excerpt[:split]
+    else:
+        excerpt=excerpt[:limit]
+    return excerpt.rstrip(' ,;:-').strip()
+
+
 def _parse_model_brief(data: dict, topic: str, research) -> Brief:
     try:
         if isinstance(data.get('scenes'), dict):
@@ -235,7 +263,8 @@ def _parse_model_brief(data: dict, topic: str, research) -> Brief:
                            _short_ai_caption(item['caption']))
                       for item in source_shots)
         brief = Brief(str(data['title']), topic, str(data['hook']), str(data['script']), shots,
-                      str(data['call_to_action']), 'локальная Qwen3-VL', tuple(research)[:10])
+                      _short_ai_ending(data['call_to_action']), 'локальная Qwen3-VL',
+                      tuple(research)[:10])
     except (KeyError, TypeError, ValueError) as exc:
         raise ViralStudioError('Локальная модель вернула неполный сценарий') from exc
     try:
@@ -318,7 +347,9 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
             + '\nПеределай конкретно повторяющиеся инструкции съёмки, '
             'сохрани тему, сюжет, правдивые детали. В каждой роли '
             'ДРУГИЕ объекты и действия; не переписывай один и тот же план '
-            'пятью фразами.\n'
+            'пятью фразами. Если тексты совпали, ЗАМЕНИ повторные кадры '
+            'на отдельные настоящие визуальные действия. '
+            'Не переписывай отвергнутые подписи дословно.\n'
         )
     prompt = (
         'Создай на русском оригинальный короткий вертикальный ролик (20–45 сек) по теме пользователя. '
@@ -335,12 +366,21 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
         'result — сравнение или доказательство; ending — итог и вопрос. '
         'У каждого film СВОЙ уникальный текст и глагол; '
         'никогда не повторяй одинаковые film или caption. '
+        'ПЯТЬ сцен показывают ПЯТЬ РАЗНЫХ кадров: '
+        'hook — уже готовый результат крупно; '
+        'setup — исходные материалы сверху; '
+        'action — руки в процессе; '
+        'result — готовый итог в другом ракурсе; '
+        'ending — обращение к зрителю. '
+        'Не повторяй «Показать готовое» или «Сними процесс» в нескольких ролях. '
         'Каждый caption — КОРОТКАЯ экранная подпись (2–7 слов, до 68 символов), '
         'без длинных пояснений, без инструкций по съёмке. '
         'Вся история — 20–45 секунд, каждый кадр — 3–9 секунд. '
         'Каждый film должен конкретно объяснять человеку, ЧТО снять; без дорогой техники. '
         'Все сцены и подписи разные, не повторяются, всего 20–45 секунд. '
-        'Текст script: не менее 100 русских символов, связный, про указанную тему. '
+        'Текст script: 100–600 русских символов, связный, про указанную тему. '
+        'Финал call_to_action: одна короткая фраза-вопрос до 120 символов, '
+        'вопрос по теме. '
         'Не используйте заглушки вроде «здесь покажи» без конкретного действия. '
         'Первая сцена — сильная зацепка в первые 3 секунды, '
         'последняя — понятный финал.\n'
