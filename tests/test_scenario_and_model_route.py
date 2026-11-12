@@ -98,8 +98,12 @@ class AutonomousScenarioTests(TestCase):
                          film=shots[1].film)
         verdict=assess_scenario(replace(candidate,shots=tuple(shots)))
         self.assertFalse(verdict.passed)
-        self.assertIn("Повторяются подписи кадров (hook=action)",verdict.issues)
-        self.assertIn("Повторяются инструкции для съёмки (setup=action)",verdict.issues)
+        self.assertTrue(any(
+            "Повторяются подписи кадров (hook=action)" in issue
+            for issue in verdict.issues),verdict.issues)
+        self.assertTrue(any(
+            "Повторяются инструкции для съёмки (setup=action)" in issue
+            for issue in verdict.issues),verdict.issues)
 
     def test_revision_contains_rejected_ai_shots_not_just_generic_feedback(self):
         original=replace(quick_brief("minecraft"),generator="локальная Qwen3-VL")
