@@ -30,9 +30,9 @@ def build_text_interface(app):
     app.hud_animate = tk.BooleanVar(master=app, value=True)
     app._nova_after_id = None
     shell = tk.Frame(app, bg=BG)
-    shell.pack(fill="both", expand=True, padx=12, pady=11)
+    shell.pack(fill="both", expand=True, padx=10, pady=7)
     header = tk.Frame(shell, bg=BG)
-    header.pack(fill="x", pady=(0, 9))
+    header.pack(fill="x", pady=(0, 5))
     title = tk.Frame(header, bg=BG)
     title.pack(side="left", expand=True, fill="x")
     _label(title, "JARVIS NOVA", fg=TEXT, size=14, bold=True).pack(anchor="w")
@@ -71,7 +71,7 @@ def build_text_interface(app):
     # Each action is a safe, explicit controller method; network/model setup
     # still requires an independent affirmative confirmation dialog.
     modelbar = tk.Frame(shell, bg=BG)
-    modelbar.pack(fill="x", pady=(0, 8))
+    modelbar.pack(fill="x", pady=(0, 4))
     app.hud_find_models = _action(
         modelbar, "НАЙТИ МОДЕЛИ", app.scan_models_on_pc, compact=True)
     app.hud_find_models.pack(side="left", padx=(0, 6))
@@ -84,7 +84,7 @@ def build_text_interface(app):
     # Screen consent and actual screenshot selection are distinct operations.
     # Granting vision does NOT silently start capturing or watching the desktop.
     screenbar = tk.Frame(shell, bg=BG)
-    screenbar.pack(fill="x", pady=(0, 8))
+    screenbar.pack(fill="x", pady=(0, 4))
     app.hud_enable_screen = _action(
         screenbar, "РАЗРЕШИТЬ ЭКРАН", app.grant_vision, compact=True)
     app.hud_enable_screen.pack(side="left", padx=(0, 6))
@@ -112,8 +112,9 @@ def build_text_interface(app):
     app.hud_model_hint.pack(fill="x", padx=11, pady=(5, 5))
     # Leave room for the task choices and the actual conversation.
     app.hud_reactor = Reactor(hub)
-    app.hud_reactor.configure(height=36)
-    app.hud_reactor.pack(fill="x", padx=7, pady=(0, 5))
+    # Keep the legacy status widget for compatibility but do not display the
+    # decorative canvas in Lite: on a 390x600 laptop it pushed text entry off
+    # the screen. Real task controls and the message box take priority.
     # Modes are now selected by chat (or by the optional F10 palette).
     app.hud_mode_buttons = {}
     card = tk.Frame(shell,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
@@ -134,7 +135,7 @@ def build_text_interface(app):
     body.pack(fill="both",expand=True,padx=9,pady=(0,8))
     app.history = tk.Text(body,wrap="word",bg=SURFACE_ALT,fg=TEXT,
         insertbackground=CYAN,selectbackground=CYAN_DIM,relief="flat",
-        font=("Segoe UI",10),padx=9,pady=7,state="disabled",undo=False,bd=0,height=8)
+        font=("Segoe UI",10),padx=9,pady=7,state="disabled",undo=False,bd=0,height=4)
     app.history.pack(side="left",fill="both",expand=True)
     bar = ttk.Scrollbar(body,orient="vertical",command=app.history.yview)
     bar.pack(side="right",fill="y")
@@ -203,7 +204,9 @@ def build_text_interface(app):
                      (" · ЭКРАН: ДОСТУП" if vision else " · ЭКРАН: ЗАПРЕТ"),
                 fg=AMBER if (allowed or vision) else MUTED)
             app.hud_footer.configure(text="●  "+label,fg=color)
-            if app.hud_animate.get() or not app.hud_reactor._painted or app.hud_reactor._mode!=mode:
+            if app.hud_reactor.winfo_manager() and (
+                    app.hud_animate.get() or not app.hud_reactor._painted
+                    or app.hud_reactor._mode!=mode):
                 app.hud_reactor.paint(mode,None)
             app._nova_after_id=app.after(190,tick)
         except tk.TclError:
