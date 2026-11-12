@@ -623,8 +623,11 @@ class ViralStudioWindow(tk.Toplevel):
                     note="Тренды недоступны ("+str(exc)[:100]+").\n"
             if self.stop_event.is_set():
                 return
+            def show_stage(message):
+                self._notify(lambda msg=message:self.status.set(msg))
             brief,message,assessment,attempts=create_checked_scenario(
-                topic,trends,mode=mode,audience=self.profile,runtime=runtime)
+                topic,trends,mode=mode,audience=self.profile,runtime=runtime,
+                progress=show_stage)
             if self.stop_event.is_set():
                 return
             project=_home()/("video_"+datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -742,11 +745,16 @@ class ViralStudioWindow(tk.Toplevel):
                     brief=template_brief(topic)
                     note="Локальная модель недоступна; использован шаблон: "+str(exc)[:120]
             else:
+                def show_stage(message):
+                    self._notify(lambda msg=message:self.status.set(msg))
                 brief,note,assessment,attempts=create_checked_scenario(
-                    topic,mode=mode,audience=self.profile,runtime=runtime)
+                    topic,mode=mode,audience=self.profile,runtime=runtime,
+                    progress=show_stage)
             if self.stop_event.is_set():return
             project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
             save_brief(brief,project)
+            self._notify(lambda:self.status.set(
+                "Монтаж 2/4: ищу лицензированные исходники…"))
             candidates=retry_readonly('commons_search',
                                       lambda:search_free_video(topic,consent=True),
                                       cancel=self.stop_event)
@@ -757,12 +765,16 @@ class ViralStudioWindow(tk.Toplevel):
                     'Готовый сценарий сохранён: '+str(project))
             if self.stop_event.is_set():return
             source=project/'licensed_media'
+            self._notify(lambda:self.status.set(
+                "Монтаж 3/4: загружаю выбранные видео после разрешения…"))
             download_free_video(candidates[:len(brief.shots)],source,
                                 consent=True,cancel=self.stop_event)
             if self.stop_event.is_set():return
             options=({'pro_options':pro,
                       'semantic_describe':ViralStudioWindow._semantic_describer(self,pro)}
                      if pro is not None else {})
+            self._notify(lambda:self.status.set(
+                "Монтаж 4/4: собираю MP4 и проверяю всё вместе…"))
             outcome=analyze_and_recut(
                 brief,source,project,profile=self.profile,
                 filename='JARVIS_NOVA_AUTO_VERTICAL.mp4',cancel=self.stop_event,
