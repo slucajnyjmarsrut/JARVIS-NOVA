@@ -141,6 +141,10 @@ class TextModeTests(unittest.TestCase):
                     self.assertTrue(app.hud_model_hint.winfo_exists())
                     # Primary entry remains usable on a compact laptop display.
                     app.geometry("390x600")
+                    # WM Configure is a real event, not an idle geometry job.
+                    # update_idletasks alone still reports the prior 448x735
+                    # child layout while the root already says 390x600.
+                    app.update()
                     app.update_idletasks()
                     self.assertTrue(app.entry.winfo_ismapped())
                     self.assertGreater(app.entry.winfo_height(),12)
