@@ -117,7 +117,7 @@ class TimelineWindow(tk.Toplevel):
         commands=ttk.Frame(left,style="Studio.TFrame")
         commands.pack(fill="x",pady=(5,5))
         for name,action in (
-            ("+ Клип",self.add_videos),("− Удалить",self.remove),
+            ("+ Клип",self.add_videos),("− Исключить клип",self.remove),
             ("↑",lambda:self.move(-1)),("↓",lambda:self.move(1)),
             ("Копия",self.duplicate),("Разделить",self.split),
         ):

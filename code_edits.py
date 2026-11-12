@@ -133,7 +133,9 @@ def write_reviewed_update(plan: ChangePlan, root: Path, expected_sha: dict[str,s
         except Exception:
             for target in reversed(changed):
                 old=dict(previous)[target]
-                if old is None:target.unlink(missing_ok=True)
-                else:target.write_bytes(old)
+                if old is None:
+                    # Newly created files remain for the owner's manual review.
+                    continue
+                target.write_bytes(old)
             raise
     return [str(base/_relative_path(item.path,plan.language)) for item in plan.files]

@@ -129,13 +129,9 @@ def apply_update(installer: Path, application: Path, expected_version: str,
             record_status(folder,"installed",expected_version)
         except OSError:
             pass
-        # Never accumulate multi-gigabyte installers after a successful
-        # upgrade. This file was owned by the update cache and is no longer
-        # needed once Inno Setup has returned and the version was verified.
-        try:
-            installer.unlink()
-        except OSError:
-            pass  # Windows antivirus or an open handle may delay cleanup.
+        # The user explicitly forbids automatic file deletion. Retain even
+        # downloaded installer caches for manual removal in Explorer.
+        # We never silently erase a downloaded executable.
         if relaunch is None:
             def relaunch(exe):
                 flags=getattr(subprocess,"DETACHED_PROCESS",0)|getattr(subprocess,"CREATE_NEW_PROCESS_GROUP",0)

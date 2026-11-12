@@ -357,7 +357,7 @@ class MultitrackWindow(tk.Toplevel):
                 self._last_busy_second=seconds
                 self.status.set(
                     f"FFmpeg обрабатывает слои: {seconds} с. "
-                    "При ошибке/остановке частичный MP4 удаляется. "
+                    "При ошибке/остановке частичный MP4 остаётся для ручной проверки. "
                     "Нажми ОТМЕНА, чтобы остановить.")
         self.after(130,self._pump)
 
@@ -383,7 +383,7 @@ class MultitrackWindow(tk.Toplevel):
     def cancel(self):
         if self._busy:
             self._cancel.set()
-            self.status.set("Остановка FFmpeg. Недописанный MP4 будет удалён.")
+            self.status.set("Остановка FFmpeg. Недописанный MP4 сохраняется для ручной проверки.")
         else:
             self.status.set("Сейчас нет активного монтажа.")
 
