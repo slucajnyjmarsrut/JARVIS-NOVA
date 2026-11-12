@@ -252,6 +252,42 @@ def _short_ai_ending(value, *, limit=160) -> str:
     return excerpt.rstrip(' ,;:-').strip()
 
 
+def _distinct_qwen_captions(shots: tuple[Shot, ...]) -> tuple[tuple[Shot, ...], bool]:
+    """Deduplicate ONLY AI overlays using AI-written film descriptions.
+
+    Nothing is invented: text is lifted from the corresponding Qwen-written
+    camera instruction and shortened for display. If a unique, meaningful
+    alternative does not exist, leave the duplicate to fail the QA gate.
+    Original user-authored project data is NEVER passed through this helper.
+    """
+    used=set()
+    revised=[]
+    modified=False
+    for shot in shots:
+        label=shot.caption
+        key=re.sub(r'\s+',' ',label.casefold()).strip()
+        if key in used:
+            film=re.sub(r'\s+',' ',shot.film).strip()
+            # First try a complete camera sentence, then distinctive suffixes.
+            fragments=[film,*re.split(r'[.!?;]+\s*',film)]
+            if len(film)>90:
+                fragments.append(film[-90:].lstrip())
+            for fragment in fragments:
+                fragment=fragment.strip(' \t.,;:!?')
+                if len(fragment)<13:
+                    continue
+                candidate=_short_ai_caption(fragment,limit=68)
+                alternative=candidate.casefold().strip()
+                if alternative and alternative not in used:
+                    label=candidate
+                    key=alternative
+                    modified=True
+                    break
+        used.add(key)
+        revised.append(Shot(shot.seconds,shot.film,label))
+    return tuple(revised),modified
+
+
 def _parse_model_brief(data: dict, topic: str, research) -> Brief:
     try:
         if isinstance(data.get('scenes'), dict):
@@ -262,8 +298,11 @@ def _parse_model_brief(data: dict, topic: str, research) -> Brief:
         shots = tuple(Shot(float(item['seconds']), str(item['film']),
                            _short_ai_caption(item['caption']))
                       for item in source_shots)
+        shots,edited=_distinct_qwen_captions(shots)
         brief = Brief(str(data['title']), topic, str(data['hook']), str(data['script']), shots,
-                      _short_ai_ending(data['call_to_action']), 'локальная Qwen3-VL',
+                      _short_ai_ending(data['call_to_action']),
+                      ('локальная Qwen3-VL (подписи взяты из инструкций Qwen)'
+                       if edited else 'локальная Qwen3-VL'),
                       tuple(research)[:10])
     except (KeyError, TypeError, ValueError) as exc:
         raise ViralStudioError('Локальная модель вернула неполный сценарий') from exc

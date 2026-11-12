@@ -188,6 +188,62 @@ class ViralTests(unittest.TestCase):
         with self.assertRaises(ViralStudioError):
             validate_brief(authored)
 
+    def test_repeated_ai_captions_get_unique_qwen_authored_alternatives(self):
+        from viral_studio import _parse_model_brief
+        from video_scenario_autonomy import assess_scenario
+        source={
+            'title':'Рабочее место без проводов',
+            'hook':'Как быстро убрать беспорядок?',
+            'script':('Сначала видны провода на рабочем месте. '
+                      'Подготавливаю органайзер, аккуратно размещаю кабели '
+                      'за столом. Показываю результат с другого ракурса '
+                      'и предлагаю повторить простой приём дома.'),
+            'scenes':{
+                'hook':{'seconds':3,'film':'Крупно снять спутанные провода на столе',
+                        'caption':'Было неудобно'},
+                'setup':{'seconds':6,'film':'Показать коробку с крепежом и липучками',
+                         'caption':'Что понадобится'},
+                'action':{'seconds':6,'film':'Закрепить липучки вокруг проводов',
+                          'caption':'Было неудобно'},
+                'result':{'seconds':6,'film':'Сравнить стол до и после уборки кабелей',
+                          'caption':'Что понадобится'},
+                'ending':{'seconds':6,'film':'Показать порядок и пригласить повторить',
+                          'caption':'Было неудобно'},
+            },
+            'call_to_action':'Как организованы кабели у тебя?',
+        }
+        brief=_parse_model_brief(source,"Порядок на рабочем месте",())
+        self.assertIn("подписи взяты из инструкций Qwen",brief.generator)
+        self.assertEqual(brief.shots[0].caption,"Было неудобно")
+        self.assertEqual(brief.shots[1].caption,"Что понадобится")
+        self.assertEqual(brief.shots[2].caption,
+                         "Закрепить липучки вокруг проводов")
+        self.assertEqual(len(set(s.caption for s in brief.shots)),5)
+        self.assertTrue(assess_scenario(brief).passed)
+        self.assertEqual(brief.shots[2].film,
+                         source['scenes']['action']['film'])
+
+    def test_repeated_ai_film_is_still_rejected_as_unverified(self):
+        from viral_studio import _parse_model_brief
+        from video_scenario_autonomy import assess_scenario
+        raw={
+            'title':'Рисуем простой дом',
+            'hook':'Смотри на результат',
+            'script':'Рисуем дом в несколько этапов и показываем результат. '
+                     'Затем добавляем крышу и окна. Под конец предлагаем '
+                     'поделиться своим рисунком и повторить приём.',
+            'scenes':{role:{
+                'seconds':3 if i==0 else 6,
+                'film':'Повтори одну и ту же съёмку',
+                'caption':'Повторяй'}
+                for i,role in enumerate(('hook','setup','action','result','ending'))},
+            'call_to_action':'А вы повторили рисунок?',
+        }
+        brief=_parse_model_brief(raw,"Как нарисовать дом",())
+        self.assertFalse(assess_scenario(brief).passed)
+        self.assertTrue(any("Повторяются инструкции" in issue
+                            for issue in assess_scenario(brief).issues))
+
     def test_invalid_real_qwen_draft_is_revised_instead_of_silent_template(self):
         from video_scenario_autonomy import create_checked_scenario
         from viral_studio import RejectedScenarioDraft

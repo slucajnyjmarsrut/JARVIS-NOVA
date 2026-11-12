@@ -130,9 +130,14 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
             if not report.passed:
                 previous=brief
             if report.passed:
+                editorial=(
+                    " Повторные подписи заменены на фразы из инструкций "
+                    "съёмки, написанных той же Qwen."
+                    if "подписи взяты из инструкций Qwen" in brief.generator else "")
                 return brief,(
                     f"Сценарий локальной Qwen; формальная проверка пройдена "
                     f"за {attempt+1} попытку(и). Требуется оценить факты и сюжет."
+                    +editorial
                 ),report,attempt+1
         except RejectedScenarioDraft as exc:
             # A parseable but invalid AI response can be revised, not accepted.
