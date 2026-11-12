@@ -76,10 +76,14 @@ def is_delete_request(text: str) -> bool:
 def is_folder_request(text: str) -> bool:
     if not isinstance(text,str):
         return False
+    phrase=text.casefold().replace("ё","е")
+    # "Отправь ФАЙЛ в корзину" selects a file, not the bin/directory.
+    if re.search(r"\b(?:файл\w*|фото\w*|видео|документ\w*)\b",phrase):
+        return False
     return bool(re.search(
         r"\b(?:папк\w*|директори\w*|каталог\w*|"
         r"диск\w*|корзин\w*|загрузк\w*|проект\w*)\b",
-        text.casefold().replace("ё","е")))
+        phrase))
 
 
 def reveal_in_explorer(path, *, launcher=None, platform=None) -> Path:
