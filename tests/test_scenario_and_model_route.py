@@ -125,6 +125,37 @@ class AutonomousScenarioTests(TestCase):
         self.assertIn("Повторяются инструкции",calls[1][1]["quality_feedback"])
         self.assertEqual(result.shots,original.shots)
 
+    def test_workflow_reports_each_step_retries_and_honest_fallback(self):
+        updates=[]
+        original=replace(quick_brief("minecraft"),generator="локальная Qwen3-VL")
+        bad=replace(original,shots=(original.shots[0],original.shots[0],
+                                    *original.shots[2:]))
+        generated=[]
+        def model(topic,trends,**kwargs):
+            generated.append(kwargs)
+            return bad if len(generated)==1 else original
+        brief,note,review,attempts=create_checked_scenario(
+            "minecraft",mode="deep",ai_generator=model,
+            progress=updates.append)
+        self.assertTrue(review.passed)
+        self.assertEqual(attempts,2)
+        self.assertIn("План:",updates[0])
+        self.assertTrue(any("не прошёл проверку" in msg for msg in updates))
+        self.assertTrue(any("формальную проверку" in msg for msg in updates))
+        self.assertTrue(brief.generator.startswith("локальная Qwen"))
+
+        messages=[]
+        template,note,_,_ = create_checked_scenario(
+            "minecraft",mode="deep",
+            ai_generator=lambda *args,**kwargs: (_ for _ in ()).throw(
+                RuntimeError("No Qwen installed")),
+            progress=messages.append)
+        self.assertIn("БЕЗ нейросети",note)
+        self.assertTrue(any("БЕЗ нейросети" in msg for msg in messages))
+        self.assertNotIn("Qwen",template.generator)
+        with self.assertRaises(ValueError):
+            create_checked_scenario("minecraft",mode="fast",progress=3)
+
     def test_qwen_shortens_hook_timing_without_rewriting_ai_scenes(self):
         original=quick_brief("minecraft")
         slow=replace(
