@@ -12,7 +12,7 @@ import tempfile
 from code_workspace import ChangePlan, ProposedFile, WorkspaceError, validate_plan, parse_model_proposal
 from code_languages import SUPPORTED
 from code_autopilot import AutopilotResult, Attempt, _stage
-from code_checks import check_project
+from code_checks import check_project, _static_check
 
 PHASES=(
     ("Architecture and project foundations",
@@ -29,6 +29,46 @@ PHASES=(
      "with assertions of real behavior. Do not fabricate test outcomes; "
      "test execution requires an explicit sandbox permission."),
 )
+def describe_execution_plan(task: str, language: str) -> str:
+    """Four simple milestones, visible before any generated file is staged."""
+    if language not in SUPPORTED or not isinstance(task,str) or not 1<=len(task.strip())<=3000:
+        raise WorkspaceError("Недопустимая задача или язык")
+    return ("ПЛАН JARVIS: "+task.strip()[:140]+"\n"
+            "1/4 Архитектура → проверка исходников первого этапа\n"
+            "2/4 Реализация → проверка файлов второго этапа\n"
+            "3/4 Тесты и документация → проверка файлов третьего этапа\n"
+            "4/4 Совместная проверка ВСЕГО проекта и исправление ошибок\n"
+            "Код не выполняется на Windows. Функциональные Python-тесты "
+            "в Docker требуют отдельного разрешения. "
+            "Файлы сохраняются только после подтверждения.")
+
+
+def _check_phase(plan: ChangePlan, language: str) -> dict:
+    """Verify a provisional checkpoint in a disposable folder, no code execution.
+
+    Python: whole-checkpoint AST parsing. Other languages: safe static format
+    parsing of each file; real compiler/structure checks run again at step 4.
+    A partial result NEVER asserts complete functional correctness.
+    """
+    with tempfile.TemporaryDirectory(prefix="jarvis-phase-review-") as tmp:
+        root=Path(tmp)
+        _stage(plan,root)
+        if language=="python":
+            result=check_project(language,root)
+            if result["status"]=="skipped":
+                return {"status":"partial","reason":
+                        "Пока нет исходников: проверен только формат документов."}
+            return result
+        try:
+            for file in plan.files:
+                _static_check(root/file.path)
+        except Exception as exc:
+            return {"status":"failed","reason":
+                    (type(exc).__name__+": "+str(exc))[:450]}
+        return {"status":"partial","reason":
+                "Форматы проверены; компиляция всех файлов — на шаге 4."}
+
+
 def _context(files: dict[str,str],max_chars=18000):
     items=[]
     size=0
@@ -53,11 +93,19 @@ def _merge(files:dict[str,str],proposal:ChangePlan,language):
     return plan,merged
 
 def build_complete_project(task: str,language: str,*,generator,
-                           workspace:Path|None=None,repair_rounds=2):
+                           workspace:Path|None=None,repair_rounds=2,
+                           stepwise=False,progress=None):
     if language not in SUPPORTED or not isinstance(task,str) or not 1<=len(task.strip())<=3000:
         raise WorkspaceError("Недопустимый язык или задача проекта")
     if type(repair_rounds) is not int or not 0<=repair_rounds<=3:
         raise WorkspaceError("Недопустимое число проверок")
+    if type(stepwise) is not bool or (progress is not None and not callable(progress)):
+        raise WorkspaceError("Неверные параметры поэтапной проверки")
+    def notify(message):
+        if progress is not None:
+            progress(str(message)[:400])
+    if stepwise:
+        notify(describe_execution_plan(task,language))
     files={}
     expected={}
     if workspace is not None:
@@ -71,6 +119,8 @@ def build_complete_project(task: str,language: str,*,generator,
     new_files={}
     attempts=[]
     for number,(phase,goal) in enumerate(PHASES,1):
+        if stepwise:
+            notify(f"Шаг {number}/4: подготавливаю {phase}…")
         prompt=(f"BUILD PROJECT. Language: {language}. User requirements:\n{task}\n"
             f"Phase {number}/3: {phase}.\n{goal}\n"
             "You may update existing files, but always return the ENTIRE "
@@ -88,6 +138,11 @@ def build_complete_project(task: str,language: str,*,generator,
             try:
                 plan=parse_model_proposal(raw)
                 updated,merged=_merge(files,plan,language)
+                checkpoint=_check_phase(updated,language) if stepwise else None
+                if checkpoint is not None and checkpoint["status"]=="failed":
+                    raise WorkspaceError(
+                        "Проверка этапа не пройдена: "
+                        +str(checkpoint.get("reason",""))[:360])
                 break
             except WorkspaceError as exc:
                 if phase_retry==2:
@@ -102,9 +157,18 @@ def build_complete_project(task: str,language: str,*,generator,
         full,files=updated,merged
         for item in plan.files:
             new_files[item.path]=item.content
-        attempts.append(Attempt(number,"drafted",
-            phase+" — "+str(len(plan.files))+" generated/updated files"
+        status=checkpoint["status"] if stepwise else "drafted"
+        message=(checkpoint.get("reason","") if stepwise else phase)
+        attempts.append(Attempt(number,status,
+            f"Шаг {number}/4: "+phase+" — "+
+            str(len(plan.files))+" файлов; "+message[:250]
             +(f" (повторов: {phase_retry})" if phase_retry else "")))
+        if stepwise:
+            notify(f"Шаг {number}/4: "+
+                   ("проверен" if status=="passed" else "частично проверен")
+                   +"; "+message[:160])
+    if stepwise:
+        notify("Шаг 4/4: проверяю все файлы вместе…")
     with tempfile.TemporaryDirectory(prefix="jarvis-full-project-") as temp:
         root=Path(temp)
         _stage(full,root)
@@ -137,7 +201,13 @@ def build_complete_project(task: str,language: str,*,generator,
             result=check_project(language,root)
             attempts.append(Attempt(3+repair,result["status"],
                 "Recheck: "+str(result.get("reason") or result.get("diagnostics") or "")[-2000:]))
-    if attempts[-1].status=="drafted":
+    if stepwise:
+        attempts.append(Attempt(len(attempts)+1,result["status"],
+            "Шаг 4/4: весь проект — "+
+            str(result.get("reason") or result.get("diagnostics") or "")[-1800:]))
+        notify("Шаг 4/4: общий результат — "+result["status"]+
+               ". Это проверка синтаксиса/структуры, не запуск программы.")
+    elif attempts[-1].status=="drafted":
         attempts.append(Attempt(len(attempts)+1,result["status"],
             str(result.get("reason") or result.get("diagnostics") or "")[-2000:]))
     if result["status"] not in ("passed","partial"):
@@ -153,7 +223,8 @@ def build_complete_project(task: str,language: str,*,generator,
 def build_one_shot_project(task: str, language: str, *, generator,
                            workspace: Path | None = None,
                            allow_sandbox_tests=False,
-                           test_runner=None, max_test_repairs=5):
+                           test_runner=None, max_test_repairs=5,
+                           stepwise=False,progress=None):
     """One generation request performs implementation, static checks, and,
     after one opt-in, isolated tests/repairs. Never installs or executes on host.
 
@@ -161,7 +232,16 @@ def build_one_shot_project(task: str, language: str, *, generator,
     languages receive syntax/structural verification, never 'tested' claims.
     """
     initial=build_complete_project(
-        task,language,generator=generator,workspace=workspace,repair_rounds=3)
+        task,language,generator=generator,workspace=workspace,repair_rounds=3,
+        stepwise=stepwise,progress=progress)
+    if stepwise and progress is not None:
+        if (allow_sandbox_tests is True and language=="python"
+                and workspace is None and initial.verified):
+            progress("Дополнительный шаг: независимые функциональные "
+                     "Python-тесты в Docker после разрешения пользователя.")
+        else:
+            progress("Функциональные тесты не запускались: выполнены "
+                     "только безопасные статические проверки.")
     if (not initial.verified or language!="python" or workspace is not None
             or allow_sandbox_tests is not True):
         return initial
