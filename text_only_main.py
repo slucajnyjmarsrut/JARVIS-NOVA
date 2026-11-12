@@ -195,9 +195,13 @@ class TextJarvis(BaseJarvis):
                 self.download_local_model()
             return
         self._local_model_ready=True
-        messagebox.showinfo("Локальная модель готова",
-            "Qwen установлена и может отвечать без интернета. "
-            "Модель находится в "+str(self.runtime.config.model_store),parent=self)
+        messagebox.showinfo("Qwen готова к работе",
+            "Qwen подключена и может отвечать без интернета.\n\n"
+            "Что дальше: напиши вопрос в чат или нажми "
+            "«РАЗОБРАТЬ СНИМОК», чтобы выбрать изображение. "
+            "Доступ к экрану не включается автоматически.\n\n"
+            "Модель находится в "+str(self.runtime.config.model_store),
+            parent=self)
 
     def scan_models_on_pc(self, *, confirmed=False):
         """Explicit read-only inventory across all fixed local Windows disks."""
@@ -290,8 +294,10 @@ class TextJarvis(BaseJarvis):
                     self._local_model_ready=True
                     self.hud_engine.configure(
                         text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
-                    self.reply("Найдена и проверена готовая Qwen. "
-                               "Теперь JARVIS использует её из прежней папки.")
+                    self.reply("Нашёл и подключил Qwen из прежней папки. "
+                               "Можно задавать вопросы в чате или нажать "
+                               "«РАЗОБРАТЬ СНИМОК», чтобы выбрать файл. "
+                               "Экран не просматривается без разрешения.")
                 elif event=="error":
                     self._model_scan_busy=False
                     self.reply("Поиск или подключение модели не завершены: "+str(data))
@@ -353,7 +359,7 @@ class TextJarvis(BaseJarvis):
                         self.status.set(
                             "Qwen: "+f"{bytes_received/1_000_000_000:.2f} ГБ; "
                             +f"нет новых данных {idle//60} мин. "
-                            "Отмена через ⚙ → «Отменить загрузку Qwen».")
+                            "Отмена через видимую кнопку «СТОП QWEN».")
                     else:
                         self.status.set("Скачивание локальной Qwen: "+
                             f"{bytes_received/1_000_000_000:.2f} ГБ загружено")
@@ -365,9 +371,11 @@ class TextJarvis(BaseJarvis):
                     self._model_download_busy=False
                     self._local_model_ready=True
                     self.hud_engine.configure(text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
-                    self.log("Система","Локальная Qwen установлена и проверена. "
-                             "Теперь чат и анализ экрана работают офлайн.")
-                    self.status.set("Локальная Qwen установлена и готова")
+                    self.log("Система","Qwen установлена и проверена. "
+                             "Следующий шаг: напиши вопрос JARVIS или нажми "
+                             "«РАЗОБРАТЬ СНИМОК», чтобы выбрать изображение. "
+                             "Для прямого просмотра экрана нужно отдельное разрешение.")
+                    self.status.set("Qwen готова · Напиши вопрос или выбери снимок")
                 elif kind=="error":
                     self._model_download_busy=False
                     self._local_model_ready=False

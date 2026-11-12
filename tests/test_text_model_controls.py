@@ -24,6 +24,26 @@ class VisibleModelControlsTests(unittest.TestCase):
         app.check_models.assert_called_once_with(offer_scan=False)
         app.download_local_model.assert_not_called()
 
+    def test_after_qwen_download_guide_has_next_step_without_screen_capture(self):
+        import queue
+        from text_only_main import TextJarvis
+        app=mock.Mock()
+        app._closing=False
+        app._model_download_busy=True
+        app._local_model_ready=False
+        app._model_download_queue=queue.Queue()
+        app._model_download_queue.put(("done",None))
+        TextJarvis._pump_model_download(app)
+        self.assertTrue(app._local_model_ready)
+        self.assertFalse(app._model_download_busy)
+        message=app.log.call_args.args[1]
+        self.assertIn("РАЗОБРАТЬ СНИМОК",message)
+        self.assertIn("отдельное разрешение",message)
+        app.grant_vision.assert_not_called()
+        app.request_trimodal.assert_not_called()
+        app.open_screenshot_review.assert_not_called()
+        app.download_local_model.assert_not_called()
+
     def test_real_tk_header_and_model_buttons_are_packed_and_clickable(self):
         try:
             root=tk.Tk()
