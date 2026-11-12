@@ -64,7 +64,7 @@ class CodeWindow(tk.Toplevel):
         ttk.Checkbutton(frame,text='Изменять существующий проект (с резервными копиями и подтверждением)',
                         variable=self.modify_existing).pack(anchor='w',pady=(7,0))
         ttk.Checkbutton(frame,
-            text='По шагам: план → создание и проверка каждого этапа → общая проверка',
+            text='Полный проект: план → шаги с проверкой → итоговая проверка',
             variable=self.full_project).pack(anchor='w')
         ttk.Label(frame,text='Задача (для генерации) или имя проекта (для шаблона)').pack(anchor='w',pady=(8,0))
         ttk.Entry(frame,textvariable=self.task).pack(fill='x')
