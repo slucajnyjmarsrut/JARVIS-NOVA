@@ -119,7 +119,7 @@ class PostMontageReviewTests(unittest.TestCase):
                              "PERSONAL NOTES - DO NOT OVERWRITE")
             self.assertEqual(tuple(root.glob("*.mp4")),())
 
-    def test_json_report_is_rolled_back_if_markdown_creation_fails(self):
+    def test_partial_json_report_is_retained_if_markdown_creation_fails(self):
         with TemporaryDirectory() as td:
             root=Path(td)
             original_open=Path.open
@@ -133,8 +133,8 @@ class PostMontageReviewTests(unittest.TestCase):
                         renderer=renderer_factory([]))
             self.assertTrue((root/"JARVIS_NOVA_AUTO_VERTICAL.mp4").exists(),
                             "Rendered MP4 must never be removed on report failure")
-            self.assertFalse((root/"POST_MONTAGE_REVIEW.json").exists(),
-                             "Partial JSON report must be rolled back")
+            self.assertTrue((root/"POST_MONTAGE_REVIEW.json").exists(),
+                            "JARVIS must never delete even a partial report")
             self.assertFalse((root/"POST_MONTAGE_REVIEW_RU.md").exists())
 
     def test_late_appearing_user_markdown_remains_untouched_on_report_conflict(self):
@@ -153,7 +153,7 @@ class PostMontageReviewTests(unittest.TestCase):
                     analyze_and_recut(template_brief("Лес"),root,root,
                         renderer=renderer_factory([]))
             self.assertEqual((root/"POST_MONTAGE_REVIEW_RU.md").read_text("utf-8"),marker)
-            self.assertFalse((root/"POST_MONTAGE_REVIEW.json").exists())
+            self.assertTrue((root/"POST_MONTAGE_REVIEW.json").exists())
             self.assertTrue((root/"JARVIS_NOVA_AUTO_VERTICAL.mp4").exists())
 
     def test_media_audit_penalizes_problematic_clip_and_speaks_about_it(self):
