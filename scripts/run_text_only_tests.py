@@ -48,6 +48,7 @@ TESTS=(
        "test_longform_video.py",
        "test_longform_autoexport.py",
        "test_one_shot_project.py",
+       "test_code_stepwise_project.py",
        "test_smart_highlight_selection.py",
        "test_audio_highlight_signal.py",
        "test_semantic_video_selection.py",

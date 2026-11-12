@@ -74,6 +74,7 @@ jobs:
                                  'test_self_development.py',
                                  'test_freellm_client.py',
                                  'test_code_*.py',
+                                 'test_one_shot_project.py',
                                  'test_universal_code_engine.py',
                                  'test_roblox_world_builder.py',
                                  'test_roblox_asset_pipeline.py',
