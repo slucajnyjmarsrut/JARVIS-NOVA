@@ -528,6 +528,11 @@ class TextJarvis(BaseJarvis):
                        "или название своей игры — никаких кнопок не требуется.")
         elif kind == "open_desktop":
             self.execute_plan(parse_local("открой " + value))
+        elif kind == "code_start":
+            self.open_code_assistant("python", "", auto_start=False)
+            self.reply("Открыл редактор кода. Выбери папку и опиши, "
+                       "какую программу хочешь получить. "
+                       "Запись файлов и запуск потребуют подтверждения.")
         elif kind == "code":
             if not value:
                 self.reply("Назови один язык программирования — например "

@@ -139,6 +139,14 @@ class TextModeTests(unittest.TestCase):
                         x.winfo_manager()=="grid"
                         for x in app.hud_quick_actions.values()))
                     self.assertTrue(app.hud_model_hint.winfo_exists())
+                    # Primary entry remains usable on a compact laptop display.
+                    app.geometry("390x600")
+                    app.update_idletasks()
+                    self.assertTrue(app.entry.winfo_ismapped())
+                    self.assertGreater(app.entry.winfo_height(),12)
+                    self.assertLessEqual(
+                        app.entry.winfo_rooty()+app.entry.winfo_height(),
+                        app.winfo_rooty()+app.winfo_height()+2)
                     self.assertEqual(app.hud_find_models.winfo_manager(),"pack")
                     self.assertEqual(app.hud_download_qwen.winfo_manager(),"pack")
                     self.assertEqual(app.hud_enable_screen.winfo_manager(),"pack")

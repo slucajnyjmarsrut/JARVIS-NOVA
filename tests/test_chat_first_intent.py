@@ -34,6 +34,34 @@ class ChatFirstTests(unittest.TestCase):
                 self.assertIsNotNone(intent)
                 self.assertEqual((intent.kind,intent.value),(kind,value))
 
+    def test_visible_action_names_are_recognized_as_safe_requests(self):
+        phrases={
+            "создать видео":"studio",
+            "смонтировать видео":"timeline",
+            "написать код":"code_start",
+            "разобрать снимок":"screenshot",
+        }
+        for phrase,kind in phrases.items():
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertEqual(intent.kind,kind)
+                app=Mock()
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                app.execute_plan.assert_not_called()
+                app.grant_vision.assert_not_called()
+                app.grant_control.assert_not_called()
+                app.download_local_model.assert_not_called()
+                if kind=="code_start":
+                    app.open_code_assistant.assert_called_once_with(
+                        "python", "", auto_start=False)
+                elif kind=="studio":
+                    app.open_viral_studio.assert_called_once_with(
+                        stage="audience")
+                elif kind=="timeline":
+                    app.open_timeline.assert_called_once_with()
+                elif kind=="screenshot":
+                    app.open_screenshot_review.assert_called_once_with()
+
     def test_short_ambiguous_requests_get_choices_not_actions(self):
         prompts={
             "видео":"clarify_video",

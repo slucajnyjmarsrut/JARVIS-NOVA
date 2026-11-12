@@ -146,7 +146,9 @@ def route_chat_request(text: str) -> ChatIntent | None:
                  "фриллм": "freellm", "только команды": "none"}
         return ChatIntent("engine", names[ai.group(1)])
 
-    if s in {"хочу показать скриншот", "хочу отправить скриншот",
+    if s in {"разобрать снимок", "разбери снимок",
+             "разобрать скриншот", "посмотреть скриншот",
+             "хочу показать скриншот", "хочу отправить скриншот",
              "открой разметку скриншота", "проверить скриншот",
              "хочу проверить скриншот"}:
         return ChatIntent("screenshot")
@@ -165,7 +167,9 @@ def route_chat_request(text: str) -> ChatIntent | None:
         r"(?: (?:про|о|об|на тему) (.{2,100}))?",s)
     if scenario:
         return ChatIntent("scenario",scenario.group(1) or "")
-    if s in {"открой видеостудию", "открой видео студию", "хочу видеостудию",
+    if s in {"создать видео", "создай видео", "сделать видео",
+             "создать ролик", "хочу создавать видео",
+             "открой видеостудию", "открой видео студию", "хочу видеостудию",
              "открой студию видео"}:
         return ChatIntent("studio")
     if s in {"хочу создать аккаунт youtube", "хочу зарегистрироваться в tiktok",
@@ -192,7 +196,8 @@ def route_chat_request(text: str) -> ChatIntent | None:
             and re.search(r"\b15\s*(?:минут|мин)\b",s)
             and re.search(r"(?:длинн|двухчас|2\s*час|из .*видео|из .*клип|из .*запис)",s)):
         return ChatIntent("longform","900")
-    if s in {"открой таймлайн", "открой видеоредактор",
+    if s in {"смонтировать", "смонтировать видео", "смонтировать ролик",
+             "открой таймлайн", "открой видеоредактор",
              "хочу смонтировать видео", "хочу сделать монтаж",
              "хочу монтировать видео", "хочу монтаж видео",
              "хочу отредактировать видео", "хочу обрезать видео",
@@ -208,6 +213,12 @@ def route_chat_request(text: str) -> ChatIntent | None:
              "открой игровой режим"}:
         return ChatIntent("gaming")
 
+    # A short task label opens the editor only: do not auto-generate an
+    # unspecified project and never silently write files.
+    if s in {"написать код", "напиши код", "программировать",
+             "написать программу", "создать программу",
+             "хочу написать код", "хочу писать программу"}:
+        return ChatIntent("code_start")
     # Default language for an unspecified software project is Python.
     code_starts = (
         "хочу написать ", "хочу создать ", "хочу сделать ",
