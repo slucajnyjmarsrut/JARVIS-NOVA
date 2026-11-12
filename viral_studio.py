@@ -241,7 +241,7 @@ def _short_ai_ending(value, *, limit=160) -> str:
         return text
     # Preserve an AI-written complete question/sentence when possible.
     for match in re.finditer(r'[.!?](?=\s|$)', text[:limit+1]):
-        if match.end()>=20:
+        if match.end()>=12:
             return text[:match.end()].strip()
     excerpt=text[:limit+1]
     split=excerpt.rfind(' ')
