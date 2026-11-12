@@ -5,6 +5,7 @@ import unittest
 from intuitive_start import (
     QUICK_ACTIONS, CLARIFICATIONS, initial_guidance, model_hint, clarification,
 )
+from chat_first_intent import route_chat_request
 
 
 class IntuitiveStartTests(unittest.TestCase):
@@ -25,6 +26,9 @@ class IntuitiveStartTests(unittest.TestCase):
         self.assertNotIn("подключена",model_hint(False,True))
         self.assertIn("подтверди",initial_guidance(False))
         self.assertIn("Enter",initial_guidance(True))
+        # The very first suggested sentence must work even with no Qwen.
+        self.assertIn("хочу создать видео",initial_guidance(False))
+        self.assertEqual(route_chat_request("хочу создать видео").kind,"studio")
 
     def test_ambiguous_requests_ask_questions_not_claim_execution(self):
         self.assertEqual(
