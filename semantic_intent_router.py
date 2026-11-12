@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 from chat_first_intent import ChatIntent
+from manual_file_deletion import is_delete_request
 
 KINDS = frozenset({
     "help", "settings", "updates", "studio", "timeline", "multitrack",
@@ -75,6 +76,8 @@ SENSITIVE_WORDS = {
 def suitable_for_semantic_routing(text: str) -> bool:
     """Reject quotes, negations, hypothetical examples and long requests."""
     if not isinstance(text, str) or not 1 <= len(text.strip()) <= MAX_REQUEST_CHARS:
+        return False
+    if is_delete_request(text):
         return False
     if any(ch in text for ch in ('\n', '\r', '"', "'", chr(96), '«', '»', '{', '}')):
         return False

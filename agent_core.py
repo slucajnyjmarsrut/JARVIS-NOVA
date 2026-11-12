@@ -11,6 +11,7 @@ import ipaddress
 from urllib.parse import urlsplit
 import urllib.request
 from self_improve import BLOCKED, safe_name
+from manual_file_deletion import is_delete_request, user_explanation
 
 
 @dataclass(frozen=True)
@@ -74,6 +75,8 @@ def strip_wake(text: str) -> str:
     return WAKE.sub("", text).strip()
 
 def parse_local(text: str) -> Plan:
+    if is_delete_request(text):
+        return Plan(answer=user_explanation())
     s = normalize(strip_wake(text))
     if not s: return Plan(question="Что сделать?")
     if NEGATE.search(s): return Plan(answer="Хорошо, не выполняю.")
@@ -240,6 +243,8 @@ def request_json(endpoint: str, payload: dict, api_key: str="", timeout: int=25)
 
 def ask_ai_for_plan(text: str, engine: str="none", model: str="") -> Plan:
     """Optional AI suggestions. Every AI action requires user confirmation."""
+    if is_delete_request(text):
+        return Plan(answer=user_explanation())
     if engine == "none": return parse_local(text)
     system = ("Ты планировщик JARVIS для Windows. Верни ТОЛЬКО JSON с ключом "
       "steps (до 3 действий) или question. Допустимые kind: open_app, minimize, "

@@ -490,6 +490,8 @@ class TextJarvis(BaseJarvis):
         elif kind in ("clarify_video", "clarify_model",
                       "clarify_screen", "clarify_code"):
             self.reply(clarification(kind))
+        elif kind == "manual_delete":
+            self.show_manual_delete_location(folder=value=="folder")
         elif kind == "clarify_workflow":
             self.reply("Могу работать по плану: сначала разделить задачу, "
                        "затем проверять каждый этап и проверить всё вместе. "

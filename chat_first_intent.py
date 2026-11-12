@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import re
 
 from code_languages import ALIASES
+from manual_file_deletion import is_delete_request, is_folder_request
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,10 @@ def route_chat_request(text: str) -> ChatIntent | None:
     if not isinstance(text, str) or not 1 <= len(text) <= 1200:
         return None
     s = _normal(text)
+    # Deletion requests are handled before coding, models or OS commands.
+    # This intent can ONLY reveal an item in Explorer via a user file picker.
+    if is_delete_request(text):
+        return ChatIntent("manual_delete","folder" if is_folder_request(text) else "file")
     # Asking how to begin is help, even when it begins with "не" or "как".
     # Do not weaken negation guards for any other command.
     if s in {"не понимаю что делать", "как начать", "как пользоваться",

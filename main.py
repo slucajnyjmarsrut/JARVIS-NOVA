@@ -34,6 +34,10 @@ from nova_window_state import load_layout, save_layout, safe_window_geometry
 from nova_overlay import NovaOverlay, dock_geometry
 from overlay_commands import overlay_intent, preview_line
 from debate_mode import debate_command
+from manual_file_deletion import (
+    is_delete_request, is_folder_request, choose_for_manual_deletion,
+    user_explanation,
+)
 
 class Jarvis(tk.Tk):
     def __init__(self):
@@ -910,9 +914,28 @@ class Jarvis(tk.Tk):
             self.modes=ModeManager()
         self.reply(report.say())
 
+    def show_manual_delete_location(self, *, folder=False):
+        """User-operated file chooser, then Explorer only; no deletion."""
+        self.reply(user_explanation())
+        try:
+            selected=choose_for_manual_deletion(
+                parent=self, folder=folder)
+        except (OSError,ValueError) as exc:
+            self.reply("Не удалось открыть расположение: "+str(exc)[:200])
+            return
+        if selected is None:
+            self.reply("Выбор отменён. Ничего не удалено.")
+        else:
+            self.reply("Открыл расположение выбранного объекта в "
+                       "Проводнике. Ничего не удалено; решение за тобой.")
+
     def handle_text(self,text):
         if self._closing:return
         self.log("Вы",text)
+        if is_delete_request(text):
+            self.show_manual_delete_location(
+                folder=is_folder_request(text))
+            return
         debate=debate_command(text)
         if debate is not None:
             if debate=="status":
