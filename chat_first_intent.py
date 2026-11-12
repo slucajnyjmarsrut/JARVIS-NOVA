@@ -53,6 +53,11 @@ def route_chat_request(text: str) -> ChatIntent | None:
     if not isinstance(text, str) or not 1 <= len(text) <= 1200:
         return None
     s = _normal(text)
+    # Asking how to begin is help, even when it begins with "не" or "как".
+    # Do not weaken negation guards for any other command.
+    if s in {"не понимаю что делать", "как начать", "как пользоваться",
+             "с чего начать"}:
+        return ChatIntent("help")
     if not s or re.match(
         r"^(?:не |я не |не надо |не нужно |если |допустим |"
         r"расскажи |объясни |как |почему |зачем |когда |"
