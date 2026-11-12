@@ -369,7 +369,7 @@ class UpdaterTests(unittest.TestCase):
                 release_lookup=lambda:rel,wait=wait,installer_run=install,
                 relaunch=relaunch,folder=folder))
             self.assertEqual(order,["wait","install","launch"])
-            self.assertFalse(candidate.exists(), "Successful update must remove large cached EXE")
+            self.assertTrue(candidate.exists(), "JARVIS must retain update EXE for manual removal")
             self.assertEqual(json.loads((folder/"update-status.json").read_text())["status"],"installed")
 
     def test_failed_update_restarts_old_app_even_if_status_log_disk_full(self):
@@ -412,7 +412,8 @@ class UpdaterTests(unittest.TestCase):
                     installer_run=install,relaunch=lambda exe:calls.append(exe),
                     folder=folder))
             self.assertEqual(len(calls),1)
-            self.assertFalse(candidate.exists())
+            self.assertTrue(candidate.exists(),
+                            "Cached installer stays until user deletes it manually")
 
     def test_worker_fails_closed_for_version_change_bad_hash_or_exit_timeout(self):
         blob=b"MZ"+b"x"*120_000
