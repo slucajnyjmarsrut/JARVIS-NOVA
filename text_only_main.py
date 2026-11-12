@@ -490,6 +490,12 @@ class TextJarvis(BaseJarvis):
         elif kind in ("clarify_video", "clarify_model",
                       "clarify_screen", "clarify_code"):
             self.reply(clarification(kind))
+        elif kind == "clarify_workflow":
+            self.reply("Могу работать по плану: сначала разделить задачу, "
+                       "затем проверять каждый этап и проверить всё вместе. "
+                       "Для кода напиши «сделай по шагам программу ...». "
+                       "Для видео: «создай сценарий по шагам про ...». "
+                       "Неизвестные действия и доступ к ПК не запускаю автоматически.")
         elif kind == "settings":
             self.reply("Открываю настройки JARVIS.")
             self.show_settings_menu()
@@ -536,6 +542,22 @@ class TextJarvis(BaseJarvis):
                        "или название своей игры — никаких кнопок не требуется.")
         elif kind == "open_desktop":
             self.execute_plan(parse_local("открой " + value))
+        elif kind == "code_steps":
+            self.open_code_assistant("python", value, auto_start=False)
+            self.reply("Открыл редактор кода с задачей. Здесь виден план "
+                       "из этапов; нажми «Составить план → выполнить и проверить». "
+                       "Каждый этап проверяется отдельно, затем весь проект "
+                       "вместе. Запись в твою папку — только после подтверждения.")
+        elif kind == "scenario_steps":
+            studio=self.open_viral_studio(stage="script")
+            if studio is not None and value:
+                studio.topic.set(value)
+                studio.scenario_mode.set(
+                    "deep" if self._local_model_ready else "fast")
+            self.reply("Открыл сценарий: этапы — тема, пять разных кадров, "
+                       "проверка каждого кадра, затем проверка всего сценария. "
+                       "Запусти генерацию в студии после проверки темы. "
+                       "Без Qwen используется честно обозначенный шаблон.")
         elif kind == "code_start":
             self.open_code_assistant("python", "", auto_start=False)
             self.reply("Открыл редактор кода. Выбери папку и опиши, "

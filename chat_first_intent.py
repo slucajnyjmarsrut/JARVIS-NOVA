@@ -63,6 +63,31 @@ def route_chat_request(text: str) -> ChatIntent | None:
         r"расскажи |объясни |как |почему |зачем |когда |"
         r"можно ли |возможно ли |что будет |а если )", s):
         return None
+    # User-driven stepwise workflows: these only OPEN existing editors and
+    # never execute generated code, alter files, or grant permissions.
+    if s in {"по шагам", "работай по шагам", "составь план",
+             "раздели задачу на части", "разбей задачу на шаги",
+             "сделай план и проверяй каждый шаг"}:
+        return ChatIntent("clarify_workflow")
+    code_steps=re.fullmatch(
+        r"(?:сделай|создай|напиши|подготовь) "
+        r"(?:по шагам|по этапам|по частям) "
+        r"((?:программу|приложение|код|сайт|бота|игру|скрипт|"
+        r"проект|api) .{3,220})",s)
+    if code_steps:
+        return ChatIntent("code_steps",code_steps.group(1))
+    code_steps=re.fullmatch(
+        r"(?:сделай|создай|напиши|подготовь) "
+        r"(?:программу|приложение|код|сайт|бота|игру|скрипт|проект) "
+        r"(?:по шагам|по этапам|по частям)(?: (.{3,220}))?",s)
+    if code_steps:
+        return ChatIntent("code_steps",code_steps.group(1) or s)
+    video_steps=re.fullmatch(
+        r"(?:создай|сделай|подготовь) (?:видео|ролик|сценарий) "
+        r"(?:по шагам|по этапам|по частям)"
+        r"(?: (?:на тему|про|о) (.{2,160}))?",s)
+    if video_steps:
+        return ChatIntent("scenario_steps",video_steps.group(1) or "")
     # Brief, ambiguous requests require a question, not an arbitrary action.
     # No consent, downloads, screenshots or file writes from these phrases.
     if s in {"видео", "ролик", "видеомонтаж", "хочу видео", "хочу ролик"}:

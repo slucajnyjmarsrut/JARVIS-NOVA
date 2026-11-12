@@ -62,6 +62,40 @@ class ChatFirstTests(unittest.TestCase):
                 elif kind=="screenshot":
                     app.open_screenshot_review.assert_called_once_with()
 
+    def test_stepwise_requests_open_reviewable_editors_not_system_tools(self):
+        examples={
+            "разбей задачу на шаги":("clarify_workflow",""),
+            "сделай по шагам программу калькулятора":(
+                "code_steps","программу калькулятора"),
+            "напиши сайт по этапам для фотостудии":(
+                "code_steps","для фотостудии"),
+            "создай сценарий по шагам про Minecraft":(
+                "scenario_steps","minecraft"),
+        }
+        for text,(kind,value) in examples.items():
+            with self.subTest(text=text):
+                intent=route_chat_request(text)
+                self.assertEqual((intent.kind,intent.value),(kind,value))
+                app=Mock()
+                app._local_model_ready=True
+                TextJarvis._dispatch_chat_first(app,intent,text)
+                app.execute_plan.assert_not_called()
+                app.grant_vision.assert_not_called()
+                app.grant_control.assert_not_called()
+                app.download_local_model.assert_not_called()
+                if kind=="code_steps":
+                    app.open_code_assistant.assert_called_once_with(
+                        "python",value,auto_start=False)
+                elif kind=="scenario_steps":
+                    app.open_viral_studio.assert_called_once_with(stage="script")
+                    app.open_viral_studio.return_value.generate.assert_not_called()
+                else:
+                    app.open_code_assistant.assert_not_called()
+        for negated in ("не делай по шагам программу",
+                        "как сделать программу по шагам",
+                        "если составишь план"):
+            self.assertIsNone(route_chat_request(negated))
+
     def test_short_ambiguous_requests_get_choices_not_actions(self):
         prompts={
             "видео":"clarify_video",
