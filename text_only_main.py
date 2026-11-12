@@ -27,6 +27,7 @@ from freellm_client import FreeLLMChat, FreeLLMError
 from update_preferences import load_preferences
 from model_storage import active_model_store, local_model_available, installed_edition
 from chat_first_intent import route_chat_request
+from intuitive_start import initial_guidance, clarification
 from semantic_intent_router import (
     classify_local_intent, suitable_for_semantic_routing,
 )
@@ -149,13 +150,10 @@ class TextJarvis(BaseJarvis):
         self.hud_settings_button.configure(command=self.show_settings_menu)
         self.bind("<F10>", self.show_settings_menu)
 
-        self.log("Система", "JARVIS готов. Напиши, что нужно сделать, и нажми Enter.")
-        if not self._local_model_ready:
-            self.log("Система",
-                     "Qwen3-VL для чата пока не подключена. "
-                     "Нажми «НАЙТИ МОДЕЛИ», если она уже скачана, "
-                     "или «СКАЧАТЬ QWEN» для загрузки после подтверждения. "
-                     "Qwen Coder для программирования — отдельная модель.")
+        # First-use guidance is in the chat and on the screen: no blocking
+        # modal and no need to remember a special command.
+        self.log("Система", "JARVIS готов. "+
+                 initial_guidance(self._local_model_ready))
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
@@ -429,10 +427,18 @@ class TextJarvis(BaseJarvis):
         return "break"
 
     def show_capabilities(self):
-        messagebox.showinfo("JARVIS NOVA — текст",
-            "Пиши сообщения в чате, ответы появляются только текстом.\n\n"
-            "Локальная Qwen, команды Windows, 20 языков, Roblox 3D, монтаж и "
-            "анализ экрана с подтверждением и режим спора доступны.", parent=self)
+        messagebox.showinfo(
+            "Что можно сделать в JARVIS",
+            "Выбери задачу в главном окне:\n"
+            "• СОЗДАТЬ ВИДЕО — сценарии и ролики.\n"
+            "• СМОНТИРОВАТЬ — работа с готовыми файлами.\n"
+            "• НАПИСАТЬ КОД — откроется редактор проекта.\n"
+            "• РАЗОБРАТЬ СНИМОК — выбрать скриншот с компьютера.\n\n"
+            "Можно просто написать просьбу своими словами.\n"
+            "Для беседы с Qwen и анализа изображений нужна Qwen3-VL.\n"
+            "Доступ к экрану, скачивание и запись файлов "
+            "требуют отдельного подтверждения.",
+            parent=self)
 
     def open_filmcraft(self):
         studio=self.open_viral_studio(stage="edit")
@@ -471,17 +477,11 @@ class TextJarvis(BaseJarvis):
         kind, value = intent.kind, intent.value
         self.log("Вы", text)
         if kind == "help":
-            self.reply(
-                "Просто напиши: «хочу смонтировать видео», "
-                "«хочу написать программу на Python», «хочу эдит», "
-                "«сделай 15 минут из двухчасового видео», "
-                "«хочу добавить озвучку», «давай поспорим», "
-                "«открой настройки», «проверь обновления», "
-                "«создай сценарий про Minecraft», «найди модели на всём ПК», "
-                "«хочу показать скриншот» или «открой калькулятор». "
-                "Я открою нужную функцию. Для установки, запуска кода, "
-                "доступа к экрану, сохранения файлов и публикации "
-                "по-прежнему нужно твоё подтверждение.")
+            self.reply(initial_guidance(
+                bool(getattr(self, "_local_model_ready", False))))
+        elif kind in ("clarify_video", "clarify_model",
+                      "clarify_screen", "clarify_code"):
+            self.reply(clarification(kind))
         elif kind == "settings":
             self.reply("Открываю настройки JARVIS.")
             self.show_settings_menu()

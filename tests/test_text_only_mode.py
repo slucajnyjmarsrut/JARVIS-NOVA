@@ -93,6 +93,9 @@ class TextModeTests(unittest.TestCase):
         source=inspect.getsource(build_text_interface)
         self.assertIn('app.hud_mode_buttons = {}',source)
         self.assertIn('app.hud_settings_button.pack(',source)
+        self.assertIn('app.hud_quick_actions = {}',source)
+        self.assertIn('button.grid(row=index // 2',source)
+        self.assertIn('app.hud_model_hint',source)
         self.assertIn('app.hud_find_models.pack(',source)
         self.assertIn('app.hud_download_qwen.pack(',source)
         self.assertIn('app.hud_enable_screen.pack(',source)
@@ -130,6 +133,12 @@ class TextModeTests(unittest.TestCase):
                     self.assertTrue(app.overlay.quick_entry.winfo_exists())
                     self.assertEqual(app.hud_mode_buttons,{})
                     self.assertEqual(app.hud_settings_button.winfo_manager(),"pack")
+                    self.assertEqual(set(app.hud_quick_actions),
+                                     {"video","edit","code","image"})
+                    self.assertTrue(all(
+                        x.winfo_manager()=="grid"
+                        for x in app.hud_quick_actions.values()))
+                    self.assertTrue(app.hud_model_hint.winfo_exists())
                     self.assertEqual(app.hud_find_models.winfo_manager(),"pack")
                     self.assertEqual(app.hud_download_qwen.winfo_manager(),"pack")
                     self.assertEqual(app.hud_enable_screen.winfo_manager(),"pack")

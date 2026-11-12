@@ -45,6 +45,8 @@ class VisibleModelControlsTests(unittest.TestCase):
                 "scan_models_on_pc", "check_models", "cancel_model_scan",
                 "cancel_local_model_download", "enter", "f9", "revoke",
                 "grant_vision", "open_screenshot_review",
+                "open_viral_studio", "open_timeline",
+                "open_code_assistant",
             ):
                 setattr(root,name,mock.Mock())
             with mock.patch("model_storage.local_model_available",
@@ -56,6 +58,22 @@ class VisibleModelControlsTests(unittest.TestCase):
                 control=getattr(root,name)
                 self.assertEqual(control.winfo_manager(),"pack",name)
                 self.assertTrue(control.winfo_exists(),name)
+            self.assertEqual(set(root.hud_quick_actions),
+                             {"video", "edit", "code", "image"})
+            for action in root.hud_quick_actions.values():
+                self.assertEqual(action.winfo_manager(),"grid")
+                self.assertTrue(action.winfo_exists())
+            root.hud_quick_actions["video"].invoke()
+            root.open_viral_studio.assert_called_once_with(stage="audience")
+            root.hud_quick_actions["edit"].invoke()
+            root.open_timeline.assert_called_once_with()
+            root.hud_quick_actions["code"].invoke()
+            root.open_code_assistant.assert_called_once_with(
+                "python", "", auto_start=False)
+            root.hud_quick_actions["image"].invoke()
+            root.open_screenshot_review.assert_called_once_with()
+            root.open_screenshot_review.reset_mock()
+            self.assertIn("Qwen не подключена",root.hud_model_hint.cget("text"))
             root.hud_settings_button.invoke()
             root.show_settings_menu.assert_called_once_with()
             root.hud_find_models.invoke()

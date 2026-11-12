@@ -34,6 +34,38 @@ class ChatFirstTests(unittest.TestCase):
                 self.assertIsNotNone(intent)
                 self.assertEqual((intent.kind,intent.value),(kind,value))
 
+    def test_short_ambiguous_requests_get_choices_not_actions(self):
+        prompts={
+            "видео":"clarify_video",
+            "Джарвис, ролик":"clarify_video",
+            "модели":"clarify_model",
+            "Qwen":"clarify_model",
+            "экран":"clarify_screen",
+            "скриншот":"clarify_screen",
+            "код":"clarify_code",
+            "программа":"clarify_code",
+            "помоги":"help",
+            "не понимаю что делать":"help",
+        }
+        for phrase,expected in prompts.items():
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertEqual(intent.kind,expected)
+                app=Mock()
+                app._local_model_ready=False
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                app.reply.assert_called_once()
+                self.assertTrue(app.reply.call_args.args[0])
+                app.execute_plan.assert_not_called()
+                app.grant_vision.assert_not_called()
+                app.grant_control.assert_not_called()
+                app.download_local_model.assert_not_called()
+                app.open_screenshot_review.assert_not_called()
+        for sentence in ("как скачать модель", "не разрешаю экран",
+                         "почему видео не работает", "если я скажу модель"):
+            with self.subTest(negative=sentence):
+                self.assertIsNone(route_chat_request(sentence))
+
     def test_screen_consent_phrasing_does_not_skip_the_confirmation(self):
         requests=(
             "зрение и экран разрешаю",

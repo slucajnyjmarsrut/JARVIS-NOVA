@@ -58,7 +58,19 @@ def route_chat_request(text: str) -> ChatIntent | None:
         r"расскажи |объясни |как |почему |зачем |когда |"
         r"можно ли |возможно ли |что будет |а если )", s):
         return None
+    # Brief, ambiguous requests require a question, not an arbitrary action.
+    # No consent, downloads, screenshots or file writes from these phrases.
+    if s in {"видео", "ролик", "видеомонтаж", "хочу видео", "хочу ролик"}:
+        return ChatIntent("clarify_video")
+    if s in {"модель", "модели", "qwen", "квен", "нейросеть"}:
+        return ChatIntent("clarify_model")
+    if s in {"экран", "зрение", "скриншот", "мой экран"}:
+        return ChatIntent("clarify_screen")
+    if s in {"код", "программа", "программирование", "хочу программу"}:
+        return ChatIntent("clarify_code")
     if s in {
+        "помоги", "начать", "с чего начать", "не понимаю что делать",
+        "что здесь делать", "как начать", "помоги начать",
         "что ты умеешь", "что ты можешь", "что умеешь", "помощь", "помоги разобраться",
         "покажи команды", "список команд", "что можно написать",
     }:
