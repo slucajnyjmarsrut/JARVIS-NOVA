@@ -19,7 +19,7 @@ from code_agent import CodeResult, request_local_model
 from code_languages import SUPPORTED, LANGUAGE_LABELS
 from code_checks import check_project
 from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
-from code_project_engine import build_one_shot_project
+from code_project_engine import build_one_shot_project, describe_execution_plan
 from code_quality_review import review_change_plan, unified_plan_diff
 from code_test_sandbox import run_python_tests
 from code_test_repair import repair_after_tests
@@ -64,12 +64,12 @@ class CodeWindow(tk.Toplevel):
         ttk.Checkbutton(frame,text='Изменять существующий проект (с резервными копиями и подтверждением)',
                         variable=self.modify_existing).pack(anchor='w',pady=(7,0))
         ttk.Checkbutton(frame,
-            text='Полный проект: архитектура → функции → тесты и документация (3 шага)',
+            text='По шагам: план → создание и проверка каждого этапа → общая проверка',
             variable=self.full_project).pack(anchor='w')
         ttk.Label(frame,text='Задача (для генерации) или имя проекта (для шаблона)').pack(anchor='w',pady=(8,0))
         ttk.Entry(frame,textvariable=self.task).pack(fill='x')
         bar=ttk.Frame(frame);bar.pack(fill='x',pady=8)
-        self.gen=ttk.Button(bar,text='Создать проект и проверить за один запуск',command=self.generate)
+        self.gen=ttk.Button(bar,text='Составить план → выполнить и проверить',command=self.generate)
         self.gen.pack(side='left')
         self.starter_button=ttk.Button(bar,text='Создать шаблон',command=self.starter)
         self.starter_button.pack(side='left',padx=6)
@@ -309,14 +309,21 @@ class CodeWindow(tk.Toplevel):
         self._coder_checked=False
         self._coder_choice=None
         self.result=None
-        self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
+        if full_project:
+            self.show(describe_execution_plan(task,language)+
+                "\n\nПодготавливаю черновик. Оригинальные файлы не меняются.\n")
+        else:
+            self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
+        def stage_progress(message):
+            self._on_ui(lambda msg=message:self._append_plan_progress(msg))
         def worker():
             try:
                 if full_project:
                     result=build_one_shot_project(
                         task,language,generator=self._model_generator,
                         workspace=root if existing else None,
-                        allow_sandbox_tests=sandbox_consent)
+                        allow_sandbox_tests=sandbox_consent,
+                        stepwise=True,progress=stage_progress)
                 else:
                     result=generate_and_check(task,language,
                         generator=self._model_generator,
@@ -335,6 +342,12 @@ class CodeWindow(tk.Toplevel):
             if self.winfo_exists():self.after(0,callback)
         except (RuntimeError,tk.TclError):
             pass
+
+    def _append_plan_progress(self, message):
+        if not self.winfo_exists():
+            return
+        self.log.insert('end',str(message)[:400]+'\n')
+        self.log.see('end')
 
     def _unblock(self):
         self._generation_busy=False
@@ -357,7 +370,9 @@ class CodeWindow(tk.Toplevel):
                'Модель проекта: '+str(model_label),
                'Инженерная рецензия (AST, без запуска): '+review.summary(),
                *findings[:30],
-               'Проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
+               'Общая статическая проверка: '+
+               ('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
+               'Отчёт по шагам: выполнено → проверено отдельно → проверено вместе.',
                'Для Python автоматические тесты идут в Docker только после согласия; '
                'проверка синтаксиса других языков не доказывает полную работоспособность.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],
