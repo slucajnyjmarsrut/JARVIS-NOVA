@@ -144,9 +144,21 @@ class TextModeTests(unittest.TestCase):
                     app.update_idletasks()
                     self.assertTrue(app.entry.winfo_ismapped())
                     self.assertGreater(app.entry.winfo_height(),12)
+                    shell=app.entry.master.master
+                    writer=app.entry.master
+                    chat=app.history.master.master
+                    footer=app.hud_access.master
+                    layout={
+                        name:(w.winfo_geometry(),w.winfo_reqheight(),
+                              w.winfo_rooty(),w.winfo_ismapped())
+                        for name,w in (("app",app),("shell",shell),
+                                       ("chat",chat),("writer",writer),
+                                       ("footer",footer),("entry",app.entry))
+                    }
                     self.assertLessEqual(
                         app.entry.winfo_rooty()+app.entry.winfo_height(),
-                        app.winfo_rooty()+app.winfo_height()+2)
+                        app.winfo_rooty()+app.winfo_height()+2,
+                        f"Compact layout widgets: {layout}")
                     self.assertEqual(app.hud_find_models.winfo_manager(),"pack")
                     self.assertEqual(app.hud_download_qwen.winfo_manager(),"pack")
                     self.assertEqual(app.hud_enable_screen.winfo_manager(),"pack")
