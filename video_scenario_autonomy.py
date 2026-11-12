@@ -79,7 +79,8 @@ def assess_scenario(brief: Brief) -> ScenarioAssessment:
 
 
 def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
-                            runtime=None, ai_generator=None, max_revisions=2):
+                            runtime=None, ai_generator=None, max_revisions=2,
+                            progress=None):
     """One call creates a reviewable script, tries local repairs, or falls back.
 
     Generator is always the local Qwen implementation (or injected fake for
@@ -88,11 +89,22 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
     """
     if mode not in ("fast","standard","deep"):
         raise ValueError("Неизвестный режим сценария.")
+    if progress is not None and not callable(progress):
+        raise ValueError("Нужен корректный обработчик прогресса.")
+    def announce(message):
+        if progress is not None:
+            progress(str(message)[:350])
+    announce("План: 1/3 сюжет и зацепка → "
+             "2/3 отдельные кадры и подписи → 3/3 итоговая проверка.")
     if type(max_revisions) is not int or not 0<=max_revisions<=2:
         raise ValueError("Не больше двух проверяемых повторов.")
     if mode=="fast":
+        announce("Шаг 1/3: составляю сюжет без нейросети…")
         brief=quick_brief(topic,trends,audience=audience)
+        announce("Шаг 2/3: готовлю кадры и подписи…")
         report=assess_scenario(brief)
+        announce("Шаг 3/3: "+("формат проверен" if report.passed else
+                 "найдены замечания: "+"; ".join(report.issues)[:150]))
         return brief,"Быстрый локальный сценарий без нейросети.",report,1
     if ai_generator is None:
         from viral_studio import create_local_brief
@@ -106,6 +118,8 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
     previous=None
     failures=[]
     for attempt in range(max_revisions+1):
+        announce("Шаг 1/3: Qwen создаёт вариант "+
+                 str(attempt+1)+"/"+str(max_revisions+1)+"…")
         try:
             call_kwargs=dict(kwargs)
             if attempt:
@@ -126,10 +140,13 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                 # keep the AI-written hook but show it within 3 seconds.
                 first=replace(brief.shots[0],seconds=3.0)
                 brief=replace(brief,shots=(first,*brief.shots[1:]))
+            announce("Шаг 2/3: проверяю кадры, подписи и длительность…")
             report=assess_scenario(brief)
             if not report.passed:
                 previous=brief
             if report.passed:
+                announce("Шаг 3/3: весь сценарий прошёл формальную проверку. "
+                         "Факты и художественный результат требуют просмотра.")
                 editorial=(
                     " Повторные подписи заменены на фразы из инструкций "
                     "съёмки, написанных той же Qwen."
@@ -146,8 +163,14 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
         except Exception as exc:
             report=ScenarioAssessment(False,(str(exc)[:160],),0.)
         if report and not report.passed:
-            failures.append(
-                f"{attempt+1}: "+("; ".join(report.issues))[:180])
+            issues="; ".join(report.issues)[:180]
+            failures.append(f"{attempt+1}: "+issues)
+            announce("Шаг 2/3: вариант "+str(attempt+1)+
+                     " не прошёл проверку: "+issues+
+                     ("; исправляю этот вариант" if attempt<max_revisions
+                      else "; попытки закончились"))
+    announce("Шаг 3/3: Qwen не прошла проверку; "
+             "вместо неё будет явно обозначенный шаблон БЕЗ нейросети.")
     fallback=quick_brief(topic,trends,audience=audience)
     fallback_report=assess_scenario(fallback)
     return fallback,(
