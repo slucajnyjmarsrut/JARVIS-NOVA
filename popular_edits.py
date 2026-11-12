@@ -177,7 +177,8 @@ def _copy_export_with_cancel(source, destination, *, cancel=None,
         raise PopularEditError("Недопустимый размер буфера экспорта.")
     while True:
         if cancel is not None and cancel.is_set():
-            raise PopularEditError("Экспорт отменён, частичный результат удалён.")
+            raise PopularEditError("Экспорт отменён, частичный результат сохранён "
+                                   "для ручной проверки.")
         piece=source.read(chunk_bytes)
         if not piece:
             return
@@ -300,10 +301,10 @@ def render_popular_edit(
                         with origin.open("rb") as src:
                             _copy_export_with_cancel(src,target,cancel=cancel)
                 if cancel is not None and cancel.is_set():
-                    raise PopularEditError("Экспорт отменён; файлы результата удалены.")
+                    raise PopularEditError("Экспорт отменён; частичные файлы оставлены "
+                                       "для ручной проверки.")
             except Exception:
-                for file in reversed(committed):
-                    file.unlink(missing_ok=True)
+                # Keep partial outputs for the user; do not delete them.
                 raise
             return metadata
     except (OSError, ValueError) as exc:

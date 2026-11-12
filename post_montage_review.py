@@ -308,9 +308,8 @@ def analyze_and_recut(
     lines+=["","## Голосовой вывод",speech,"",
             "Ни один результат не публикуется автоматически.",
             "Проверь подбор кадров, авторские права, музыку и субтитры перед публикацией."]
-    # Both reports form one logical result. If either exclusive create or
-    # write fails, remove ONLY files created in this attempt; user-owned
-    # reports and every exported MP4 must remain untouched.
+    # If one report fails, keep every created file, even if incomplete.
+    # Never delete a report or MP4 without the owner acting manually.
     created=[]
     try:
         with report_path.open("x",encoding="utf-8") as stream:
@@ -320,11 +319,7 @@ def analyze_and_recut(
             created.append(readme)
             stream.write("\n".join(lines)+"\n")
     except BaseException:
-        for new_file in reversed(created):
-            try:
-                new_file.unlink()
-            except OSError:
-                pass
+        # Retain unfinished reports; Explorer handles any manual cleanup.
         raise
     return MontageOutcome(best_path,best_brief,best_render,best_review,
                           tuple(records),readme,speech)

@@ -467,7 +467,7 @@ def render_multitrack(project: MultitrackProject, *,
             if cancel is not None and cancel.is_set():
                 raise MultitrackError("Монтаж отменён.")
         except Exception:
-            for name in reversed(committed):
-                name.unlink(missing_ok=True)
+            # Partial exports remain available for the owner to inspect.
+            # JARVIS must never delete user-visible files on failure.
             raise
         return metadata
