@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk
 from nova_ui import BG, SURFACE, SURFACE_ALT, EDGE, CYAN, CYAN_DIM
 from nova_ui import GREEN, MUTED, TEXT, AMBER, VIOLET, Reactor, _label, _action
+from intuitive_start import QUICK_ACTIONS, model_hint
 
 
 def engine_badge(engine: str, model_ready: bool):
@@ -35,9 +36,37 @@ def build_text_interface(app):
     title = tk.Frame(header, bg=BG)
     title.pack(side="left", expand=True, fill="x")
     _label(title, "JARVIS NOVA", fg=TEXT, size=14, bold=True).pack(anchor="w")
-    _label(title, "НАПИШИ, ЧТО ХОЧЕШЬ · ENTER", fg=CYAN_DIM, size=8).pack(anchor="w")
+    _label(title, "ВЫБЕРИ ЗАДАЧУ ИЛИ НАПИШИ СВОЮ", fg=CYAN_DIM, size=8).pack(anchor="w")
     app.hud_settings_button = _action(header, "⚙ НАСТРОЙКИ", app.show_settings_menu, compact=True)
     app.hud_settings_button.pack(side="right", padx=(6, 0))
+
+    # The primary tasks are visible on the very first launch. Every button
+    # opens an existing editor; it never grants permission, writes files or
+    # initiates exporting by itself. Keep two equal columns on narrow screens.
+    start = tk.Frame(shell, bg=SURFACE, highlightbackground=EDGE,
+                     highlightthickness=1)
+    start.pack(fill="x", pady=(0, 8))
+    _label(start, "С ЧЕГО НАЧАТЬ?", fg=CYAN, size=9, bold=True).pack(
+        anchor="w", padx=10, pady=(7, 4))
+    actions = tk.Frame(start, bg=SURFACE)
+    actions.pack(fill="x", padx=8, pady=(0, 8))
+    for column in range(2):
+        actions.grid_columnconfigure(column, weight=1, uniform="quick")
+    callbacks = {
+        "video": lambda: app.open_viral_studio(stage="audience"),
+        "edit": app.open_timeline,
+        "code": lambda: app.open_code_assistant(
+            "python", "", auto_start=False),
+        "image": app.open_screenshot_review,
+    }
+    app.hud_quick_actions = {}
+    for index, (label, key) in enumerate(QUICK_ACTIONS):
+        button = _action(actions, label, callbacks[key],
+                         primary=index == 0, compact=True)
+        button.grid(row=index // 2, column=index % 2, sticky="ew",
+                    padx=3, pady=3)
+        app.hud_quick_actions[key] = button
+
     # A minimal, visible setup route: users must not guess hidden exact phrases.
     # Each action is a safe, explicit controller method; network/model setup
     # still requires an independent affirmative confirmation dialog.
@@ -77,16 +106,21 @@ def build_text_interface(app):
     engine_label,engine_color=engine_badge(getattr(app,"engine","bundled"),loaded)
     app.hud_engine = _label(bar,engine_label,fg=engine_color,size=8)
     app.hud_engine.pack(side="right")
+    app.hud_model_hint = _label(
+        hub, model_hint(loaded), fg=GREEN if loaded else AMBER,
+        size=8, justify="left", anchor="w", wraplength=345)
+    app.hud_model_hint.pack(fill="x", padx=11, pady=(5, 5))
+    # Leave room for the task choices and the actual conversation.
     app.hud_reactor = Reactor(hub)
-    app.hud_reactor.configure(height=105)
-    app.hud_reactor.pack(fill="x", padx=7, pady=(0, 8))
+    app.hud_reactor.configure(height=36)
+    app.hud_reactor.pack(fill="x", padx=7, pady=(0, 5))
     # Modes are now selected by chat (or by the optional F10 palette).
     app.hud_mode_buttons = {}
     card = tk.Frame(shell,bg=SURFACE,highlightthickness=1,highlightbackground=EDGE)
     card.pack(fill="both",expand=True,pady=(0,7))
     titlebar = tk.Frame(card,bg=SURFACE)
     titlebar.pack(fill="x",padx=10,pady=(8,4))
-    _label(titlebar,"ПЕРЕПИСКА С NOVA",fg=CYAN,bold=True,size=9).pack(side="left")
+    _label(titlebar,"ДИАЛОГ С JARVIS",fg=CYAN,bold=True,size=9).pack(side="left")
     app.hud_clock = _label(titlebar,"--:--",fg=MUTED,size=9)
     app.hud_clock.pack(side="right")
     # Visible cancellation while Qwen is downloading: users should not
@@ -108,6 +142,8 @@ def build_text_interface(app):
     for role,color in (("JARVIS",CYAN),("Вы",GREEN),("Система",MUTED),("Профиль",AMBER)):
         app.history.tag_configure(role,foreground=color,font=("Segoe UI",9,"bold"))
     app.history.tag_configure("error",foreground=AMBER)
+    _label(shell, "ИЛИ НАПИШИ СВОИМИ СЛОВАМИ И НАЖМИ ENTER",
+           fg=CYAN_DIM,size=8).pack(anchor="w",pady=(0,4))
     writer = tk.Frame(shell,bg=BG)
     writer.pack(fill="x",pady=(0,7))
     app.entry = tk.Entry(writer,bg=SURFACE_ALT,fg=TEXT,insertbackground=CYAN,
@@ -151,6 +187,10 @@ def build_text_interface(app):
             engine_label,engine_color=engine_badge(
                 engine,getattr(app,"_local_model_ready",False))
             app.hud_engine.configure(text=engine_label,fg=engine_color)
+            app.hud_model_hint.configure(
+                text=model_hint(getattr(app,"_local_model_ready",False),
+                                getattr(app,"_model_download_busy",False)),
+                fg=GREEN if getattr(app,"_local_model_ready",False) else AMBER)
             selected=getattr(getattr(app,"modes",None),"mode","neutral")
             if getattr(app,"_hud_selected",None)!=selected:
                 app._hud_selected=selected
