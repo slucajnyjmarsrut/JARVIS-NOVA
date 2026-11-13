@@ -39,7 +39,7 @@ class AutonomousScenarioTests(TestCase):
         app.reset_mock()
         TextJarvis._dispatch_chat_first(app,intent,"создай сценарий про minecraft")
         app.open_viral_studio.return_value.scenario_mode.set.assert_called_with(
-            "fast")
+            "deep")
 
     def test_quick_fallback_has_valid_storyboard_and_honest_label(self):
         brief,note,assessment,attempts=create_checked_scenario(

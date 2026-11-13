@@ -610,7 +610,7 @@ class ViralStudioWindow(tk.Toplevel):
 
     def _check_writer_for_generation(self, mode):
         """AI mode must not quietly run the bundled Vision Qwen."""
-        if mode=="fast":
+        if mode in ("fast","legacy"):
             return True
         from task_ai_registry import specialist_available, specialist_help
         try:

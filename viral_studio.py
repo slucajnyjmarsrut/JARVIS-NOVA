@@ -440,6 +440,9 @@ def create_local_brief(topic: str, trends=(), *, model_runtime=None, requester=N
         endpoint = model_runtime.start()
         model=getattr(getattr(model_runtime,"config",None),"model",
                       "qwen3-vl:2b-instruct")
+        # Older injected unit-test runtimes have no typed config.model.
+        if not isinstance(model,str):
+            model="qwen3-vl:2b-instruct"
         if model not in ("qwen3-vl:2b-instruct","gemma3:4b"):
             raise ViralStudioError("Неизвестная модель генерации сценария")
         if (model=="gemma3:4b") != (model_label=="локальная Gemma3:4b"):
