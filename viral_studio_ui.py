@@ -157,6 +157,9 @@ class ViralStudioWindow(tk.Toplevel):
         self.review_button=action(2,1,"4. Проверить монтаж и оценку",self.review)
         self.auto_button=action(3,0,"АВТОМОНТАЖ · СОБРАТЬ MP4",self.auto_montage,True)
         action(3,1,"Отменить текущую работу",self.cancel)
+        self.montage_advisor_button=action(
+            4,0,"ИИ-МОНТАЖЁР · советы по кадрам",self.montage_advice)
+        action(4,1,"ИИ ПО ЗАДАЧАМ · управление",self.connect_writer)
         # Pro options and music remain available, but no crowded single row.
         pro=ttk.LabelFrame(controls,text="03 / ПРОФЕССИОНАЛЬНЫЙ МОНТАЖ",
                             style="Studio.TLabelframe",padding=(12,9))
@@ -591,6 +594,40 @@ class ViralStudioWindow(tk.Toplevel):
                                 ' роликов. Можно создавать сценарий.')
                 self._speak('Я изучил показатели канала. Теперь предложу, что снимать для этой аудитории.')
             self._notify(done)
+        self._spawn(work)
+
+    def montage_advice(self):
+        """One text-only plan from separate local Llama; never edit footage."""
+        if self.running:
+            return
+        brief=self.brief
+        if brief is None:
+            messagebox.showinfo(
+                "Сначала сценарий",
+                "Сначала создай или открой сценарий с пятью кадрами. "
+                "Затем ИИ-монтажёр отдельно предложит темп и склейки.",
+                parent=self)
+            return
+        self.status.set("Отдельная Llama3.2 готовит рекомендации по монтажу…")
+        def work():
+            from montage_specialist import advise_montage
+            try:
+                advice=advise_montage(brief)
+            except Exception as exc:
+                msg=str(exc)[:270]
+                def failed():
+                    self.status.set("ИИ-монтажёр недоступен. Открой «ИИ ПО ЗАДАЧАМ».")
+                    self._show("ИИ-монтажёр: "+msg+
+                               "\nЧтобы подключить отдельную Llama3.2, "
+                               "нажми «ИИ ПО ЗАДАЧАМ · управление».")
+                self._notify(failed)
+                return
+            def finished():
+                self._show(advice.render())
+                self.status.set(
+                    "Рекомендации готовы. Видео не менялось — "
+                    "теперь выбери исходники и подтверди монтаж.")
+            self._notify(finished)
         self._spawn(work)
 
     def connect_writer(self):
