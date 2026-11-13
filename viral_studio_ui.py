@@ -255,7 +255,8 @@ class ViralStudioWindow(tk.Toplevel):
         self.viewer.configure(yscrollcommand=bar.set)
         self.viewer.insert("end","Напиши тему и нажми «СОЗДАТЬ СЦЕНАРИЙ».\n"
                            "⚡ Быстрый режим создаёт сценарий без ожидания модели.\n"
-                           "AI-режимы доступны для более подробной версии.\n\n"
+                           "AI-режимы используют отдельную Gemma3:4b.\n"
+                           "Если её нет, нажми «ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА».\n\n"
                            "После съёмки положи кадры 01.mp4, 02.mp4... в одну папку.\n"
                            "JARVIS не публикует видео без твоего решения.")
         self.viewer.configure(state="disabled")

@@ -51,7 +51,7 @@ class TaskAIRegistryTests(unittest.TestCase):
         self.assertEqual(get_specialist("code").model,"qwen2.5-coder:7b")
         self.assertEqual(get_specialist("montage").model,"llama3.2:3b")
         self.assertEqual(get_specialist("vision").model,"qwen3-vl:2b-instruct")
-        self.assertEqual(get_specialist("chat").model,"qwen3-vl:2b-instruct")
+        self.assertEqual(get_specialist("chat").model,"qwen3:4b")
         self.assertEqual(get_specialist("scenario").backend,"ollama")
         self.assertEqual(get_specialist("vision").backend,"bundled")
         with self.assertRaises(ValueError):
@@ -208,12 +208,82 @@ class ScreenwriterSpecialistTests(unittest.TestCase):
                 with mock.patch("task_ai_hub.pull_specialist") as pull:
                     hub.connect("scenario")
                     pull.assert_not_called()
-            self.assertEqual(len(hub._buttons),3)
+            self.assertEqual(len(hub._buttons),4)
             self.assertEqual(hub._states["scenario"].get(),"не проверено")
             hub.destroy()
         finally:
             window.destroy()
 
+
+
+    def test_dedicated_chat_uses_different_weights_when_available(self):
+        from local_chat import LocalChat
+        from types import SimpleNamespace
+        class Bundled:
+            config=SimpleNamespace(model="qwen3-vl:2b-instruct")
+            def start(self):
+                raise AssertionError("Bundled vision should not start")
+        requests=[]
+        def fake(endpoint,payload):
+            requests.append((endpoint,payload))
+            return {"message":{"content":"Отдельный разговорный ответ"}}
+        chat=LocalChat(Bundled(),requester=fake)
+        chat.prefer_task_specialist(True)
+        with mock.patch("task_ai_registry.specialist_available",
+                        return_value=True):
+            answer=chat.ask("Объясни понятными словами, как устроен JARVIS")
+        self.assertIn("разговорный",answer)
+        self.assertEqual(requests[0][0],"http://127.0.0.1:11434")
+        self.assertEqual(requests[0][1]["model"],"qwen3:4b")
+        self.assertNotIn("tools",requests[0][1])
+        chat.close()
+
+    def test_vision_fallback_when_dedicated_chat_not_installed(self):
+        from local_chat import LocalChat
+        from types import SimpleNamespace
+        class Bundled:
+            config=SimpleNamespace(model="qwen3-vl:2b-instruct")
+            def start(self):
+                return "http://127.0.0.1:23333"
+        calls=[]
+        chat=LocalChat(Bundled(),requester=lambda endpoint,payload:(
+            calls.append((endpoint,payload)),
+            {"message":{"content":"Ответ встроенной Qwen"}})[1])
+        chat.prefer_task_specialist(True)
+        with mock.patch("task_ai_registry.specialist_available",
+                        return_value=False):
+            answer=chat.ask("Расскажи о своих возможностях")
+        self.assertIn("встроенной",answer)
+        self.assertEqual(calls[0][0],"http://127.0.0.1:23333")
+        self.assertEqual(calls[0][1]["model"],"qwen3-vl:2b-instruct")
+
+    def test_montage_is_separate_read_only_llama_advice(self):
+        from montage_specialist import advise_montage, MontageAdvice
+        from quick_video_brief import quick_brief
+        brief=quick_brief("видеоролик")
+        requests=[]
+        advice_data={
+            "pace":"Начни быстро, замедли финал и оставь паузу",
+            "transitions":"Используй простые плавные склейки без вспышек",
+            "shot_notes":[f"Для сцены {i} используй отдельный ракурс"
+                          for i in range(1,6)],
+        }
+        with mock.patch("montage_specialist.specialist_available",
+                        return_value=True):
+            result=advise_montage(
+                brief,requester=lambda endpoint,payload:(
+                    requests.append((endpoint,payload)),
+                    {"response":json.dumps(advice_data,ensure_ascii=False)})[1])
+        self.assertIsInstance(result,MontageAdvice)
+        self.assertEqual(result.model,"llama3.2:3b")
+        self.assertEqual(len(result.shot_notes),5)
+        self.assertIn("НЕ выполненные действия",result.render())
+        self.assertNotIn("tools",requests[0][1])
+        self.assertEqual(requests[0][1]["model"],"llama3.2:3b")
+        with mock.patch("montage_specialist.specialist_available",
+                        return_value=False):
+            with self.assertRaises(SpecialistUnavailable):
+                advise_montage(brief)
 
 if __name__=="__main__":
     unittest.main()

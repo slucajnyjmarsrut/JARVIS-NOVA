@@ -22,6 +22,7 @@ on:
       - 'video_scenario_autonomy.py'
       - 'task_ai_registry.py'
       - 'scenario_specialist.py'
+      - 'montage_specialist.py'
       - 'task_ai_hub.py'
       - 'tests/test_task_ai_specialists.py'
       - 'quick_video_brief.py'
