@@ -37,6 +37,9 @@ on:
       - model_storage.py
       - local_model_inventory.py
       - video_scenario_autonomy.py
+      - night_supervisor.py
+      - night_supervisor_ui.py
+      - tests/test_night_supervisor.py
       - task_ai_registry.py
       - scenario_specialist.py
       - montage_specialist.py

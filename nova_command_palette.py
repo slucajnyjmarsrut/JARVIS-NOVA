@@ -65,6 +65,8 @@ def entries(app, section="main"):
         ("◆", "Выбрать AI", None, "ai"),
         ("✦", "ИИ по задачам · сценарии / код / зрение / монтаж",
          app.open_task_ai_hub, None),
+        ("☾", "Автономная ночная работа · Supervisor",
+         app.open_night_supervisor, None),
         ("↔", "Режим спора — вкл/выкл", app.set_debate_mode, None),
         ("⌘", "Программирование · 20 языков", app.open_code_assistant, None),
         ("🛠", "Самоисправление · только jarvis", app.open_self_development, None),

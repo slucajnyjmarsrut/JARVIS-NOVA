@@ -482,6 +482,18 @@ class TextJarvis(BaseJarvis):
         self._task_ai_hub=TaskAIHub(self,role=role)
         return self._task_ai_hub
 
+    def open_night_supervisor(self):
+        """Open the approval-scoped overnight queue; no automatic startup."""
+        if self._closing:
+            return None
+        old = getattr(self, "_night_window", None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from night_supervisor_ui import NightSupervisorWindow
+        self._night_window = NightSupervisorWindow(self)
+        return self._night_window
+
     def open_self_development(self, task=""):
         """Guided, review-first source fixes. Installed EXE is never modified."""
         if self._closing:

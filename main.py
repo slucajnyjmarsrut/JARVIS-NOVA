@@ -739,6 +739,16 @@ class Jarvis(tk.Tk):
                          "openai":"AI: OpenAI API (ключ из окружения)",
                          "anthropic":"AI: Claude API (ключ из окружения)"}[engine])
 
+    def open_night_supervisor(self):
+        """Open explicit-consent night queue, never execute on open."""
+        old = getattr(self, "_night_window", None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from night_supervisor_ui import NightSupervisorWindow
+        self._night_window = NightSupervisorWindow(self)
+        return self._night_window
+
     def set_debate_mode(self, enabled=None):
         """Opt-in, session-only debate style for conversational models."""
         if self._closing:
