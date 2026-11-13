@@ -95,10 +95,11 @@ class Jarvis(tk.Tk):
                             on_transcript=lambda text:self.q.put(("transcript",text)))
         build_interface(self)
         self._restore_startup_permissions()
-        # Resume only an already approved and unexpired night queue.
-        # The thread validates durable consent; no model starts by default.
-        from night_autorecovery import start_if_approved
-        self.after(1200, start_if_approved)
+        # The current-user Supervisor monitors approved tasks from startup,
+        # even when the queue is initially empty. Frozen builds start a
+        # separate headless process that survives closing this UI.
+        from night_autorecovery import start_always_on
+        self.after(1200, start_always_on)
         # Keep the assistant active when the main window is minimized/hidden.
         # The small overlay is another local Tk window, not a second app.
         self.overlay=NovaOverlay(self)

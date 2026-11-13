@@ -132,10 +132,11 @@ class TextJarvis(BaseJarvis):
 
         build_text_interface(self)
         self._restore_startup_permissions()
-        # Resume only an already approved and unexpired night queue.
-        # The thread validates durable consent; no model starts by default.
-        from night_autorecovery import start_if_approved
-        self.after(1200, start_if_approved)
+        # The current-user Supervisor monitors approved tasks from startup,
+        # even when the queue is initially empty. Frozen builds start a
+        # separate headless process that survives closing this UI.
+        from night_autorecovery import start_always_on
+        self.after(1200, start_always_on)
         self.overlay = TextOverlay(self)
         mini_default = dock_geometry(self.winfo_screenwidth(), self.winfo_screenheight())
         mini = safe_window_geometry(self._ui_layout.get("mini"), mini_default,

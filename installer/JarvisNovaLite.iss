@@ -70,10 +70,14 @@ Type: filesandordirs; Name: "{app}\_internal\assets\models\ollama"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "autostartsupervisor"; Description: "Запускать фоновый JARVIS Supervisor при входе в Windows"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Icons]
 Name: "{autoprograms}\JARVIS NOVA"; Filename: "{app}\{#AppExecutable}"
 Name: "{autodesktop}\JARVIS NOVA"; Filename: "{app}\{#AppExecutable}"; Tasks: desktopicon
+; Current-user Startup folder (visible/removable via Windows Startup Apps).
+; Auto-starts ONLY the supervised, allowlisted, local task queue, not screen input.
+Name: "{userstartup}\JARVIS NOVA Supervisor"; Filename: "{app}\{#AppExecutable}"; Parameters: "--supervisor-daemon"; Tasks: autostartsupervisor
 
 [Run]
 Filename: "{app}\{#AppExecutable}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
