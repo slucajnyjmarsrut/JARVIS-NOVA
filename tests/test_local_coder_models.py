@@ -76,7 +76,7 @@ class LocalCoderModelsTests(unittest.TestCase):
             probe.assert_called_once_with(confirmed=True)
             self.assertEqual(model.call_count,2)
 
-    def test_unavailable_service_reverts_to_configured_qwen(self):
+    def test_unavailable_coder_blocks_vision_fallback(self):
         runtime=mock.Mock()
         runtime.start.return_value="http://127.0.0.1:41111"
         runtime.config.model="qwen3-vl:2b-instruct"
@@ -90,11 +90,10 @@ class LocalCoderModelsTests(unittest.TestCase):
                         side_effect=OSError("Offline")), \
              mock.patch("code_gui.request_local_model",
                         return_value="fallback") as make:
-            result=CodeWindow._model_generator(win,"Task","python")
-            self.assertEqual(result,"fallback")
-            make.assert_called_once_with(
-                "Task","python",endpoint="http://127.0.0.1:41111",
-                model="qwen3-vl:2b-instruct")
+            from code_workspace import WorkspaceError
+            with self.assertRaisesRegex(WorkspaceError,"запусти Ollama"):
+                CodeWindow._model_generator(win,"Task","python")
+            make.assert_not_called()
 
 
 if __name__=="__main__":

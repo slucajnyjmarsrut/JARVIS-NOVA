@@ -817,16 +817,22 @@ class ViralStudioWindow(tk.Toplevel):
         from video_scenario_autonomy import create_checked_scenario
         speed_selector=getattr(self,"scenario_mode",None)
         mode=speed_selector.get() if speed_selector is not None else "fast"
-        if not self._check_writer_for_generation(mode):
+        if not ViralStudioWindow._check_writer_for_generation(self,mode):
             return
         runtime=None
         self.status.set('Автомонтаж: создаю сценарий отдельной Gemma3 либо быстрым шаблоном…')
         def work():
             if mode=="legacy":
-                # Legacy editing controls use the fast, explicitly non-AI mode.
-                # Vision Qwen must never impersonate the screenplay model.
-                brief=template_brief(topic)
-                note="Быстрый шаблон БЕЗ нейросети."
+                # Legacy entrypoints attempt the genuine independent writer.
+                # If unavailable, explicitly label the non-AI template.
+                # The bundled Vision Qwen never impersonates a screenwriter.
+                try:
+                    from scenario_specialist import create_specialist_brief
+                    brief=create_specialist_brief(topic,audience=self.profile)
+                    note="Сценарий отдельного ИИ-сценариста "+brief.generator
+                except Exception as exc:
+                    brief=template_brief(topic)
+                    note="Отдельный ИИ-сценарист недоступен, использован шаблон БЕЗ ИИ: "+str(exc)[:130]
             else:
                 def show_stage(message):
                     self._notify(lambda msg=message:self.status.set(msg))

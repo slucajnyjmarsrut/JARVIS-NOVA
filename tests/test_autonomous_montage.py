@@ -63,7 +63,7 @@ class AutonomousMontageTests(TestCase):
                    speech="Проверил ролик. Повторный монтаж не нужен.")
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=source),
-                  mock.patch("viral_studio_ui.create_local_brief",return_value=brief) as ai,
+                  mock.patch("scenario_specialist.create_specialist_brief",return_value=brief) as ai,
                   mock.patch("viral_studio_ui.search_free_video",return_value=items) as search,
                   mock.patch("viral_studio_ui.download_free_video",side_effect=downloader),
                   mock.patch("viral_studio_ui.analyze_and_recut",side_effect=finishing)):
@@ -85,7 +85,7 @@ class AutonomousMontageTests(TestCase):
                 _speak=mock.Mock(),project=None,brief=None,rendered_video=None)
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=Path(t)),
-                  mock.patch("viral_studio_ui.create_local_brief",
+                  mock.patch("scenario_specialist.create_specialist_brief",
                              side_effect=RuntimeError("model not installed")),
                   mock.patch("viral_studio_ui.search_free_video",
                              return_value=[object() for _ in range(10)]),
