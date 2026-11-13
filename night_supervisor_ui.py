@@ -176,20 +176,32 @@ class NightSupervisorWindow(tk.Toplevel):
             self.status.set("Нет новых задач. Паузы нужно возобновить отдельно.")
             return
         if not messagebox.askyesno(
-            "Запустить работу на ночь?",
-            "Начать все одобренные задачи (не больше 12) в пределах "
-            "6 часов? Компьютер должен не переходить в сон. "
-            "Модели не устанавливаются. Непройденные задачи "
-            "отмечаются в журнале.\n\nЗапустить?", parent=self):
+            "Автономная ночная работа — до 6 часов",
+            "Разрешить JARVIS самостоятельно завершить ВСЮ заранее одобренную "
+            "очередь в пределах 6 часов, без дополнительных вопросов?\n\n"
+            "При нехватке ОЗУ JARVIS будет выгружать только собственные "
+            "локальные модели, ждать восстановления памяти и продолжать. "
+            "После неожиданного завершения приложения разрешение остаётся "
+            "действительным только до окончания этих 6 часов: при "
+            "следующем запуске JARVIS продолжит незавершённые этапы.\n\n"
+            "Никаких установок, удаления чужих файлов, запуска "
+            "сгенерированного кода или публикаций. "
+            "При постоянной нехватке памяти очередь безопасно остановится. "
+            "Компьютер должен быть включён и JARVIS запущен.\n\n"
+            "Разрешить автономную работу?", parent=self):
+            return
+        try:
+            self.supervisor.approve_overnight(approved=True, max_minutes=360)
+        except (SupervisorError, PermissionError, OSError) as exc:
+            messagebox.showerror("Ночной запуск заблокирован", str(exc), parent=self)
             return
         self.cancel_event.clear()
         self._busy = True
         self.status.set("Supervisor работает. Не закрывай приложение.")
         def worker():
             try:
-                count = self.supervisor.run_queue(
-                    cancel=self.cancel_event, progress=self._progress,
-                    max_minutes=360)
+                count = self.supervisor.run_approved_overnight(
+                    cancel=self.cancel_event, progress=self._progress)
                 self._ui(lambda: self.status.set(
                     f"Очередь завершена или приостановлена. Обработано задач: {count}. "
                     "Проверь журнал и содержимое папок вручную."))
@@ -209,6 +221,13 @@ class NightSupervisorWindow(tk.Toplevel):
 
     def pause(self):
         self.cancel_event.set()
+        # Explicit pause must revoke unattended startup recovery, otherwise
+        # a fresh application would unexpectedly resume the paused task.
+        try:
+            self.supervisor.stop_overnight()
+        except (OSError, SupervisorError) as exc:
+            self.status.set("Ошибка отключения автозапуска: " + str(exc)[:180])
+            return
         self.status.set(
             "Пауза запрошена. Текущий вызов модели может завершиться; "
             "после него JARVIS сохранит контрольную точку и остановится.")
@@ -243,6 +262,7 @@ class NightSupervisorWindow(tk.Toplevel):
                 parent=self):
                 return
             self.cancel_event.set()
+            self.supervisor.stop_overnight()
             self._close_when_stopped = True
             self.status.set("Жду завершения текущего вызова для сохранения "
                             "контрольной точки. Окно закроется после паузы.")
