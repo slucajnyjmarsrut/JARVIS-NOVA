@@ -42,6 +42,7 @@ on:
       - night_supervisor.py
       - night_supervisor_ui.py
       - tests/test_night_supervisor.py
+      - tests/test_text_suite_runner.py
       - task_ai_registry.py
       - scenario_specialist.py
       - montage_specialist.py
