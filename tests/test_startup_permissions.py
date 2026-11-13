@@ -12,12 +12,28 @@ from main import Jarvis
 
 
 class StartupPermissionsTests(unittest.TestCase):
-    def test_missing_file_defaults_disabled(self):
+    def test_fresh_windows_profile_has_both_permissions_by_default(self):
         with TemporaryDirectory() as tmp:
+            expected = (StartupPermissions(True, True) if os.name == "nt"
+                        else StartupPermissions())
             self.assertEqual(load_startup_permissions(Path(tmp)/"none.bin"),
-                             StartupPermissions())
+                             expected)
+            # The bare dataclass still represents fail-closed invalid data.
             self.assertFalse(StartupPermissions().control)
             self.assertFalse(StartupPermissions().vision)
+
+    @unittest.skipUnless(os.name == "nt", "Windows DPAPI only")
+    def test_saved_opt_out_overrides_both_first_run_defaults(self):
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp)/"settings.bin"
+            self.assertEqual(load_startup_permissions(path),
+                             StartupPermissions(True, True))
+            save_startup_permissions(StartupPermissions(False, False), path)
+            self.assertEqual(load_startup_permissions(path),
+                             StartupPermissions(False, False))
+            # Repeated loads after restart must never silently override opt-out.
+            self.assertEqual(load_startup_permissions(path),
+                             StartupPermissions(False, False))
 
     @unittest.skipUnless(os.name == "nt", "Windows DPAPI only")
     def test_windows_dpapi_roundtrip_and_revoke(self):
@@ -147,6 +163,54 @@ class StartupPermissionsTests(unittest.TestCase):
             Jarvis.request_trimodal(app, "screen")
             ask.assert_called_once()
             worker.assert_not_called()
+        self.assertFalse(app.executing)
+
+    def test_existing_access_does_not_show_repeat_grant_dialogs(self):
+        app = Mock()
+        app.control_allowed = True
+        app.vision_allowed = True
+        with patch("main.messagebox.askyesno") as confirm:
+            self.assertTrue(Jarvis.grant_control(app))
+            self.assertTrue(Jarvis.grant_vision(app))
+            confirm.assert_not_called()
+
+    def test_revoked_session_access_still_requires_grant_confirmation(self):
+        app = Mock()
+        app.control_allowed = False
+        app.vision_allowed = False
+        with patch("main.messagebox.askyesno", return_value=False) as confirm:
+            self.assertFalse(Jarvis.grant_control(app))
+            self.assertFalse(Jarvis.grant_vision(app))
+            self.assertEqual(confirm.call_count, 2)
+        self.assertFalse(app.control_allowed)
+        self.assertFalse(app.vision_allowed)
+
+    def test_text_only_screen_capture_uses_existing_permission(self):
+        from text_only_main import TextJarvis
+        app = Mock()
+        app._closing = False
+        app.executing = False
+        app.vision_allowed = True
+        with patch("text_only_main.simpledialog.askstring", return_value="Что на экране?"), patch(
+                "text_only_main.messagebox.askyesno") as confirm, patch(
+                "text_only_main.threading.Thread") as thread:
+            TextJarvis.request_trimodal(app, "screen")
+            confirm.assert_not_called()
+            thread.return_value.start.assert_called_once()
+        self.assertTrue(app.executing)
+
+    def test_text_only_screen_capture_without_grant_can_be_denied(self):
+        from text_only_main import TextJarvis
+        app = Mock()
+        app._closing = False
+        app.executing = False
+        app.vision_allowed = False
+        with patch("text_only_main.simpledialog.askstring", return_value="Что на экране?"), patch(
+                "text_only_main.messagebox.askyesno", return_value=False) as confirm, patch(
+                "text_only_main.threading.Thread") as thread:
+            TextJarvis.request_trimodal(app, "screen")
+            confirm.assert_called_once()
+            thread.assert_not_called()
         self.assertFalse(app.executing)
 
     def test_bad_permission_inputs_rejected(self):
