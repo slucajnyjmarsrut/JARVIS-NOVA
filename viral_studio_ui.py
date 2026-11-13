@@ -127,6 +127,16 @@ class ViralStudioWindow(tk.Toplevel):
                         variable=self.web_enabled,
                         style="Studio.TCheckbutton").grid(
             row=4,column=0,columnspan=2,sticky="w",pady=(3,1))
+        self.writer_button=ttk.Button(
+            setup,text="ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА · Gemma 3",
+            command=self.connect_writer,style="Studio.TButton")
+        self.writer_button.grid(row=5,column=0,columnspan=2,
+                                sticky="w",pady=(6,3))
+        ttk.Label(setup,
+                  text="ИИ-сценарист — отдельная модель 3,4 ГБ; "
+                       "Qwen Vision остаётся для изображений.",
+                  style="Studio.Card.TLabel").grid(
+            row=6,column=0,columnspan=2,sticky="w",pady=(0,3))
         # Actual interactive actions arranged in a grid, not a row clipping
         # off the right side of a 790px studio window.
         actions=ttk.LabelFrame(controls,text="02 / ДЕЙСТВИЯ",padding=(12,9),
@@ -583,6 +593,40 @@ class ViralStudioWindow(tk.Toplevel):
             self._notify(done)
         self._spawn(work)
 
+    def connect_writer(self):
+        """Open separate role-specific model setup; no implicit download."""
+        from task_ai_hub import TaskAIHub
+        parent=getattr(self,"parent",self)
+        hub=getattr(self,"_ai_hub",None)
+        if hub is not None and hub.winfo_exists():
+            hub.lift()
+            return hub
+        hub=TaskAIHub(parent,role="scenario")
+        self._ai_hub=hub
+        self.status.set(
+            "ИИ-сценарист Gemma3:4b подключается отдельно. "
+            "Скачивание только по твоему подтверждению.")
+        return hub
+
+    def _check_writer_for_generation(self, mode):
+        """AI mode must not quietly run the bundled Vision Qwen."""
+        if mode=="fast":
+            return True
+        from task_ai_registry import specialist_available, specialist_help
+        try:
+            ready=specialist_available("scenario")
+        except Exception:
+            ready=False
+        if not ready:
+            messagebox.showinfo(
+                "Нужен отдельный ИИ-сценарист",
+                specialist_help("scenario")+
+                "\n\nНажми «ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА» в этом окне "
+                "и подтверди скачивание. Быстрый режим работает "
+                "без модели, но не называется ИИ.",parent=self)
+            self.status.set("Gemma3:4b не подключена — сценарий не запущен.")
+        return ready
+
     def generate(self):
         from video_scenario_autonomy import create_checked_scenario
         topic=self.topic.get().strip()
@@ -610,9 +654,11 @@ class ViralStudioWindow(tk.Toplevel):
             return
         geo=self.country.get()
         mode=self.scenario_mode.get()
-        runtime=getattr(self.parent,"runtime",None)
+        if not self._check_writer_for_generation(mode):
+            return
+        runtime=None  # Dedicated Gemma is NOT the bundled Qwen runtime.
         self.status.set("⚡ Готовлю быстрый сценарий…" if mode=="fast"
-                        else "Qwen готовит сценарий · можно отменить…")
+                        else "Отдельная Gemma3 готовит сценарий · можно отменить…")
         def work():
             trends=[]
             note=""
@@ -732,18 +778,17 @@ class ViralStudioWindow(tk.Toplevel):
             return
         from video_scenario_autonomy import create_checked_scenario
         speed_selector=getattr(self,"scenario_mode",None)
-        mode=speed_selector.get() if speed_selector is not None else "legacy"
-        runtime=getattr(getattr(self,"parent",None),"runtime",None)
-        self.status.set('Автомонтаж: создаю сценарий по теме…')
+        mode=speed_selector.get() if speed_selector is not None else "fast"
+        if not self._check_writer_for_generation(mode):
+            return
+        runtime=None
+        self.status.set('Автомонтаж: создаю сценарий отдельной Gemma3 либо быстрым шаблоном…')
         def work():
             if mode=="legacy":
-                # Preserve API for earlier automation and editor integrations.
-                try:
-                    brief=create_local_brief(topic,audience=self.profile)
-                    note=""
-                except Exception as exc:
-                    brief=template_brief(topic)
-                    note="Локальная модель недоступна; использован шаблон: "+str(exc)[:120]
+                # Legacy editing controls use the fast, explicitly non-AI mode.
+                # Vision Qwen must never impersonate the screenplay model.
+                brief=template_brief(topic)
+                note="Быстрый шаблон БЕЗ нейросети."
             else:
                 def show_stage(message):
                     self._notify(lambda msg=message:self.status.set(msg))

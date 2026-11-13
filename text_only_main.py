@@ -467,6 +467,18 @@ class TextJarvis(BaseJarvis):
         self._viral_window.focus_stage(stage)
         return self._viral_window
 
+    def open_task_ai_hub(self, role="scenario"):
+        """Task AI setup is separate from bundled Qwen and opt-in only."""
+        if self._closing:
+            return None
+        old=getattr(self,"_task_ai_hub",None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from task_ai_hub import TaskAIHub
+        self._task_ai_hub=TaskAIHub(self,role=role)
+        return self._task_ai_hub
+
     def open_self_development(self, task=""):
         """Guided, review-first source fixes. Installed EXE is never modified."""
         if self._closing:
