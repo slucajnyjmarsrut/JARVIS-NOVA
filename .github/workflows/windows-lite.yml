@@ -247,7 +247,7 @@ jobs:
         shell: pwsh
         run: |
           $exe=(Resolve-Path 'dist/lite/JarvisNova/JarvisNova.exe').Path
-          foreach ($arg in @('--self-test','--video-self-test')) {
+          foreach ($arg in @('--self-test','--video-self-test','--supervisor-self-test')) {
             $result=Start-Process -FilePath $exe -ArgumentList $arg -Wait -PassThru
             if ($result.ExitCode -ne 0) { throw "Lite EXE $arg failed: $($result.ExitCode)" }
           }
@@ -278,6 +278,15 @@ jobs:
           $installDir=Join-Path $env:LOCALAPPDATA 'Programs/JarvisNova'
           $exe=Join-Path $installDir 'JarvisNova.exe'
           if (!(Test-Path $exe)) { throw 'Installed Lite executable not found' }
+          # Inno default-selected visible Startup option must register the
+          # current-user headless Supervisor without any admin privilege.
+          $startup=[Environment]::GetFolderPath('Startup')
+          $shortcut=Join-Path $startup 'JARVIS NOVA Supervisor.lnk'
+          if (!(Test-Path $shortcut)) { throw 'Headless Supervisor login shortcut missing' }
+          $link=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
+          if ($link.Arguments -ne '--supervisor-daemon') { throw 'Wrong Supervisor startup arguments' }
+          $headless=Start-Process $exe -ArgumentList '--supervisor-self-test' -PassThru -Wait
+          if ($headless.ExitCode -ne 0) { throw 'Installed headless Supervisor smoke failed' }
           $test=Start-Process $exe -ArgumentList '--self-test' -PassThru -Wait
           if ($test.ExitCode -ne 0) { throw "Installed Lite self-test failed: $($test.ExitCode)" }
           if (Test-Path (Join-Path $installDir '_internal/assets/models/ollama')) {

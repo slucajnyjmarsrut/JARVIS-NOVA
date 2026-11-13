@@ -140,6 +140,18 @@ class LiteStorageTests(unittest.TestCase):
                 self.assertEqual(len(processes),1)
                 self.assertTrue(processes[0].stopped)
 
+    def test_supervisor_autostart_is_visible_current_user_and_removable(self):
+        root=Path(__file__).resolve().parents[1]
+        for installer in ("JarvisNovaLite.iss","JarvisNova.iss"):
+            content=(root/"installer"/installer).read_text(encoding="utf-8")
+            self.assertIn('Name: "autostartsupervisor"', content)
+            self.assertIn('"{userstartup}\\JARVIS NOVA Supervisor"',content)
+            self.assertIn('Parameters: "--supervisor-daemon"',content)
+            self.assertNotIn('autostartsupervisor"; Flags: unchecked',content)
+        bootstrap=(root/"bootstrap.py").read_text(encoding="utf-8")
+        self.assertIn('JarvisNovaSupervisorDaemon',bootstrap)
+        self.assertIn('--supervisor-self-test',bootstrap)
+
     def test_package_never_embeds_weights_in_lite(self):
         root=Path(__file__).resolve().parents[1]
         source=(root/"jarvis_nova.spec").read_text(encoding="utf-8")

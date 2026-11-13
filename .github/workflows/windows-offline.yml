@@ -294,6 +294,12 @@ jobs:
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
+      - name: Verify packaged standalone Supervisor without GUI or weights
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path 'dist/JarvisNova/JarvisNova.exe').Path
+          $run=Start-Process $exe -ArgumentList '--supervisor-self-test' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw 'Packaged headless Supervisor failed' }
       - name: Measure distribution size and reject unexpected voice files
         shell: pwsh
         run: |
