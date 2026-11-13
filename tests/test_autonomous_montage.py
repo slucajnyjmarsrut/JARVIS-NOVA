@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """No cloud calls: full automatic edit GUI/voice routing and explicit consent."""
 from pathlib import Path
+from dataclasses import replace
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest import TestCase, mock
@@ -8,6 +9,7 @@ import threading
 
 from main import Jarvis
 from viral_studio import template_brief
+from quick_video_brief import quick_brief
 from viral_studio_ui import ViralStudioWindow
 
 
@@ -36,9 +38,10 @@ class AutonomousMontageTests(TestCase):
     def test_topic_alone_runs_autonomous_pipeline_without_csv_or_footage(self):
         with TemporaryDirectory() as t:
             source=Path(t)
-            brief=template_brief("лес")
+            brief=replace(quick_brief("лес"), generator="локальная Gemma3:4b")
             items=[object() for _ in brief.shots]
             app=SimpleNamespace(topic=SimpleNamespace(get=lambda:"лес"),
+                scenario_mode=SimpleNamespace(get=lambda:"standard"),
                 profile=None,status=SimpleNamespace(set=mock.Mock()),
                 stop_event=threading.Event(), _spawn=lambda work: work(),
                 _notify=lambda callback:callback(),_show=mock.Mock(),
@@ -63,12 +66,15 @@ class AutonomousMontageTests(TestCase):
                    speech="Проверил ролик. Повторный монтаж не нужен.")
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=source),
+                  mock.patch("task_ai_registry.specialist_available",return_value=True),
                   mock.patch("scenario_specialist.create_specialist_brief",return_value=brief) as ai,
                   mock.patch("viral_studio_ui.search_free_video",return_value=items) as search,
                   mock.patch("viral_studio_ui.download_free_video",side_effect=downloader),
                   mock.patch("viral_studio_ui.analyze_and_recut",side_effect=finishing)):
                 ViralStudioWindow.auto_montage(app)
-            ai.assert_called_once_with("лес",audience=None)
+            ai.assert_called_once()
+            self.assertEqual(ai.call_args.args[0],"лес")
+            self.assertEqual(app.brief.generator,"локальная Gemma3:4b")
             search.assert_called_once_with("лес",consent=True)
             self.assertTrue((app.project/"brief.json").exists())
             self.assertEqual(app.rendered_video.parent,app.project)
@@ -79,12 +85,14 @@ class AutonomousMontageTests(TestCase):
     def test_model_failure_uses_explicitly_marked_template_not_fake_ai(self):
         with TemporaryDirectory() as t:
             app=SimpleNamespace(topic=SimpleNamespace(get=lambda:"Игры"),
+                scenario_mode=SimpleNamespace(get=lambda:"standard"),
                 profile=None,status=SimpleNamespace(set=mock.Mock()),
                 stop_event=threading.Event(),_spawn=lambda work:work(),
                 _notify=lambda cb:cb(),_show=mock.Mock(),
                 _speak=mock.Mock(),project=None,brief=None,rendered_video=None)
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=Path(t)),
+                  mock.patch("task_ai_registry.specialist_available",return_value=True),
                   mock.patch("scenario_specialist.create_specialist_brief",
                              side_effect=RuntimeError("model not installed")),
                   mock.patch("viral_studio_ui.search_free_video",
@@ -98,8 +106,9 @@ class AutonomousMontageTests(TestCase):
                                attempts=[1],report=project/"review.md",
                                speech="Проверил и объяснил результат."))):
                 ViralStudioWindow.auto_montage(app)
-            self.assertIn("шаблон",app.brief.generator)
+            self.assertIn("без нейросети",app.brief.generator)
             self.assertIn("шаблон",app._show.call_args.args[0])
+            self.assertNotIn("локальная Qwen3-VL",app.brief.generator)
 
 if __name__=="__main__":
     import unittest
