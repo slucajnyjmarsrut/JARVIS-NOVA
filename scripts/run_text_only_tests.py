@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Text-only production regression suite. Legacy voice tests live in the repo
-but are NOT part of the text-only Windows installer build.
+"""Text-only production regression suite.
+
+Run each module in a fresh interpreter. Keeping all Tk test modules in one
+Python process previously caused Windows Tcl_AsyncDelete crashes: destroyed Tk
+interpreters were finalized by another thread during later unrelated tests.
+Separate processes isolate Tk, active daemon threads and model mocks.
+Legacy voice tests remain excluded from this installer build.
 """
 from pathlib import Path
+import subprocess
 import sys
-import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -93,16 +98,38 @@ TESTS=(
        "test_work_modes.py",
        "test_text_only_bundle.py",)
 
+def run_suites(*, runner=None, suites=TESTS):
+    """Return all failed filenames; run no generated/model-provided programs."""
+    if runner is None:
+        runner=subprocess.run
+    failed=[]
+    for number,filename in enumerate(suites,1):
+        if filename not in TESTS or not (ROOT/"tests"/filename).is_file():
+            raise SystemExit("Missing mandatory production suite: "+str(filename))
+        print(f"TEXT-ONLY ISOLATED SUITE {number}/{len(suites)}: {filename}",
+              flush=True)
+        argv=[sys.executable,"-u","-m","unittest","discover",
+              "-s","tests","-p",filename,"-v"]
+        try:
+            result=runner(argv,cwd=str(ROOT),shell=False,check=False,
+                          timeout=300)
+        except (subprocess.TimeoutExpired,OSError) as exc:
+            print(f"FAILED {filename}: {type(exc).__name__}: {exc}",flush=True)
+            failed.append(filename)
+            continue
+        if result.returncode!=0:
+            print(f"FAILED {filename}: exit {result.returncode}",flush=True)
+            failed.append(filename)
+    return tuple(failed)
+
+
 def main():
-    suite=unittest.TestSuite()
-    loader=unittest.TestLoader()
-    for filename in TESTS:
-        if not (ROOT/"tests"/filename).is_file():
-            raise SystemExit("Missing mandatory production suite: "+filename)
-        suite.addTests(loader.discover(str(ROOT/"tests"),pattern=filename,
-                                       top_level_dir=str(ROOT/"tests")))
-    result=unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    failed=run_suites()
+    if failed:
+        print("FAILED isolated suites: "+", ".join(failed),flush=True)
+        return 1
+    print(f"PASSED all {len(TESTS)} isolated text-only suites",flush=True)
+    return 0
 
 if __name__=="__main__":
     raise SystemExit(main())
