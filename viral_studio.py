@@ -301,7 +301,10 @@ def _parse_model_brief(data: dict, topic: str, research, *, model_label="лок�
         shots,edited=_distinct_qwen_captions(shots)
         brief = Brief(str(data['title']), topic, str(data['hook']), str(data['script']), shots,
                       _short_ai_ending(data['call_to_action']),
-                      (model_label+" (подписи взяты из инструкций ИИ)"
+                      (model_label+
+                       (" (подписи взяты из инструкций Qwen)"
+                        if model_label=="локальная Qwen3-VL" else
+                        " (подписи взяты из инструкций ИИ)")
                        if edited else model_label),
                       tuple(research)[:10])
     except (KeyError, TypeError, ValueError) as exc:

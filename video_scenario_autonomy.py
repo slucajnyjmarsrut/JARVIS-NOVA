@@ -150,7 +150,9 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                 editorial=(
                     " Повторные подписи заменены на фразы из инструкций "
                     "съёмки, написанных той же Qwen."
-                    if "подписи взяты из инструкций ИИ" in brief.generator else "")
+                    if ("подписи взяты из инструкций ИИ" in brief.generator
+                        or "подписи взяты из инструкций Qwen" in brief.generator)
+                    else "")
                 return brief,(
                     f"Сценарий {brief.generator}; формальная проверка пройдена "
                     f"за {attempt+1} попытку(и). Требуется оценить факты и сюжет."
