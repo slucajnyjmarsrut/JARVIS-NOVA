@@ -109,7 +109,7 @@ class NightSupervisor:
         _no_links(self.db)
         self._run_lock = threading.Lock()
         self._executor = executor or self._generate
-        with self._connect() as db:
+        with self._process_lock(), self._connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY, kind TEXT NOT NULL, prompt TEXT NOT NULL,
                 language TEXT NOT NULL, source_id TEXT NOT NULL,
@@ -129,6 +129,40 @@ class NightSupervisor:
                 db.execute("UPDATE jobs SET status='paused' WHERE id=?", (job_id,))
                 self._event(db, job_id, "paused",
                             "Прерванный запуск. Требуется явное возобновление.")
+
+    @contextmanager
+    def _process_lock(self):
+        """Exclusive OS file lock. A second JARVIS must not replay active jobs.
+
+        The lockfile is application-owned persistent metadata. It is NEVER
+        deleted; Windows/Linux release the byte lock when the process exits.
+        """
+        lock_path = self.root / "night_supervisor.lock"
+        _no_links(lock_path)
+        with lock_path.open("a+b") as handle:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"0")
+                handle.flush()
+            handle.seek(0)
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError as exc:
+                raise SupervisorError(
+                    "Другая копия JARVIS уже работает с ночной очередью.") from exc
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                if os.name == "nt":
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     @contextmanager
     def _connect(self):
@@ -371,7 +405,12 @@ class NightSupervisor:
             self._event(db, job_id, status, detail)
 
     def run_next(self, *, cancel=None, progress=None):
-        """Run one task. A stopped or interrupted task never claims success."""
+        """Run one task, excluding other JARVIS processes on the same queue."""
+        with self._process_lock():
+            return self._run_next_locked(cancel=cancel, progress=progress)
+
+    def _run_next_locked(self, *, cancel=None, progress=None):
+        """The caller holds the exclusive OS lock for this whole operation."""
         if not self._run_lock.acquire(blocking=False):
             raise SupervisorError("Supervisor уже выполняет задачу.")
         try:
@@ -429,10 +468,11 @@ class NightSupervisor:
             raise SupervisorError("Ограничение работы: от 1 до 480 минут.")
         started = time.monotonic()
         processed = 0
-        while processed < MAX_JOBS and time.monotonic()-started < max_minutes*60:
-            if cancel is not None and cancel.is_set():
-                break
-            if not self.run_next(cancel=cancel, progress=progress):
-                break
-            processed += 1
+        with self._process_lock():
+            while processed < MAX_JOBS and time.monotonic()-started < max_minutes*60:
+                if cancel is not None and cancel.is_set():
+                    break
+                if not self._run_next_locked(cancel=cancel, progress=progress):
+                    break
+                processed += 1
         return processed
