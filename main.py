@@ -1135,9 +1135,12 @@ class Jarvis(tk.Tk):
             self.status.set("Веб-камера удалена. Доступен только анализ экрана.")
             return
         noun="экрана"
-        if not messagebox.askyesno("Разрешение на изображение",
+        # An active screen grant (this session or protected user opt-in)
+        # authorizes on-demand capture; it never begins background recording.
+        if not self.vision_allowed and not messagebox.askyesno(
+            "Разрешение на изображение",
             f"Разрешить JARVIS захватить ОДИН кадр {noun} и обработать его локально? "
-            "Изображение не будет отправлено в облако.",parent=self):
+            "Изображение не будет отправлено в облако.", parent=self):
             self.status.set("Анализ изображения отменён")
             return
         self.executing=True
