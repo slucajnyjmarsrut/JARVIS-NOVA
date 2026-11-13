@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Always-on Supervisor contract without real models, registry or network."""
+from contextlib import closing
 from dataclasses import asdict, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -77,7 +78,7 @@ class AlwaysOnSupervisorTests(TestCase):
             id=s.enqueue("scenario","Minecraft",approved=True,
                          allow_new_files=True)
             s.set_background_enabled(False)
-            with sqlite3.connect(s.db) as db:
+            with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE jobs SET status='running' WHERE id=?", (id,))
             restarted=_manager(root)
             self.assertEqual(restarted.list_jobs()[0].status,"paused")
@@ -89,7 +90,7 @@ class AlwaysOnSupervisorTests(TestCase):
             s=_manager(root)
             job_id=s.enqueue("scenario","Minecraft",approved=True,
                              allow_new_files=True)
-            with sqlite3.connect(s.db) as db:
+            with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE jobs SET status='running' WHERE id=?", (job_id,))
             again=_manager(root)
             self.assertEqual(again.list_jobs()[0].status,"queued")
