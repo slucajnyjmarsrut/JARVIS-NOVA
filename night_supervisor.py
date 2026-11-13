@@ -144,6 +144,13 @@ class NightSupervisor:
             db.execute("""CREATE TABLE IF NOT EXISTS night_run (
                 id INTEGER PRIMARY KEY CHECK(id=1), active INTEGER NOT NULL,
                 approved INTEGER NOT NULL, deadline REAL NOT NULL)""")
+            # Always-on local service is ON by default for new installations.
+            # Explicit Pause stores enabled=0 and survives Windows restarts.
+            db.execute("""CREATE TABLE IF NOT EXISTS background_settings (
+                id INTEGER PRIMARY KEY CHECK(id=1),
+                enabled INTEGER NOT NULL CHECK(enabled IN (0,1)))""")
+            db.execute("INSERT OR IGNORE INTO background_settings(id,enabled) "
+                       "VALUES(1,1)")
             db.execute("""CREATE TABLE IF NOT EXISTS checkpoints (
                 job_id TEXT NOT NULL, step TEXT NOT NULL, payload TEXT NOT NULL,
                 digest TEXT NOT NULL, PRIMARY KEY(job_id,step))""")
@@ -158,7 +165,8 @@ class NightSupervisor:
                 "SELECT id,approved,resource_retries FROM jobs "
                 "WHERE status='running'"))
             for job_id, approved, retries in ids:
-                if active and approved == 1 and retries <= MAX_RESOURCE_RETRIES:
+                if ((active or self._background_enabled_db(db)) and
+                        approved == 1 and retries <= MAX_RESOURCE_RETRIES):
                     db.execute("UPDATE jobs SET status='queued' WHERE id=?",
                                (job_id,))
                     self._event(db, job_id, "recovered",
@@ -222,6 +230,76 @@ class NightSupervisor:
     def _event(db, job_id, event, detail=""):
         db.execute("INSERT INTO journal(job_id,created,event,detail) VALUES (?,?,?,?)",
                    (job_id, _time(), event, str(detail)[:420]))
+
+    @staticmethod
+    def _background_enabled_db(db):
+        try:
+            row = db.execute("SELECT enabled FROM background_settings WHERE id=1"
+                             ).fetchone()
+        except sqlite3.OperationalError:
+            return False
+        return bool(row and row[0] == 1)
+
+    def background_enabled(self):
+        """Always-on mode is on by default; a saved Pause disables it."""
+        with self._connect() as db:
+            return self._background_enabled_db(db)
+
+    def set_background_enabled(self, enabled):
+        """Persist a visible user's On/Pause choice, even when worker runs."""
+        if type(enabled) is not bool:
+            raise ValueError("Режим Supervisor должен быть включён или выключен.")
+        with self._connect() as db:
+            db.execute("UPDATE background_settings SET enabled=? WHERE id=1",
+                       (int(enabled),))
+            if not enabled:
+                db.execute("UPDATE jobs SET status='paused' "
+                           "WHERE status='waiting_memory'")
+            self._event(db, "supervisor",
+                        "background_enabled" if enabled else "background_paused",
+                        "Следить за одобренной очередью" if enabled
+                        else "Фоновая обработка остановлена до включения.")
+
+    def background_run_next(self, *, progress=None, cancel=None):
+        """Process one pre-approved task with RAM guard and OS lock.
+
+        This is not a general agent: no newly invented tasks, arbitrary OS
+        commands, user-file edits, downloads or model installation.
+        """
+        supervisor = self
+
+        class StopAfterCheckpoint:
+            def is_set(self):
+                return ((cancel is not None and cancel.is_set()) or
+                        not supervisor.background_enabled())
+
+        with self._process_lock():
+            if not self.background_enabled():
+                return False
+            with self._connect() as db:
+                count = db.execute(
+                    "SELECT COUNT(*) FROM jobs WHERE status IN "
+                    "('queued','waiting_memory') AND approved=1").fetchone()[0]
+            if not count:
+                return False
+            try:
+                snapshot = self._memory_probe()
+            except (OSError, ValueError, RuntimeError):
+                snapshot = None
+            if under_pressure(snapshot):
+                with self._connect() as db:
+                    self._mark_waiting_memory(db, reason="Ожидаю свободной ОЗУ")
+                self._release_memory_safely()
+                return False
+            with self._connect() as db:
+                self._ready_after_memory(db)
+            with keep_pc_awake():
+                processed = self._run_next_locked(
+                    cancel=StopAfterCheckpoint(), progress=progress,
+                    autonomous=True)
+            if processed:
+                self._release_memory_safely()
+            return processed
 
     def _active_plan(self, db):
         row = db.execute("SELECT active,approved,deadline FROM night_run "
