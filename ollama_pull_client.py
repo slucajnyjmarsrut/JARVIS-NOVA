@@ -170,8 +170,12 @@ def _read_frames(response, events, closing):
                 offer("bad", None)
                 return
             offer("line", raw)
-    except (OSError, ValueError, TimeoutError) as exc:
-        offer("error", _safe_hint(exc))
+    except (OSError, ValueError, TimeoutError, AttributeError) as exc:
+        # urllib's HTTPResponse can have its fp set to None on a concurrent
+        # cancellation/close. This is an expected stream shutdown, never an
+        # unhandled daemon-thread traceback in Windows builds.
+        if not closing.is_set():
+            offer("error", _safe_hint(exc))
 
 
 def _one_pull(endpoint, opener, cancel, ledger, *, progress=None, stage=None,

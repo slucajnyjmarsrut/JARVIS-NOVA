@@ -618,7 +618,7 @@ class NightSupervisor:
             return {"status": "passed", "verification": "advice_shape_only"}
         raise SupervisorError("Неизвестный тип проверки.")
 
-    def _save(self, job, payload):
+    def _save(self, job, payload, *, cancel=None):
         """Save only NEW files; a crash/partial folder blocks replay, never wipes."""
         output_base = self.root / "outputs"
         _no_links(output_base)
@@ -638,7 +638,8 @@ class NightSupervisor:
                 staged = Path(tmp) / "completed"
                 staged.mkdir()
                 _no_links(staged)
-                render_topic_video(_brief_from_data(payload["brief"]), staged)
+                render_topic_video(_brief_from_data(payload["brief"]), staged,
+                                   cancel=cancel)
                 _no_links(destination)
                 if destination.exists():
                     raise SupervisorError("Выходная папка появилась; не перезаписываю.")
@@ -726,7 +727,8 @@ class NightSupervisor:
                     return True
                 if job.step == "verified":
                     notify("Сохранение новых результатов")
-                    output = self._save(job, self._read_checkpoint(job_id, "generated"))
+                    output = self._save(job, self._read_checkpoint(job_id, "generated"),
+                                        cancel=cancel)
                     with self._connect() as db:
                         db.execute("UPDATE jobs SET status='completed',step='saved',"
                                    "output=?,error='' WHERE id=?", (output, job_id))
@@ -762,6 +764,13 @@ class NightSupervisor:
                 notify("Задача остановлена: " + str(exc)[:210])
                 return True
             except Exception as exc:
+                if cancel is not None and cancel.is_set():
+                    # FFmpeg cancellation during a staged MP4 must pause, not
+                    # mark a recoverable operation as permanently blocked.
+                    self._change_status(job_id, "paused",
+                                        "Остановлено после контрольной точки.")
+                    notify("Генерация приостановлена; готовые файлы не тронуты.")
+                    return True
                 self._change_status(job_id, "blocked",
                                     type(exc).__name__ + ": " + str(exc)[:280])
                 notify("Задача остановлена: " + str(exc)[:210])

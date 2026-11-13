@@ -151,8 +151,11 @@ def _draw_card(brief, shot, index, target, size):
         ratio = y / max(1, height-1)
         bg = tuple(int(a * (1-ratio) + b * ratio) for a, b in zip(dark, bright))
         draw.line((0, y, width, y), fill=bg)
+    # Use each AI-written shot description to give successive scenes
+    # different imagery, rather than recoloring the same generic topic card.
     seed = int.from_bytes(sha256(
-        (brief.topic + "|" + str(index)).encode("utf-8")).digest()[:8], "big")
+        (brief.topic + "|" + str(shot.film) + "|" + str(index))
+        .encode("utf-8")).digest()[:8], "big")
     _motif(draw, _theme(brief.topic), index, width, height, accent,
            random.Random(seed))
     pad = int(width * .055)
@@ -170,6 +173,17 @@ def _draw_card(brief, shot, index, target, size):
     draw.multiline_text((pad+12, int(height*.612)), title,
                         font=_font(max(14, width//17)),
                         spacing=6, fill=(250, 250, 251))
+    # The image itself shows an AI-written, scene-specific visual direction.
+    # All text is rendered as pixels by Pillow, never as an FFmpeg expression.
+    instruction = _wrapped(
+        draw, shot.film[:260], _font(max(12, width//25)),
+        width - 3 * pad, max_lines=3)
+    draw.rounded_rectangle(
+        (pad, int(height*.73), width-pad, int(height*.92)),
+        radius=14, fill=(15, 23, 40), outline=accent, width=2)
+    draw.multiline_text(
+        (pad+12, int(height*.75)), instruction,
+        font=_font(max(12, width//25)), spacing=5, fill=(240, 244, 248))
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("xb") as file:
         image.save(file, format="PNG")

@@ -2,6 +2,7 @@
 """Visible task AI dashboard. All extra weights are opt-in user downloads."""
 from __future__ import annotations
 import threading
+from queue import Empty, Queue
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -21,6 +22,7 @@ class TaskAIHub(tk.Toplevel):
         self.parent=parent
         self._busy=False
         self._cancel=threading.Event()
+        self._ui_events=Queue()
         self.protocol("WM_DELETE_WINDOW",self.close)
         self.status=tk.StringVar(value="Каждая задача имеет отдельную роль. Модели не скачиваются сами.")
         self._states={}
@@ -65,12 +67,25 @@ class TaskAIHub(tk.Toplevel):
         ttk.Label(outer,textvariable=self.status,wraplength=600,
                   justify="left").pack(fill="x",pady=(9,0))
         self._focus_role=role if role in ROLE_ORDER else "scenario"
+        self.after(120, self._drain_ui)
 
     def _on_ui(self,fn):
+        """Background threads only enqueue; not even after() is thread-safe."""
+        self._ui_events.put(fn)
+
+    def _drain_ui(self):
+        """Only the Tk-owning thread reads events and changes widgets."""
         try:
+            for _ in range(40):
+                try:
+                    callback=self._ui_events.get_nowait()
+                except Empty:
+                    break
+                callback()
             if self.winfo_exists():
-                self.after(0,fn)
+                self.after(120,self._drain_ui)
         except tk.TclError:
+            # A closed settings window must not crash the caller.
             pass
 
     def _status(self,message):
