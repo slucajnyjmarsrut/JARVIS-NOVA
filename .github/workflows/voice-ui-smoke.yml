@@ -27,6 +27,8 @@ on:
       - 'tests/test_startup_permissions.py'
       - 'night_resource_guard.py'
       - 'night_autorecovery.py'
+      - 'night_supervisor_service.py'
+      - 'tests/test_supervisor_always_on.py'
       - 'tests/test_night_unattended.py'
       - 'topic_video_engine.py'
       - 'tests/test_topic_video_engine.py'
@@ -81,6 +83,7 @@ jobs:
                                  'test_night_supervisor.py',
                                  'test_topic_video_engine.py',
                                  'test_night_unattended.py',
+                                 'test_supervisor_always_on.py',
                                  'test_startup_permissions.py',
                                  'test_manual_file_deletion.py',
                                  'test_semantic_intent_router.py',
