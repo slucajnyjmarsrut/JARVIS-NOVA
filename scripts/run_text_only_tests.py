@@ -93,6 +93,7 @@ TESTS=(
        "test_viral_studio.py",
        "test_task_ai_specialists.py",
        "test_night_supervisor.py",
+        "test_night_unattended.py",
        "test_text_suite_runner.py",
        "test_startup_permissions.py",
        "test_vision_chat_protocol.py",

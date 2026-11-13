@@ -39,6 +39,9 @@ on:
       - video_scenario_autonomy.py
       - startup_permissions.py
       - tests/test_startup_permissions.py
+      - night_resource_guard.py
+      - night_autorecovery.py
+      - tests/test_night_unattended.py
       - night_supervisor.py
       - night_supervisor_ui.py
       - tests/test_night_supervisor.py
