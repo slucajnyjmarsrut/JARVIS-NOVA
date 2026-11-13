@@ -88,6 +88,7 @@ TESTS=(
        "test_viral_studio.py",
        "test_task_ai_specialists.py",
        "test_night_supervisor.py",
+       "test_startup_permissions.py",
        "test_vision_chat_protocol.py",
        "test_work_modes.py",
        "test_text_only_bundle.py",)
