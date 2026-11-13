@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Explicitly approved overnight queue UI. The window never bypasses consent."""
+"""Visible controls for default-on, permission-limited background Supervisor."""
 from __future__ import annotations
 import threading
 from queue import Empty, Queue
@@ -67,8 +67,8 @@ class NightSupervisorWindow(tk.Toplevel):
         controls.pack(fill="x", pady=9)
         for label, action in (
             ("Добавить с разрешением", self.enqueue),
-            ("Запустить очередь", self.start),
-            ("Пауза", self.pause),
+            ("Включить Supervisor", self.start),
+            ("Пауза Supervisor", self.pause),
             ("Возобновить выбранную", self.resume),
             ("Обновить", self.refresh),
         ):
@@ -83,7 +83,9 @@ class NightSupervisorWindow(tk.Toplevel):
         self.history = tk.Text(frame, height=7, state="disabled", wrap="word")
         self.history.pack(fill="both", expand=True)
         self.status = tk.StringVar(
-            value="Ожидание твоих задач. Никакая модель не запускается сама.")
+            value=("Supervisor включён: новые одобренные задачи запускаются сами."
+                   if self.supervisor.background_enabled()
+                   else "Supervisor на паузе: задачи ожидают включения."))
         ttk.Label(frame, textvariable=self.status, wraplength=735,
                   justify="left").pack(fill="x", pady=(7, 0))
         self.refresh()
@@ -166,74 +168,40 @@ class NightSupervisorWindow(tk.Toplevel):
             job_id = self.supervisor.enqueue(
                 kind, task, source_id=source, approved=True,
                 allow_new_files=True)
-            self.status.set("Добавлена задача " + job_id +
-                            ". Скачивания или выполнения пока нет.")
+            self.status.set(
+                "Задача " + job_id[:8] + " добавлена и разрешена. "
+                + ("Фоновый Supervisor заберёт её сам."
+                   if self.supervisor.background_enabled()
+                   else "Supervisor на паузе, задача ожидает."))
             self.refresh()
         except (SupervisorError, ValueError, PermissionError) as exc:
             messagebox.showerror("Не добавлено", str(exc), parent=self)
 
     def start(self):
-        if self._busy:
-            return
-        if not any(j.status == "queued" for j in self.supervisor.list_jobs()):
-            self.status.set("Нет новых задач. Паузы нужно возобновить отдельно.")
-            return
-        if not messagebox.askyesno(
-            "Автономная ночная работа — до 6 часов",
-            "Разрешить JARVIS самостоятельно завершить ВСЮ заранее одобренную "
-            "очередь в пределах 6 часов, без дополнительных вопросов?\n\n"
-            "При нехватке ОЗУ JARVIS будет выгружать только собственные "
-            "локальные модели, ждать восстановления памяти и продолжать. "
-            "После неожиданного завершения приложения разрешение остаётся "
-            "действительным только до окончания этих 6 часов: при "
-            "следующем запуске JARVIS продолжит незавершённые этапы.\n\n"
-            "Никаких установок, удаления чужих файлов, запуска "
-            "сгенерированного кода или публикаций. "
-            "При постоянной нехватке памяти очередь безопасно остановится. "
-            "Компьютер должен быть включён и JARVIS запущен.\n\n"
-            "Разрешить автономную работу?", parent=self):
-            return
+        """Enable persistent background mode, no additional queue start."""
         try:
-            self.supervisor.approve_overnight(approved=True, max_minutes=360)
-        except (SupervisorError, PermissionError, OSError) as exc:
-            messagebox.showerror("Ночной запуск заблокирован", str(exc), parent=self)
-            return
-        self.cancel_event.clear()
-        self._busy = True
-        self.status.set("Supervisor работает. Не закрывай приложение.")
-        def worker():
-            try:
-                count = self.supervisor.run_approved_overnight(
-                    cancel=self.cancel_event, progress=self._progress)
-                self._ui(lambda: self.status.set(
-                    f"Очередь завершена или приостановлена. Обработано задач: {count}. "
-                    "Проверь журнал и содержимое папок вручную."))
-            except Exception as exc:
-                error = str(exc)[:260]
-                self._ui(lambda: self.status.set(
-                    "Supervisor остановлен: " + error))
-            finally:
-                def finished():
-                    self._busy = False
-                    self.refresh()
-                    if self._close_when_stopped:
-                        self.destroy()
-                self._ui(finished)
-        threading.Thread(target=worker, daemon=True,
-                         name="jarvis-night-supervisor").start()
+            self.supervisor.set_background_enabled(True)
+            from night_autorecovery import start_always_on
+            start_always_on()
+            self.status.set("Supervisor включён постоянно. Уже разрешённые "
+                            "задачи выполняются в фоне автоматически.")
+            self.refresh()
+        except (SupervisorError, OSError, ValueError) as exc:
+            self.status.set("Не удалось включить Supervisor: " + str(exc)[:240])
 
     def pause(self):
+        """Persist Pause; any current model request finishes before checkpoint."""
         self.cancel_event.set()
-        # Explicit pause must revoke unattended startup recovery, otherwise
-        # a fresh application would unexpectedly resume the paused task.
         try:
+            self.supervisor.set_background_enabled(False)
             self.supervisor.stop_overnight()
-        except (OSError, SupervisorError) as exc:
-            self.status.set("Ошибка отключения автозапуска: " + str(exc)[:180])
-            return
-        self.status.set(
-            "Пауза запрошена. Текущий вызов модели может завершиться; "
-            "после него JARVIS сохранит контрольную точку и остановится.")
+            self.status.set(
+                "Supervisor остановлен. Новые задания не начнутся. "
+                "Текущая модель может завершить запрос до контрольной точки; "
+                "пауза сохранится после перезапуска Windows.")
+            self.refresh()
+        except (SupervisorError, OSError) as exc:
+            self.status.set("Не удалось сохранить паузу: " + str(exc)[:180])
 
     def resume(self):
         selected = self.jobs.curselection()
@@ -252,22 +220,12 @@ class NightSupervisorWindow(tk.Toplevel):
         try:
             self.supervisor.resume(job.id, approved=True)
             self.refresh()
-            self.status.set("Задача возвращена в очередь. Нажми «Запустить очередь».")
+            self.status.set(
+                "Задача снова в очереди. Если Supervisor включён, "
+                "он обработает её самостоятельно.")
         except (SupervisorError, PermissionError) as exc:
             messagebox.showerror("Возобновление невозможно", str(exc), parent=self)
 
     def close(self):
-        if self._busy:
-            if not messagebox.askyesno(
-                "Остановить ночной режим?",
-                "Запросить паузу и закрыть окно? Текущая модель может "
-                "завершить запрос; контрольная точка сохранится после ответа.",
-                parent=self):
-                return
-            self.cancel_event.set()
-            self.supervisor.stop_overnight()
-            self._close_when_stopped = True
-            self.status.set("Жду завершения текущего вызова для сохранения "
-                            "контрольной точки. Окно закроется после паузы.")
-            return
+        """Closing this window does NOT pause or kill headless Supervisor."""
         self.destroy()
