@@ -338,10 +338,24 @@ class NightSupervisor:
             from code_workspace import apply_plan
             apply_plan(_plan_from_data(payload), destination, confirmed=True)
         elif job.kind == "scenario":
-            from viral_studio import save_brief
-            # save_brief uses exclusive paths. The directory is new; on
-            # partial failure previous data stays for manual review.
-            save_brief(_brief_from_data(payload["brief"]), destination)
+            from dataclasses import asdict
+            brief = _brief_from_data(payload["brief"])
+            # Preserve even partial new files on failure: no rollback unlink.
+            with (destination / "brief.json").open(
+                    "x", encoding="utf-8") as stream:
+                json.dump(asdict(brief), stream, ensure_ascii=False, indent=2)
+            notes = ["# " + brief.title, "", "## Сценарий",
+                     brief.script, "", "## Что снять"]
+            for index, shot in enumerate(brief.shots, 1):
+                notes.append(
+                    f"{index:02d}. {shot.film} — {shot.seconds:g} сек. "
+                    f"Текст: «{shot.caption}»")
+            notes.extend(["", "Финал: " + brief.call_to_action,
+                          "", "Генератор: " + brief.generator,
+                          "Проверь факты, художественный результат и права."])
+            with (destination / "WHAT_TO_FILM_RU.md").open(
+                    "x", encoding="utf-8") as stream:
+                stream.write("\n".join(notes) + "\n")
         elif job.kind == "montage_advice":
             with (destination / "MONTAGE_ADVICE_RU.md").open(
                     "x", encoding="utf-8") as stream:
