@@ -123,6 +123,32 @@ class StartupPermissionsTests(unittest.TestCase):
         self.assertFalse(app.control_allowed)
         self.assertFalse(app.vision_allowed)
 
+    def test_saved_vision_grant_avoids_repeat_screen_capture_prompt(self):
+        app = Mock()
+        app._closing = False
+        app.executing = False
+        app.vision_allowed = True
+        app.voice_enabled = False
+        with patch("main.messagebox.askyesno") as ask, patch(
+                "main.threading.Thread") as worker:
+            Jarvis.request_trimodal(app, "screen")
+            ask.assert_not_called()
+            worker.assert_called_once()
+            worker.return_value.start.assert_called_once()
+        self.assertTrue(app.executing)
+
+    def test_without_vision_permission_screen_capture_can_be_denied(self):
+        app = Mock()
+        app._closing = False
+        app.executing = False
+        app.vision_allowed = False
+        with patch("main.messagebox.askyesno", return_value=False) as ask, patch(
+                "main.threading.Thread") as worker:
+            Jarvis.request_trimodal(app, "screen")
+            ask.assert_called_once()
+            worker.assert_not_called()
+        self.assertFalse(app.executing)
+
     def test_bad_permission_inputs_rejected(self):
         with self.assertRaises(ValueError):
             save_startup_permissions(StartupPermissions(1, True))
