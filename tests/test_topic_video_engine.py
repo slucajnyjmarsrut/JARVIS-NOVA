@@ -73,7 +73,7 @@ class TopicOnlyVideoTests(TestCase):
             self.assertEqual(len(outputs),5)
             self.assertTrue(result["technical_quality"]["quality_checked"])
             self.assertTrue((root/"JARVIS_NOVA_FROM_TOPIC.mp4").is_file())
-            self.assertIn("не фотореалистичная",
+            self.assertIn("а не реалистичные кадры",
                           (root/"README_RU.md").read_text(encoding="utf-8"))
             self.assertFalse(__import__("json").loads(
                 (root/"ORIGIN_AND_QUALITY.json").read_text(
