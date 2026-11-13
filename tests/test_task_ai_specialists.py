@@ -266,7 +266,23 @@ class ScreenwriterSpecialistTests(unittest.TestCase):
         self.assertNotIn("tools",requests[0][1])
         chat.close()
 
-    def test_vision_fallback_when_dedicated_chat_not_installed(self):
+    def test_selected_chat_never_falls_back_to_vision_without_model(self):
+        from local_chat import LocalChat, LocalChatError
+        from types import SimpleNamespace
+        class Bundled:
+            config=SimpleNamespace(model="qwen3-vl:2b-instruct")
+            def start(self):
+                raise AssertionError("Vision must not start in specialist mode")
+        request=mock.Mock(side_effect=AssertionError("No model call allowed"))
+        chat=LocalChat(Bundled(),requester=request)
+        chat.prefer_task_specialist(True)
+        with mock.patch("task_ai_registry.specialist_available",
+                        return_value=False):
+            with self.assertRaisesRegex(LocalChatError,"Qwen3:4b"):
+                chat.ask("Расскажи о своих возможностях")
+        request.assert_not_called()
+
+    def test_opt_out_restores_legacy_vision_chat_explicitly(self):
         from local_chat import LocalChat
         from types import SimpleNamespace
         class Bundled:
@@ -276,12 +292,10 @@ class ScreenwriterSpecialistTests(unittest.TestCase):
         calls=[]
         chat=LocalChat(Bundled(),requester=lambda endpoint,payload:(
             calls.append((endpoint,payload)),
-            {"message":{"content":"Ответ встроенной Qwen"}})[1])
+            {"message":{"content":"Ответ прежнего режима"}})[1])
         chat.prefer_task_specialist(True)
-        with mock.patch("task_ai_registry.specialist_available",
-                        return_value=False):
-            answer=chat.ask("Расскажи о своих возможностях")
-        self.assertIn("встроенной",answer)
+        chat.prefer_task_specialist(False)
+        self.assertIn("прежнего",chat.ask("Расскажи о возможностях"))
         self.assertEqual(calls[0][0],"http://127.0.0.1:23333")
         self.assertEqual(calls[0][1]["model"],"qwen3-vl:2b-instruct")
 
