@@ -118,12 +118,14 @@ class NightSupervisorTests(unittest.TestCase):
             self.assertEqual(restarted.list_jobs()[0].status, "completed")
             self.assertEqual(calls, [1])
 
-    def test_running_job_after_crash_is_paused_not_replayed(self):
+    def test_running_job_after_explicit_background_pause_is_not_replayed(self):
         with TemporaryDirectory() as temp:
             root = Path(temp) / "jobs"
             s = NightSupervisor(root, executor=screenplay)
             job_id = s.enqueue("scenario", "minecraft", approved=True,
                                allow_new_files=True)
+            # Explicit Pause must override always-on default after crash.
+            s.set_background_enabled(False)
             with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE jobs SET status='running' WHERE id=?", (job_id,))
             recovered = NightSupervisor(root, executor=screenplay)

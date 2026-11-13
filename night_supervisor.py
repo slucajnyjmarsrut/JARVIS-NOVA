@@ -333,9 +333,10 @@ class NightSupervisor:
         return deadline
 
     def stop_overnight(self):
-        """Explicit manual pause cancels restart recovery immediately."""
+        """Manual Stop cancels both legacy timed run and always-on restart."""
         with self._connect() as db:
             db.execute("UPDATE night_run SET active=0 WHERE id=1")
+            db.execute("UPDATE background_settings SET enabled=0 WHERE id=1")
             db.execute("UPDATE jobs SET status='paused' "
                        "WHERE status='waiting_memory'")
             self._event(db, "night", "overnight_stopped",

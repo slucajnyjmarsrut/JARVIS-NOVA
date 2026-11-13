@@ -124,7 +124,7 @@ class UnattendedRecoveryTests(unittest.TestCase):
             self.assertEqual(recovered.list_jobs()[0].status, "completed")
             self.assertIn("recovered", [row[3] for row in recovered.journal()])
 
-    def test_expired_consent_does_not_resume_after_restart(self):
+    def test_expired_timed_session_does_not_restart_timed_run(self):
         with TemporaryDirectory() as temp:
             root = Path(temp)/"night"
             clock = Clock()
@@ -136,8 +136,13 @@ class UnattendedRecoveryTests(unittest.TestCase):
                            (job_id,))
             clock.now += 61
             recovered = self.create(root, clock=clock.time)
-            self.assertEqual(recovered.list_jobs()[0].status, "paused")
+            # The expired *timed session* cannot restart itself.
+            # An individually approved job remains eligible only through
+            # the separate always-on per-task mode.
+            self.assertEqual(recovered.list_jobs()[0].status, "queued")
             self.assertEqual(recovered.run_approved_overnight(), 0)
+            self.assertTrue(recovered.background_run_next())
+            self.assertEqual(recovered.list_jobs()[0].status, "completed")
 
     def test_manual_stop_disables_automatic_restart(self):
         with TemporaryDirectory() as temp:
