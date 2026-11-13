@@ -554,12 +554,11 @@ class TextJarvis(BaseJarvis):
             studio=self.open_viral_studio(stage="script")
             if studio is not None and value:
                 studio.topic.set(value)
-                studio.scenario_mode.set(
-                    "deep" if self._local_model_ready else "fast")
-            self.reply("Открыл сценарий: этапы — тема, пять разных кадров, "
+                studio.scenario_mode.set("deep")
+            self.reply("Открыл отдельный ИИ-сценарист Gemma3:4b: тема, пять кадров, "
                        "проверка каждого кадра, затем проверка всего сценария. "
                        "Запусти генерацию в студии после проверки темы. "
-                       "Без Qwen используется честно обозначенный шаблон.")
+                       "Если Gemma3 не подключена, выбери «ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА»."))
         elif kind == "code_start":
             self.open_code_assistant("python", "", auto_start=False)
             self.reply("Открыл редактор кода. Выбери папку и опиши, "
@@ -580,12 +579,12 @@ class TextJarvis(BaseJarvis):
             if studio is not None:
                 if value:
                     studio.topic.set(value)
-                    studio.scenario_mode.set(
-                        "deep" if self._local_model_ready else "fast")
+                    studio.scenario_mode.set("deep")
                     # Entire request creates a script; no second button.
                     studio.after(70,studio.generate)
-                    self.reply("Создаю сценарий и план кадров по теме. "
-                               "Без доступной Qwen явно обозначу шаблон.")
+                    self.reply("Сценарий создаёт отдельная Gemma3:4b. "
+                               "Если она не установлена, нажми в студии "
+                               "«ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА».")
                 else:
                     self.reply("Напиши тему сценария.")
         elif kind == "studio":

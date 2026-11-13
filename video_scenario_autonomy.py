@@ -83,8 +83,8 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                             progress=None):
     """One call creates a reviewable script, tries local repairs, or falls back.
 
-    Generator is always the local Qwen implementation (or injected fake for
-    unit tests), never FreeLLM and never arbitrary discovered model weights.
+    By default, a separate local Gemma3:4b specialist writes scripts, not
+    Qwen Vision. Injection supports controlled regression and legacy tests.
     Returns (brief, user-facing note, assessment, attempts).
     """
     if mode not in ("fast","standard","deep"):
@@ -107,8 +107,8 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                  "найдены замечания: "+"; ".join(report.issues)[:150]))
         return brief,"Быстрый локальный сценарий без нейросети.",report,1
     if ai_generator is None:
-        from viral_studio import create_local_brief
-        ai_generator=create_local_brief
+        from scenario_specialist import create_specialist_brief
+        ai_generator=create_specialist_brief
     kwargs={"audience":audience,
             "timeout_seconds":20 if mode=="standard" else 75,
             "max_tokens":850 if mode=="standard" else 1450}
@@ -118,7 +118,7 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
     previous=None
     failures=[]
     for attempt in range(max_revisions+1):
-        announce("Шаг 1/3: Qwen создаёт вариант "+
+        announce("Шаг 1/3: ИИ-сценарист создаёт вариант "+
                  str(attempt+1)+"/"+str(max_revisions+1)+"…")
         try:
             call_kwargs=dict(kwargs)
@@ -133,7 +133,7 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
             brief=ai_generator(topic,trends,**call_kwargs)
             if not isinstance(brief,Brief):
                 raise ViralStudioError("ИИ не вернул сценарий.")
-            if not brief.generator.startswith("локальная Qwen"):
+            if not brief.generator.startswith(("локальная Qwen3-VL","локальная Gemma3:4b")):
                 raise ViralStudioError("Модель вернула не-ИИ шаблон.")
             if brief.shots and 3 < brief.shots[0].seconds <= 12:
                 # Editorial timing adjustment, never invents text or scenes:
@@ -150,9 +150,9 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                 editorial=(
                     " Повторные подписи заменены на фразы из инструкций "
                     "съёмки, написанных той же Qwen."
-                    if "подписи взяты из инструкций Qwen" in brief.generator else "")
+                    if "подписи взяты из инструкций ИИ" in brief.generator else "")
                 return brief,(
-                    f"Сценарий локальной Qwen; формальная проверка пройдена "
+                    f"Сценарий {brief.generator}; формальная проверка пройдена "
                     f"за {attempt+1} попытку(и). Требуется оценить факты и сюжет."
                     +editorial
                 ),report,attempt+1
@@ -169,12 +169,12 @@ def create_checked_scenario(topic, trends=(), *, mode="fast", audience=None,
                      " не прошёл проверку: "+issues+
                      ("; исправляю этот вариант" if attempt<max_revisions
                       else "; попытки закончились"))
-    announce("Шаг 3/3: Qwen не прошла проверку; "
+    announce("Шаг 3/3: ИИ-сценарист не прошёл проверку; "
              "вместо неё будет явно обозначенный шаблон БЕЗ нейросети.")
     fallback=quick_brief(topic,trends,audience=audience)
     fallback_report=assess_scenario(fallback)
     return fallback,(
-        "Локальная Qwen не подготовила сценарий, прошедший формальные "
+        "Отдельный ИИ-сценарист не подготовил сценарий, прошедший формальные "
         "проверки. Использован авторский шаблон БЕЗ нейросети. "
         "Причины попыток: "+" | ".join(failures)[-420:]
     ),fallback_report,max_revisions+1
