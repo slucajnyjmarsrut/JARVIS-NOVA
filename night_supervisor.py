@@ -175,9 +175,10 @@ class NightSupervisor:
             if kind == "montage_advice":
                 origin = db.execute(
                     "SELECT kind,status FROM jobs WHERE id=?", (source_id,)).fetchone()
-                if origin != ("scenario", "completed"):
+                if (origin is None or origin[0] != "scenario" or
+                        origin[1] not in ("queued", "running", "paused", "completed")):
                     raise SupervisorError(
-                        "Монтажный совет доступен только для готового сценария этой очереди.")
+                        "Монтажный совет требует сценарий из этой очереди.")
             job_id = uuid4().hex
             db.execute("INSERT INTO jobs(id,kind,prompt,language,source_id,"
                        "status,step,created,approved) VALUES(?,?,?,?,?,?,?,?,?)",

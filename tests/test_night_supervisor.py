@@ -4,6 +4,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import sqlite3
+from contextlib import closing
 import threading
 import unittest
 from night_supervisor import NightSupervisor, SupervisorError
@@ -123,7 +124,7 @@ class NightSupervisorTests(unittest.TestCase):
             s = NightSupervisor(root, executor=screenplay)
             job_id = s.enqueue("scenario", "minecraft", approved=True,
                                allow_new_files=True)
-            with sqlite3.connect(s.db) as db:
+            with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE jobs SET status='running' WHERE id=?", (job_id,))
             recovered = NightSupervisor(root, executor=screenplay)
             self.assertEqual(recovered.list_jobs()[0].status, "paused")
@@ -154,7 +155,7 @@ class NightSupervisorTests(unittest.TestCase):
             job_id = s.enqueue("scenario", "minecraft", approved=True,
                                allow_new_files=True)
             s.run_next(cancel=stop)
-            with sqlite3.connect(s.db) as db:
+            with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE checkpoints SET payload='{}' WHERE job_id=?",
                            (job_id,))
             s.resume(job_id, approved=True)

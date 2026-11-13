@@ -22,6 +22,7 @@ class NightSupervisorWindow(tk.Toplevel):
         self.supervisor = NightSupervisor()
         self.cancel_event = threading.Event()
         self._busy = False
+        self._close_when_stopped = False
         self._visible_jobs = []
         self.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -49,6 +50,9 @@ class NightSupervisorWindow(tk.Toplevel):
         self.source = ttk.Entry(fields, width=38)
         self.source.grid(row=1, column=1, sticky="ew", padx=(8, 0), pady=(6, 0))
         fields.columnconfigure(1, weight=1)
+        ttk.Button(fields, text="Взять ID выбранного сценария",
+                   command=self.use_selected_source).grid(
+                       row=2, column=1, sticky="w", padx=(8, 0), pady=(4, 0))
         ttk.Label(frame, text="Опиши проект (для советов нужен ID сценария)").pack(
             anchor="w", pady=(8, 3))
         self.prompt = tk.Text(frame, height=3, wrap="word")
@@ -105,6 +109,19 @@ class NightSupervisorWindow(tk.Toplevel):
             self.history.configure(state="disabled")
         except (OSError, SupervisorError) as exc:
             self.status.set("Ошибка журнала: " + str(exc)[:260])
+
+    def use_selected_source(self):
+        selected = self.jobs.curselection()
+        if not selected or selected[0] >= len(self._visible_jobs):
+            self.status.set("Сначала выбери сценарий в списке.")
+            return
+        job = self._visible_jobs[selected[0]]
+        if job.kind != "scenario":
+            self.status.set("Источником может быть только задача-сценарий.")
+            return
+        self.source.delete(0, "end")
+        self.source.insert(0, job.id)
+        self.status.set("ID сценария указан. Можно добавить советы по монтажу.")
 
     def enqueue(self):
         if self._busy:
@@ -167,6 +184,8 @@ class NightSupervisorWindow(tk.Toplevel):
                 def finished():
                     self._busy = False
                     self.refresh()
+                    if self._close_when_stopped:
+                        self.destroy()
                 self._ui(finished)
         threading.Thread(target=worker, daemon=True,
                          name="jarvis-night-supervisor").start()
@@ -207,4 +226,8 @@ class NightSupervisorWindow(tk.Toplevel):
                 parent=self):
                 return
             self.cancel_event.set()
+            self._close_when_stopped = True
+            self.status.set("Жду завершения текущего вызова для сохранения "
+                            "контрольной точки. Окно закроется после паузы.")
+            return
         self.destroy()
