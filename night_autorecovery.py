@@ -1,14 +1,18 @@
 # -*- coding: utf-8 -*-
-"""Resume only an explicitly approved, unexpired overnight session.
+"""Launch always-on current-user Supervisor; retain legacy night recovery.
 
-Called after JARVIS GUI startup. No Windows scheduled task, login autostart,
-new privileges, or new model installation. The job-specific authorization
-and absolute deadline were persisted *before* the original night run.
+Windows packaged builds launch a separate headless process. GUI closing does
+not stop that process. Source checkouts use one nonblocking daemon thread.
+Login launch is a visible installer Startup option, not hidden persistence.
+Only individually approved jobs can run.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+import os
+import subprocess
+import sys
 import threading
 
 from night_supervisor import NightSupervisor, SupervisorError
@@ -48,3 +52,51 @@ def start_if_approved(root=None, *, supervisor_factory=NightSupervisor):
             daemon=True)
         _active.start()
         return _active
+
+
+_service_thread = None
+_spawned = False
+
+
+def start_always_on(root=None, *, supervisor_factory=NightSupervisor,
+                    stop_event=None, popen=None):
+    """Start worker without pressing Start; never grant new job permission."""
+    global _service_thread, _spawned
+    packaged = (
+        root is None and supervisor_factory is NightSupervisor and
+        stop_event is None and getattr(sys, "frozen", False) and os.name == "nt"
+    )
+    with _lock:
+        if packaged:
+            if _spawned:
+                return None
+            # Frozen JARVIS accepts exactly the headless daemon flag. No
+            # shell, no inherited handles, no network or arbitrary argument.
+            opener = popen or subprocess.Popen
+            try:
+                opener(
+                    [sys.executable, "--supervisor-daemon"],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL, close_fds=True,
+                    creationflags=(getattr(subprocess, "CREATE_NO_WINDOW", 0) |
+                                   getattr(subprocess, "DETACHED_PROCESS", 0)),
+                )
+            except OSError as exc:
+                logging.getLogger(__name__).warning(
+                    "Cannot start local Supervisor process: %s", type(exc).__name__)
+                return None
+            _spawned = True
+            return None
+
+        if _service_thread is not None and _service_thread.is_alive():
+            return _service_thread
+        from night_supervisor_service import run_forever
+        _service_thread = threading.Thread(
+            target=run_forever,
+            kwargs={"root": root, "supervisor_factory": supervisor_factory,
+                    "stop_event": stop_event},
+            name="jarvis-always-on-supervisor",
+            daemon=True,
+        )
+        _service_thread.start()
+        return _service_thread
