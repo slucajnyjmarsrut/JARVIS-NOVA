@@ -101,7 +101,7 @@ class TopicOnlyVideoTests(TestCase):
                 manager.enqueue("topic_video","Minecraft")
             task=manager.enqueue("topic_video","Minecraft",
                 approved=True,allow_new_files=True)
-            def simulated_render(brief,destination):
+            def simulated_render(brief,destination,*,cancel=None):
                 self.assertEqual(brief.generator,"локальная Gemma3:4b")
                 (destination/"JARVIS_NOVA_FROM_TOPIC.mp4").write_bytes(b"X"*1200)
                 (destination/"ORIGIN_AND_QUALITY.json").write_text(
