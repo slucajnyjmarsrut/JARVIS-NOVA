@@ -53,6 +53,20 @@ class LocalChat:
         self._lock = threading.Lock()
         self._closed = False
         self.debate_mode = False
+        self._prefer_task_chat = False
+        self._task_chat_checked = False
+        self._task_chat_ready = False
+
+    def prefer_task_specialist(self, enabled=True):
+        """Opt in to a separate model if already installed, with safe fallback.
+
+        An explicit chat request can check a local model once, without
+        installing or downloading anything. This method never starts Ollama.
+        """
+        if type(enabled) is not bool:
+            raise ValueError("Нужно выбрать True или False")
+        self._prefer_task_chat = enabled
+        self._task_chat_checked = False
 
     def set_debate_mode(self, enabled: bool) -> None:
         if type(enabled) is not bool:
@@ -144,9 +158,24 @@ class LocalChat:
                 {"role":"user","content":question},
                 {"role":"assistant","content":answer}])[-8:]
             return answer
-        endpoint = self.runtime.start()
+        endpoint = None
+        model = self.model
+        if self._prefer_task_chat:
+            if not self._task_chat_checked:
+                try:
+                    from task_ai_registry import specialist_available
+                    self._task_chat_ready = specialist_available("chat")
+                except Exception:
+                    self._task_chat_ready = False
+                self._task_chat_checked = True
+            if self._task_chat_ready:
+                from task_ai_registry import LOOPBACK, get_specialist
+                endpoint = LOOPBACK
+                model = get_specialist("chat").model
+        if endpoint is None:
+            endpoint = self.runtime.start()
         payload = {
-            "model": self.model,
+            "model": model,
             "stream": False,
             "think": False,  # no long hidden reasoning before short spoken reply
             "keep_alive": "20m",  # keep local model hot for follow-up questions

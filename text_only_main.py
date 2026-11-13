@@ -121,6 +121,9 @@ class TextJarvis(BaseJarvis):
             root=assets,model_store=active_model_store(assets)))
         self.trimodal.runtime = self.runtime
         self.local_chat = LocalChat(self.runtime)
+        # On an explicit chat question, prefer a genuinely separate installed
+        # qwen3:4b dialogue model. Bundled vision remains a truthful fallback.
+        self.local_chat.prefer_task_specialist(True)
         self.freellm_chat = FreeLLMChat()
         self._freellm_consent = False
         self.desktop = Desktop(

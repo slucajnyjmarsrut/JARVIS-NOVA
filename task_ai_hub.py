@@ -28,8 +28,9 @@ class TaskAIHub(tk.Toplevel):
         outer.pack(fill="both",expand=True)
         ttk.Label(outer,text="ИИ ПО ЗАДАЧАМ",font=("Segoe UI",15,"bold")).pack(anchor="w")
         ttk.Label(outer,
-            text="Сценарии — Gemma3, код — Qwen Coder, монтажный план — Llama. "
-                 "Диалог и зрение пока используют общую встроенную Qwen Vision.",
+            text="Сценарии — Gemma3, код — Qwen Coder, монтаж — Llama3.2, "
+                 "разговор — Qwen3, зрение — Qwen3-VL. "
+                 "Без отдельного диалога доступна встроенная Qwen Vision.",
             wraplength=600,justify="left").pack(anchor="w",pady=(4,10))
         rows=ttk.Frame(outer)
         rows.pack(fill="both",expand=True)
@@ -121,6 +122,10 @@ class TaskAIHub(tk.Toplevel):
                     progress=self._status)
                 def ready():
                     self._states[kind].set("установлена")
+                    if kind=="chat":
+                        local_chat=getattr(self.parent,"local_chat",None)
+                        if local_chat is not None:
+                            local_chat.prefer_task_specialist(True)
                     self.status.set("Подключён "+spec.label+": "+model+
                                     ". Теперь открой соответствующую задачу.")
                 self._on_ui(ready)
