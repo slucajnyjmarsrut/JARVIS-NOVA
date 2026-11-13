@@ -213,6 +213,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_text_only_bundle.py -v
       - name: Gate online-license security, offline documentation, fast local routes
         run: python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
+      - name: Source audit of all modules
+        run: python scripts/audit_module_health.py
       - name: Three production TEXT-ONLY unit suite passes
         shell: pwsh
         timeout-minutes: 45
