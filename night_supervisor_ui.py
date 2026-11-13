@@ -2,6 +2,7 @@
 """Explicitly approved overnight queue UI. The window never bypasses consent."""
 from __future__ import annotations
 import threading
+from queue import Empty, Queue
 import tkinter as tk
 from tkinter import messagebox, ttk
 from night_supervisor import NightSupervisor, SupervisorError
@@ -26,6 +27,7 @@ class NightSupervisorWindow(tk.Toplevel):
         self.cancel_event = threading.Event()
         self._busy = False
         self._close_when_stopped = False
+        self._ui_events = Queue()
         self._visible_jobs = []
         self.protocol("WM_DELETE_WINDOW", self.close)
 
@@ -84,12 +86,24 @@ class NightSupervisorWindow(tk.Toplevel):
         ttk.Label(frame, textvariable=self.status, wraplength=735,
                   justify="left").pack(fill="x", pady=(7, 0))
         self.refresh()
+        self.after(120, self._drain_ui)
 
     def _ui(self, callback):
+        """Background threads only enqueue UI work, never touch Tk."""
+        self._ui_events.put(callback)
+
+    def _drain_ui(self):
+        """All real Tk interactions run exclusively on the main event loop."""
         try:
+            for _ in range(40):
+                try:
+                    callback = self._ui_events.get_nowait()
+                except Empty:
+                    break
+                callback()
             if self.winfo_exists():
-                self.after(0, callback)
-        except (tk.TclError, RuntimeError):
+                self.after(120, self._drain_ui)
+        except tk.TclError:
             pass
 
     def _progress(self, job_id, message):

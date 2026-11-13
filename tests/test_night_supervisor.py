@@ -185,6 +185,21 @@ class NightSupervisorTests(unittest.TestCase):
             self.assertEqual(advice.status, "completed", advice.error)
             self.assertTrue((Path(advice.output) / "MONTAGE_ADVICE_RU.md").exists())
 
+    def test_worker_notifications_never_call_tk_from_other_thread(self):
+        from queue import Queue
+        from unittest.mock import Mock
+        from night_supervisor_ui import NightSupervisorWindow
+        window = Mock()
+        window._ui_events = Queue()
+        result = []
+        NightSupervisorWindow._ui(window, lambda: result.append(True))
+        window.after.assert_not_called()
+        window.winfo_exists.assert_not_called()
+        self.assertEqual(result, [])
+        NightSupervisorWindow._drain_ui(window)
+        self.assertEqual(result, [True])
+        window.after.assert_called_once_with(120, window._drain_ui)
+
     def test_second_instance_cannot_recover_while_queue_is_locked(self):
         with TemporaryDirectory() as temp:
             root = Path(temp) / "jobs"
