@@ -57,6 +57,8 @@ class TaskAIHub(tk.Toplevel):
                    command=self.refresh).pack(side="left")
         ttk.Button(footer,text="Отменить загрузку",
                    command=self.cancel).pack(side="left",padx=8)
+        ttk.Button(footer,text="Прежний чат Qwen Vision",
+                   command=self.use_legacy_chat).pack(side="left")
         ttk.Label(outer,textvariable=self.status,wraplength=600,
                   justify="left").pack(fill="x",pady=(9,0))
         self._focus_role=role if role in ROLE_ORDER else "scenario"
@@ -135,6 +137,19 @@ class TaskAIHub(tk.Toplevel):
                 self._on_ui(lambda:setattr(self,"_busy",False))
         threading.Thread(target=worker,daemon=True,
                          name="jarvis-task-ai-pull").start()
+
+    def use_legacy_chat(self):
+        """Explicitly switch from dedicated chat to bundled Vision compatibility."""
+        local_chat=getattr(self.parent,"local_chat",None)
+        if local_chat is None:
+            self.status.set(
+                "Чат в этом окне недоступен. Переключение не выполнено.")
+            return False
+        local_chat.prefer_task_specialist(False)
+        self.status.set(
+            "Явно выбран прежний чат Qwen Vision. "
+            "Это не отдельный разговорный ИИ Qwen3:4b.")
+        return True
 
     def cancel(self):
         self._cancel.set()

@@ -244,6 +244,24 @@ class ScreenwriterSpecialistTests(unittest.TestCase):
 
 
 
+    def test_hub_legacy_chat_button_requires_real_chat_instance(self):
+        from task_ai_hub import TaskAIHub
+        try:
+            window=tk.Tk()
+        except tk.TclError:
+            self.skipTest("No Tk on runner")
+        try:
+            window.withdraw()
+            hub=TaskAIHub(window)
+            self.assertFalse(hub.use_legacy_chat())
+            window.local_chat=mock.Mock()
+            self.assertTrue(hub.use_legacy_chat())
+            window.local_chat.prefer_task_specialist.assert_called_once_with(False)
+            self.assertIn("прежний чат",hub.status.get().lower())
+            hub.destroy()
+        finally:
+            window.destroy()
+
     def test_dedicated_chat_uses_different_weights_when_available(self):
         from local_chat import LocalChat
         from types import SimpleNamespace
