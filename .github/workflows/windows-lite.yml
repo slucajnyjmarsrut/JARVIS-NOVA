@@ -42,6 +42,8 @@ on:
       - night_resource_guard.py
       - night_autorecovery.py
       - tests/test_night_unattended.py
+      - topic_video_engine.py
+      - tests/test_topic_video_engine.py
       - night_supervisor.py
       - night_supervisor_ui.py
       - tests/test_night_supervisor.py
