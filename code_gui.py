@@ -136,35 +136,30 @@ class CodeWindow(tk.Toplevel):
         return Path(value)
 
     def _model_generator(self, task, language):
-        """Prefer the shared, offline runtime already running inside JARVIS."""
+        """Only the dedicated programmer model; never use Vision as coder."""
         host=self.master
         if getattr(host,"engine",None)=="freellm":
             return host.freellm_chat.generate_code(task,language)
-        if self._coder_opt_in and not self._coder_checked:
+        if not self._coder_opt_in:
+            raise WorkspaceError(
+                "ИИ-программист не был разрешён. Отдельно подтверди "
+                "использование Qwen Coder в окне программирования.")
+        if not self._coder_checked:
             self._coder_checked=True
             try:
                 from local_coder_models import best_installed_coder
                 found=best_installed_coder(confirmed=True)
-                if found is not None:
-                    self._coder_choice=found.name
+                self._coder_choice=found.name if found is not None else None
             except (OSError,ValueError,RuntimeError,TypeError):
-                # Offline or missing Ollama: use the already configured Qwen.
                 self._coder_choice=None
-        if self._coder_choice is not None:
-            return request_local_model(
-                task,language,endpoint="http://127.0.0.1:11434",
-                model=self._coder_choice)
-        if getattr(host, "_local_model_ready", None) is False:
+        if self._coder_choice is None:
             raise WorkspaceError(
-                "Qwen3-VL для JARVIS не подключена. Чтобы использовать уже "
-                "скачанную Qwen Coder, запусти Ollama на 127.0.0.1:11434 "
-                "и разреши проверку локальных моделей в окне программиста. "
-                "Поиск файлов на дисках сам по себе не запускает модель.")
-        runtime=getattr(getattr(host,'trimodal',None),'runtime',None)
-        if runtime is None:
-            return request_local_model(task,language)
-        endpoint=runtime.start()
-        return request_local_model(task,language,endpoint=endpoint,model=runtime.config.model)
+                "Отдельный ИИ-программист не подключён. Запусти Ollama "
+                "на 127.0.0.1:11434 и установи Qwen2.5-Coder:7b "
+                "через «ИИ ПО ЗАДАЧАМ». Vision Qwen не подменяет программиста.")
+        return request_local_model(
+            task,language,endpoint="http://127.0.0.1:11434",
+            model=self._coder_choice)
 
     def _preview_text(self,plan):
         lines=['Файлы проекта (проверь содержимое до сохранения):']
@@ -286,16 +281,17 @@ class CodeWindow(tk.Toplevel):
                 "кодовую модель без скачивания.",parent=self)
         coder_opt_in=bool(sandbox_consent)
         if (getattr(self.master, "engine", None)!="freellm"
-                and getattr(self.master, "_local_model_ready", None) is False
                 and not coder_opt_in):
             coder_opt_in=messagebox.askyesno(
-                "Использовать Qwen Coder для программирования?",
-                "Основная Qwen3-VL пока не подключена. Если уже запущена "
-                "локальная Ollama (127.0.0.1:11434), разрешить один раз "
-                "проверить список её кодовых моделей и использовать "
-                "имеющуюся Qwen Coder для этой задачи?\n\n"
-                "Новых моделей не скачиваем. В интернет код не отправляем. "
-                "Найденные на диске файлы сами по себе не запускаются.",
+                "Отдельный ИИ-программист · Qwen Coder",
+                "Программирование выполняет специализированная модель "
+                "Qwen2.5-Coder:7b через локальную Ollama "
+                "(127.0.0.1:11434), а НЕ Qwen Vision.\n\n"
+                "Разрешить проверить установленные кодовые модели и "
+                "использовать их для этой задачи? "
+                "Новых моделей не скачиваем и в облако код не отправляем. "
+                "Если модель отсутствует, открой «ИИ ПО ЗАДАЧАМ» "
+                "для её установки после подтверждения.",
                 parent=self)
         self._generation_busy=True
         self.gen.configure(state='disabled')
