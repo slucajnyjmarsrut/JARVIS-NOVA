@@ -23,9 +23,14 @@ import stat
 import threading
 import time
 from uuid import uuid4
+from night_resource_guard import (
+    memory_snapshot, under_pressure, release_specialist_memory, keep_pc_awake,
+)
 
 KINDS = ("scenario", "code", "montage_advice")
 MAX_JOBS = 12
+MAX_RESOURCE_RETRIES = 2
+RESOURCE_POLL_SECONDS = 20
 MAX_DATA_BYTES = 750_000
 MAX_PROMPT_CHARS = 2400
 REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
@@ -99,7 +104,8 @@ class NightSupervisor:
     Executor injection is for offline tests only; independent validators
     are always invoked after it. The actual UI never injects executors.
     """
-    def __init__(self, root=None, *, executor=None):
+    def __init__(self, root=None, *, executor=None, memory_probe=None,
+                 resource_release=None, sleeper=None, clock=None):
         self.root = Path(root if root is not None else
                          Path.home() / "JARVIS-NOVA-Projects" /
                          "Night-Supervisor").absolute()
@@ -109,26 +115,61 @@ class NightSupervisor:
         _no_links(self.db)
         self._run_lock = threading.Lock()
         self._executor = executor or self._generate
-        with self._process_lock(), self._connect() as db:
+        self._memory_probe = memory_probe or memory_snapshot
+        self._resource_release = resource_release or release_specialist_memory
+        self._sleep = sleeper or time.sleep
+        self._clock = clock or time.time
+        try:
+            with self._process_lock(), self._connect() as db:
+                self._initialize_schema(db)
+        except SupervisorError as exc:
+            # A long-running *approved* worker owns the lock. New UI
+            # windows may still READ the existing durable queue.
+            if "Другая копия JARVIS" not in str(exc) or not self.db.is_file():
+                raise
+
+    def _initialize_schema(self, db):
             db.execute("""CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY, kind TEXT NOT NULL, prompt TEXT NOT NULL,
                 language TEXT NOT NULL, source_id TEXT NOT NULL,
                 status TEXT NOT NULL, step TEXT NOT NULL,
                 output TEXT NOT NULL DEFAULT '', error TEXT NOT NULL DEFAULT '',
-                created TEXT NOT NULL, approved INTEGER NOT NULL)""")
+                created TEXT NOT NULL, approved INTEGER NOT NULL,
+                resource_retries INTEGER NOT NULL DEFAULT 0)""")
+            # Upgrade earlier PR #6 queues without deleting any queued work.
+            fields = {row[1] for row in db.execute("PRAGMA table_info(jobs)")}
+            if "resource_retries" not in fields:
+                db.execute("ALTER TABLE jobs ADD COLUMN resource_retries INTEGER "
+                           "NOT NULL DEFAULT 0")
+            db.execute("""CREATE TABLE IF NOT EXISTS night_run (
+                id INTEGER PRIMARY KEY CHECK(id=1), active INTEGER NOT NULL,
+                approved INTEGER NOT NULL, deadline REAL NOT NULL)""")
             db.execute("""CREATE TABLE IF NOT EXISTS checkpoints (
                 job_id TEXT NOT NULL, step TEXT NOT NULL, payload TEXT NOT NULL,
                 digest TEXT NOT NULL, PRIMARY KEY(job_id,step))""")
             db.execute("""CREATE TABLE IF NOT EXISTS journal (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT, job_id TEXT NOT NULL,
                 created TEXT NOT NULL, event TEXT NOT NULL, detail TEXT NOT NULL)""")
-            # No automatic replay of interrupted work; user authorizes resume.
-            ids = [row[0] for row in db.execute(
-                "SELECT id FROM jobs WHERE status='running'")]
-            for job_id in ids:
-                db.execute("UPDATE jobs SET status='paused' WHERE id=?", (job_id,))
-                self._event(db, job_id, "paused",
-                            "Прерванный запуск. Требуется явное возобновление.")
+            # A bounded session was approved before the user went to sleep.
+            # Recover only its earlier approved tasks while the deadline
+            # still holds, never an unrelated paused/manual job.
+            active = self._active_plan(db)
+            ids = list(db.execute(
+                "SELECT id,approved,resource_retries FROM jobs "
+                "WHERE status='running'"))
+            for job_id, approved, retries in ids:
+                if active and approved == 1 and retries <= MAX_RESOURCE_RETRIES:
+                    db.execute("UPDATE jobs SET status='queued' WHERE id=?",
+                               (job_id,))
+                    self._event(db, job_id, "recovered",
+                                "Разрешённая ночная очередь восстановлена после сбоя.")
+                else:
+                    db.execute("UPDATE jobs SET status='paused' WHERE id=?",
+                               (job_id,))
+                    self._event(db, job_id, "paused",
+                                "Прерванный ручной запуск или истёкший лимит.")
+            # Manually paused tasks are NEVER resumed by an old session.
+            # Waiting-for-RAM tasks are eligible only under active approval.
 
     @contextmanager
     def _process_lock(self):
@@ -181,6 +222,122 @@ class NightSupervisor:
     def _event(db, job_id, event, detail=""):
         db.execute("INSERT INTO journal(job_id,created,event,detail) VALUES (?,?,?,?)",
                    (job_id, _time(), event, str(detail)[:420]))
+
+    def _active_plan(self, db):
+        row = db.execute("SELECT active,approved,deadline FROM night_run "
+                         "WHERE id=1").fetchone()
+        return bool(row and row[0] == 1 and row[1] == 1 and
+                    row[2] > self._clock())
+
+    def run_is_approved(self):
+        """Check persistent consent: safe to call during application startup."""
+        with self._connect() as db:
+            return self._active_plan(db)
+
+    def approve_overnight(self, *, approved=False, max_minutes=360):
+        """One upfront authorization, valid only for this bounded queue run."""
+        if approved is not True:
+            raise PermissionError("Нужна явная команда запустить ночную очередь.")
+        if type(max_minutes) is not int or not 1 <= max_minutes <= 480:
+            raise SupervisorError("Неверный ночной лимит времени.")
+        with self._process_lock(), self._connect() as db:
+            count = db.execute("SELECT count(*) FROM jobs WHERE status='queued' "
+                               "AND approved=1").fetchone()[0]
+            if not count:
+                raise SupervisorError("Нет подтверждённых заданий в очереди.")
+            deadline = self._clock() + 60 * max_minutes
+            db.execute("INSERT INTO night_run(id,active,approved,deadline) "
+                       "VALUES(1,1,1,?) ON CONFLICT(id) DO UPDATE SET "
+                       "active=1,approved=1,deadline=excluded.deadline",
+                       (deadline,))
+            self._event(db, "night", "overnight_approved",
+                        f"Лимит: {max_minutes} мин; только одобренные задания.")
+        return deadline
+
+    def stop_overnight(self):
+        """Explicit manual pause cancels restart recovery immediately."""
+        with self._connect() as db:
+            db.execute("UPDATE night_run SET active=0 WHERE id=1")
+            self._event(db, "night", "overnight_stopped",
+                        "Отменено автономное продолжение после перезапуска.")
+
+    def _finish_overnight(self, event):
+        with self._connect() as db:
+            db.execute("UPDATE night_run SET active=0 WHERE id=1")
+            self._event(db, "night", event,
+                        "Ночная сессия завершена или достигнут лимит.")
+
+    def _mark_waiting_memory(self, db, *, reason="Низкий запас ОЗУ"):
+        jobs = list(db.execute(
+            "SELECT id FROM jobs WHERE status='queued' AND approved=1"))
+        for (job_id,) in jobs:
+            db.execute("UPDATE jobs SET status='waiting_memory' WHERE id=?",
+                       (job_id,))
+            self._event(db, job_id, "waiting_memory", reason)
+
+    def _ready_after_memory(self, db):
+        for (job_id,) in db.execute(
+                "SELECT id FROM jobs WHERE status='waiting_memory' AND approved=1"):
+            db.execute("UPDATE jobs SET status='queued' WHERE id=?", (job_id,))
+            self._event(db, job_id, "memory_recovered",
+                        "ОЗУ достаточно: продолжаю без новых вопросов.")
+
+    def run_approved_overnight(self, *, cancel=None, progress=None):
+        """Unattended resume after restart, with RAM backoff and an absolute deadline.
+
+        Return processed count. Never extend original authorization; do not
+        download anything or execute generated code. Cancellation stops
+        persistent recovery as well.
+        """
+        with self._process_lock(), keep_pc_awake():
+            with self._connect() as db:
+                if not self._active_plan(db):
+                    return 0
+                deadline = db.execute(
+                    "SELECT deadline FROM night_run WHERE id=1").fetchone()[0]
+            processed = 0
+            notified_pressure = False
+            while self._clock() < deadline and processed < MAX_JOBS:
+                if cancel is not None and cancel.is_set():
+                    self._finish_overnight("overnight_paused")
+                    return processed
+                with self._connect() as db:
+                    if not self._active_plan(db):
+                        return processed
+                    active = db.execute(
+                        "SELECT count(*) FROM jobs WHERE status IN "
+                        "('queued','waiting_memory') AND approved=1").fetchone()[0]
+                if not active:
+                    self._finish_overnight("overnight_completed")
+                    return processed
+                snap = self._memory_probe()
+                if under_pressure(snap):
+                    with self._connect() as db:
+                        self._mark_waiting_memory(db)
+                    if not notified_pressure:
+                        notified_pressure = True
+                        if progress is not None:
+                            progress("night", "ОЗУ заканчивается: освобождаю модели "
+                                     "и автоматически жду восстановления.")
+                        self._resource_release()
+                    self._sleep(min(RESOURCE_POLL_SECONDS,
+                                    max(0, deadline - self._clock())))
+                    continue
+                if notified_pressure:
+                    notified_pressure = False
+                    if progress is not None:
+                        progress("night", "ОЗУ восстановлена; продолжаю очередь.")
+                with self._connect() as db:
+                    self._ready_after_memory(db)
+                if not self._run_next_locked(
+                        cancel=cancel, progress=progress, autonomous=True):
+                    break
+                processed += 1
+                # A finished specialist must release its own residency, even
+                # if the next task uses a different model.
+                self._resource_release()
+            self._finish_overnight("overnight_deadline")
+            return processed
 
     def enqueue(self, kind, prompt="", *, approved=False, language="python",
                 source_id="", allow_new_files=False):
@@ -409,7 +566,8 @@ class NightSupervisor:
         with self._process_lock():
             return self._run_next_locked(cancel=cancel, progress=progress)
 
-    def _run_next_locked(self, *, cancel=None, progress=None):
+    def _run_next_locked(self, *, cancel=None, progress=None,
+                         autonomous=False):
         """The caller holds the exclusive OS lock for this whole operation."""
         if not self._run_lock.acquire(blocking=False):
             raise SupervisorError("Supervisor уже выполняет задачу.")
@@ -454,6 +612,34 @@ class NightSupervisor:
                                    "output=?,error='' WHERE id=?", (output, job_id))
                         self._event(db, job_id, "completed", output)
                     notify("Готово: " + output)
+                return True
+            except (MemoryError, OSError) as exc:
+                # A true OOM can be retried within the already approved
+                # session. Other OS failures are not assumed to be memory.
+                low_memory = (isinstance(exc, MemoryError) or
+                              getattr(exc, "winerror", None) in (8, 1455))
+                if autonomous and low_memory:
+                    with self._connect() as db:
+                        db.execute("UPDATE jobs SET resource_retries="
+                                   "resource_retries+1 WHERE id=?", (job_id,))
+                        count = db.execute(
+                            "SELECT resource_retries FROM jobs WHERE id=?",
+                            (job_id,)).fetchone()[0]
+                        if count <= MAX_RESOURCE_RETRIES:
+                            db.execute("UPDATE jobs SET status='waiting_memory',"
+                                       "error=? WHERE id=?",
+                                       ("ОЗУ исчерпана; ожидаю восстановления.", job_id))
+                            self._event(db, job_id, "waiting_memory",
+                                        f"Ошибка памяти; попытка {count}/{MAX_RESOURCE_RETRIES}")
+                        else:
+                            db.execute("UPDATE jobs SET status='blocked',error=? "
+                                       "WHERE id=?", ("Превышен лимит ошибок памяти.",job_id))
+                            self._event(db, job_id, "blocked", "Повторных попыток не будет.")
+                    notify("Недостаточно ОЗУ: задача отложена безопасно.")
+                    return True
+                self._change_status(job_id, "blocked",
+                                    type(exc).__name__ + ": " + str(exc)[:280])
+                notify("Задача остановлена: " + str(exc)[:210])
                 return True
             except Exception as exc:
                 self._change_status(job_id, "blocked",
