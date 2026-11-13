@@ -154,7 +154,7 @@ class CodeWindow(tk.Toplevel):
                 self._coder_choice=None
         if self._coder_choice is None:
             raise WorkspaceError(
-                "Отдельный ИИ-программист не подключён. Запусти Ollama "
+                "Отдельный ИИ-программист не подключён: запусти Ollama "
                 "на 127.0.0.1:11434 и установи Qwen2.5-Coder:7b "
                 "через «ИИ ПО ЗАДАЧАМ». Vision Qwen не подменяет программиста.")
         return request_local_model(

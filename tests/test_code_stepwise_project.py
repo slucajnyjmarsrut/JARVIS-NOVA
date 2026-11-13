@@ -184,7 +184,8 @@ class StepwiseProjectTests(unittest.TestCase):
         view.master.engine="bundled"
         view.master._local_model_ready=True
         with mock.patch("code_gui.threading.Thread") as thread, \
-             mock.patch("code_gui.build_one_shot_project") as build:
+             mock.patch("code_gui.build_one_shot_project") as build, \
+             mock.patch("code_gui.messagebox.askyesno",return_value=True):
             CodeWindow.generate(view)
             self.assertIn("ПЛАН JARVIS",view.show.call_args.args[0])
             thread.assert_called_once()
