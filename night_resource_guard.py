@@ -92,7 +92,7 @@ def _local_unload(model):
     """The URL is hard-coded loopback, not generated or user-controlled."""
     request = urllib.request.Request(
         "http://127.0.0.1:11434/api/generate",
-        data=json.dumps({"model": model, "keep_alive": 0,
+        data=json.dumps({"model": model, "prompt": "", "keep_alive": 0,
                          "stream": False}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",

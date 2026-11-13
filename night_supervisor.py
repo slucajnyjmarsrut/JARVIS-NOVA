@@ -258,6 +258,8 @@ class NightSupervisor:
         """Explicit manual pause cancels restart recovery immediately."""
         with self._connect() as db:
             db.execute("UPDATE night_run SET active=0 WHERE id=1")
+            db.execute("UPDATE jobs SET status='paused' "
+                       "WHERE status='waiting_memory'")
             self._event(db, "night", "overnight_stopped",
                         "Отменено автономное продолжение после перезапуска.")
 
@@ -297,7 +299,10 @@ class NightSupervisor:
                     "SELECT deadline FROM night_run WHERE id=1").fetchone()[0]
             processed = 0
             notified_pressure = False
-            while self._clock() < deadline and processed < MAX_JOBS:
+            # Each of at most 12 jobs may have two memory retries.
+            # Retries must not prematurely skip later approved jobs.
+            while (self._clock() < deadline and
+                   processed < MAX_JOBS * (MAX_RESOURCE_RETRIES + 1)):
                 if cancel is not None and cancel.is_set():
                     self._finish_overnight("overnight_paused")
                     return processed
@@ -308,7 +313,13 @@ class NightSupervisor:
                         "SELECT count(*) FROM jobs WHERE status IN "
                         "('queued','waiting_memory') AND approved=1").fetchone()[0]
                 if not active:
-                    self._finish_overnight("overnight_completed")
+                    with self._connect() as db:
+                        blockers = db.execute(
+                            "SELECT count(*) FROM jobs WHERE status='blocked'"
+                        ).fetchone()[0]
+                    self._finish_overnight(
+                        "overnight_finished_with_blocks" if blockers else
+                        "overnight_completed")
                     return processed
                 snap = self._memory_probe()
                 if under_pressure(snap):

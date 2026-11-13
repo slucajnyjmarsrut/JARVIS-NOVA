@@ -207,8 +207,12 @@ class NightSupervisorTests(unittest.TestCase):
             job_id = primary.enqueue("scenario", "minecraft",
                                      approved=True, allow_new_files=True)
             with primary._process_lock():
+                # A second window can inspect the existing queue without
+                # pausing the live worker, but cannot run that queue itself.
+                viewer = NightSupervisor(root, executor=screenplay)
+                self.assertEqual(viewer.list_jobs()[0].status, "queued")
                 with self.assertRaises(SupervisorError):
-                    NightSupervisor(root, executor=screenplay)
+                    viewer.run_next()
             self.assertEqual(primary.list_jobs()[0].status, "queued")
             self.assertTrue((root / "night_supervisor.lock").exists())
 
