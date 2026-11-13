@@ -269,6 +269,17 @@ class NightSupervisor:
             self._event(db, "night", event,
                         "Ночная сессия завершена или достигнут лимит.")
 
+    def _release_memory_safely(self):
+        # Model release is best effort: an Ollama failure cannot interrupt
+        # an otherwise safely checkpointed overnight queue.
+        try:
+            return self._resource_release()
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            with self._connect() as db:
+                self._event(db, "night", "memory_release_unavailable",
+                            type(exc).__name__)
+            return 0
+
     def _mark_waiting_memory(self, db, *, reason="Низкий запас ОЗУ"):
         jobs = list(db.execute(
             "SELECT id FROM jobs WHERE status='queued' AND approved=1"))
@@ -321,7 +332,10 @@ class NightSupervisor:
                         "overnight_finished_with_blocks" if blockers else
                         "overnight_completed")
                     return processed
-                snap = self._memory_probe()
+                try:
+                    snap = self._memory_probe()
+                except (OSError, ValueError, RuntimeError):
+                    snap = None  # Unknown memory: fail closed and wait.
                 if under_pressure(snap):
                     with self._connect() as db:
                         self._mark_waiting_memory(db)
@@ -330,7 +344,7 @@ class NightSupervisor:
                         if progress is not None:
                             progress("night", "ОЗУ заканчивается: освобождаю модели "
                                      "и автоматически жду восстановления.")
-                        self._resource_release()
+                        self._release_memory_safely()
                     self._sleep(min(RESOURCE_POLL_SECONDS,
                                     max(0, deadline - self._clock())))
                     continue
@@ -346,7 +360,7 @@ class NightSupervisor:
                 processed += 1
                 # A finished specialist must release its own residency, even
                 # if the next task uses a different model.
-                self._resource_release()
+                self._release_memory_safely()
             self._finish_overnight("overnight_deadline")
             return processed
 
