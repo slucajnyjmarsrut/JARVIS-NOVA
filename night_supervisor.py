@@ -27,7 +27,7 @@ from night_resource_guard import (
     memory_snapshot, under_pressure, release_specialist_memory, keep_pc_awake,
 )
 
-KINDS = ("scenario", "code", "montage_advice")
+KINDS = ("scenario", "code", "montage_advice", "topic_video")
 MAX_JOBS = 12
 MAX_RESOURCE_RETRIES = 2
 RESOURCE_POLL_SECONDS = 20
@@ -372,7 +372,7 @@ class NightSupervisor:
                 "явного разрешения пользователя.")
         if kind not in KINDS or not isinstance(prompt, str) or len(prompt) > MAX_PROMPT_CHARS:
             raise SupervisorError("Недопустимая задача ночного режима.")
-        if kind in ("scenario", "code") and len(prompt.strip()) < 3:
+        if kind in ("scenario", "code", "topic_video") and len(prompt.strip()) < 3:
             raise SupervisorError("Опиши задачу хотя бы тремя символами.")
         if kind == "code" and language != "python":
             raise SupervisorError("В ночном режиме безопасно проверяется только Python.")
@@ -456,7 +456,7 @@ class NightSupervisor:
         return next((j for j in self.list_jobs() if j.id == job_id), None)
 
     def _generate(self, job, progress):
-        if job.kind == "scenario":
+        if job.kind in ("scenario", "topic_video"):
             from video_scenario_autonomy import create_checked_scenario
             from dataclasses import asdict
             brief, note, report, _ = create_checked_scenario(
@@ -503,7 +503,7 @@ class NightSupervisor:
 
     @staticmethod
     def _verify(job, payload):
-        if job.kind == "scenario":
+        if job.kind in ("scenario", "topic_video"):
             from video_scenario_autonomy import assess_scenario
             brief = _brief_from_data(payload.get("brief"))
             report = assess_scenario(brief)
@@ -549,6 +549,22 @@ class NightSupervisor:
         if destination.exists():
             raise SupervisorError("Выходная папка уже существует: "
                                   "не перезаписываю результаты после сбоя.")
+        if job.kind == "topic_video":
+            from topic_video_engine import render_topic_video
+            # An interrupted render leaves no misleading final directory.
+            # Rendering is staged on the SAME volume as the eventual result.
+            # Temporary *JARVIS-generated* intermediates may be discarded.
+            with TemporaryDirectory(prefix=".nova-topic-stage-",
+                                    dir=output_base) as tmp:
+                staged = Path(tmp) / "completed"
+                staged.mkdir()
+                _no_links(staged)
+                render_topic_video(_brief_from_data(payload["brief"]), staged)
+                _no_links(destination)
+                if destination.exists():
+                    raise SupervisorError("Выходная папка появилась; не перезаписываю.")
+                staged.rename(destination)
+            return str(destination)
         destination.mkdir()
         if job.kind == "code":
             from code_workspace import apply_plan
