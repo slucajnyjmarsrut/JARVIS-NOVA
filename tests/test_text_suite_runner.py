@@ -16,7 +16,7 @@ class SuiteIsolationTests(unittest.TestCase):
         self.assertEqual(run_suites(runner=runner,suites=suites),())
         self.assertEqual(len(calls),2)
         for (argv,kw),name in zip(calls,suites):
-            self.assertEqual(argv[-1],name)
+            self.assertEqual(argv[-2:], [name, "-v"])
             self.assertEqual(argv[2:5],["-m","unittest","discover"])
             self.assertEqual(kw["cwd"],str(ROOT))
             self.assertFalse(kw["shell"])
