@@ -35,6 +35,10 @@ on:
       - model_storage.py
       - local_model_inventory.py
       - video_scenario_autonomy.py
+      - task_ai_registry.py
+      - scenario_specialist.py
+      - task_ai_hub.py
+      - tests/test_task_ai_specialists.py
       - quick_video_brief.py
       - tests/test_model_inventory.py
       - tests/test_scenario_and_model_route.py
