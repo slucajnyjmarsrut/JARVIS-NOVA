@@ -85,6 +85,8 @@ def build_text_interface(app):
     # Granting vision does NOT silently start capturing or watching the desktop.
     screenbar = tk.Frame(shell, bg=BG)
     screenbar.pack(fill="x", pady=(0, 4))
+    # Individual screen permission stays session-scoped. A separate,
+    # explicit opt-in in F10 > Permissions remembers both scopes.
     app.hud_enable_screen = _action(
         screenbar, "РАЗРЕШИТЬ ЭКРАН", app.grant_vision, compact=True)
     app.hud_enable_screen.pack(side="left", padx=(0, 6))

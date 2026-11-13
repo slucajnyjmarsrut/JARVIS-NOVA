@@ -131,6 +131,7 @@ class TextJarvis(BaseJarvis):
             learning=self.learning)
 
         build_text_interface(self)
+        self._restore_startup_permissions()
         self.overlay = TextOverlay(self)
         mini_default = dock_geometry(self.winfo_screenwidth(), self.winfo_screenheight())
         mini = safe_window_geometry(self._ui_layout.get("mini"), mini_default,

@@ -94,6 +94,7 @@ class Jarvis(tk.Tk):
                             on_heard_styled=lambda text,style:self.q.put(("heard",(text,style))),
                             on_transcript=lambda text:self.q.put(("transcript",text)))
         build_interface(self)
+        self._restore_startup_permissions()
         # Keep the assistant active when the main window is minimized/hidden.
         # The small overlay is another local Tk window, not a second app.
         self.overlay=NovaOverlay(self)
@@ -116,6 +117,9 @@ class Jarvis(tk.Tk):
         permissions=tk.Menu(menu,tearoff=False)
         permissions.add_command(label="Разрешить управление компьютером",command=self.grant_control)
         permissions.add_command(label="Разрешить зрение для старых команд (только локально)",command=self.grant_vision)
+        permissions.add_command(
+            label="Всегда разрешать управление и зрение при запуске",
+            command=self.enable_persistent_permissions)
         permissions.add_command(label="Отозвать все разрешения",command=self.revoke)
         menu.add_cascade(label="Разрешения",menu=permissions)
         vision_menu=tk.Menu(menu,tearoff=False)
@@ -444,6 +448,52 @@ class Jarvis(tk.Tk):
                 self.q.put(("mic_level",(False,str(exc)[:180],0.0,0)))
         threading.Thread(target=worker,daemon=True,name="jarvis-mic-diagnostic").start()
 
+    def _restore_startup_permissions(self):
+        """Restore only the two explicitly approved local Windows scopes."""
+        from startup_permissions import load_startup_permissions
+        saved = load_startup_permissions()
+        self.control_allowed = saved.control
+        self.vision_allowed = saved.vision
+        if saved.control or saved.vision:
+            self.status.set(
+                "Сохранённые разрешения: управление ПК — " +
+                ("да" if saved.control else "нет") + ", зрение — " +
+                ("да" if saved.vision else "нет") +
+                ". Захват экрана и команды сами не запускаются.")
+
+    def enable_persistent_permissions(self):
+        """An explicit one-time human confirmation; never from LLM output."""
+        from startup_permissions import (
+            StartupPermissions, save_startup_permissions,
+        )
+        if not messagebox.askyesno(
+                "Всегда разрешать JARVIS управление и зрение?",
+                "Сохранять разрешение на управление мышью, клавиатурой и "
+                "окнами, а также на доступ к текущему экрану в каждом "
+                "следующем запуске JARVIS под этой учётной записью Windows?\n\n"
+                "Оба доступа будут доступны JARVIS сразу после запуска, "
+                "пока ты их не отзовёшь в настройках. "
+                "Это НЕ включает постоянную запись экрана, "
+                "автоматический захват, скачивание моделей, "
+                "облачные сервисы, удаление файлов или "
+                "автоматическое выполнение опасных команд.\n\n"
+                "Разрешить и запомнить для будущих запусков?",
+                parent=self):
+            return False
+        try:
+            save_startup_permissions(StartupPermissions(True, True))
+        except (OSError, ValueError) as exc:
+            self.status.set("Не удалось сохранить постоянные разрешения: " +
+                            str(exc)[:150])
+            messagebox.showerror("Разрешения не сохранены",
+                                 str(exc), parent=self)
+            return False
+        self.control_allowed = True
+        self.vision_allowed = True
+        self.status.set("Управление и зрение разрешены сейчас и при следующих "
+                        "запусках. Отозвать можно в настройках.")
+        return True
+
     def grant_control(self):
         if messagebox.askyesno("Разрешение","Разрешить JARVIS управлять мышью, клавиатурой и окнами до закрытия приложения?"):
             self.control_allowed=True
@@ -455,8 +505,29 @@ class Jarvis(tk.Tk):
             self.status.set("Локальное зрение разрешено до закрытия JARVIS")
 
     def revoke(self):
-        self.control_allowed=False;self.vision_allowed=False
-        self.status.set("Все разрешения отозваны")
+        """Turn off live rights and revoke the persistent Windows preference."""
+        from startup_permissions import (
+            StartupPermissions, save_startup_permissions,
+        )
+        self.control_allowed = False
+        self.vision_allowed = False
+        try:
+            save_startup_permissions(StartupPermissions(False, False))
+        except (OSError, ValueError) as exc:
+            self.status.set("Разрешения отключены до закрытия JARVIS, но "
+                            "не удалось сбросить сохранённый выбор: " +
+                            str(exc)[:130])
+            messagebox.showerror(
+                "Не удалось отозвать сохранённые разрешения",
+                "Доступ отключён в текущем сеансе. "
+                "Ошибка при изменении записи запуска: " + str(exc)[:220] +
+                "\n\nДо следующего запуска удали файл "
+                "%LOCALAPPDATA%\\JarvisNova\\startup_permissions.bin "
+                "вручную, если ошибка не исчезнет.",
+                parent=self)
+            return False
+        self.status.set("Все разрешения отозваны, включая последующие запуски.")
+        return True
 
     def teach_alias(self):
         spoken=simpledialog.askstring("Обучение JARVIS", "Как ты называешь программу голосом?",parent=self)
