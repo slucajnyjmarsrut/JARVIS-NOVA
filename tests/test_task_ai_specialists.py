@@ -284,6 +284,12 @@ class ScreenwriterSpecialistTests(unittest.TestCase):
         self.assertNotIn("tools",requests[0][1])
         chat.close()
 
+    def test_lite_never_enables_dedicated_chat_before_explicit_selection(self):
+        from pathlib import Path
+        source=Path("text_only_main.py").read_text(encoding="utf-8")
+        self.assertNotIn("self.local_chat.prefer_task_specialist(True)",source)
+        self.assertIn("self.local_chat = LocalChat(self.runtime)",source)
+
     def test_selected_chat_never_falls_back_to_vision_without_model(self):
         from local_chat import LocalChat, LocalChatError
         from types import SimpleNamespace

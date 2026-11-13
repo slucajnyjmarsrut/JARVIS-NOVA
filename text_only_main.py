@@ -121,9 +121,9 @@ class TextJarvis(BaseJarvis):
             root=assets,model_store=active_model_store(assets)))
         self.trimodal.runtime = self.runtime
         self.local_chat = LocalChat(self.runtime)
-        # On an explicit chat question, prefer a genuinely separate installed
-        # qwen3:4b dialogue model. Bundled vision remains a truthful fallback.
-        self.local_chat.prefer_task_specialist(True)
+        # Do not opt into the separate Qwen3 chat before a user selects it.
+        # TaskAIHub enables Qwen3 only after its explicit model setup.
+        # Once selected, missing Qwen3 never silently falls back to Vision.
         self.freellm_chat = FreeLLMChat()
         self._freellm_consent = False
         self.desktop = Desktop(
