@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Offline conversational answers with the REAL bundled local Qwen Vision model.
+"""Offline chat with optional dedicated Qwen3 weights or legacy bundled Vision.
 
-This module never executes suggested Windows actions and never sends data to
-cloud APIs. The same BundledVisionRuntime instance is shared with Stage 2.
+Once a user selects dedicated chat, missing Qwen3 MUST NOT silently fall
+back to the image model. No unapproved downloads or external APIs.
 """
 from __future__ import annotations
 import json
@@ -58,10 +58,10 @@ class LocalChat:
         self._task_chat_ready = False
 
     def prefer_task_specialist(self, enabled=True):
-        """Opt in to a separate model if already installed, with safe fallback.
+        """Select independent Qwen3 chat; fail closed if it is unavailable.
 
-        An explicit chat request can check a local model once, without
-        installing or downloading anything. This method never starts Ollama.
+        Only reads the local Ollama inventory. Never installs or starts Ollama.
+        Set False to explicitly return to legacy bundled Qwen Vision chat.
         """
         if type(enabled) is not bool:
             raise ValueError("Нужно выбрать True или False")
@@ -168,11 +168,17 @@ class LocalChat:
                 except Exception:
                     self._task_chat_ready = False
                 self._task_chat_checked = True
-            if self._task_chat_ready:
-                from task_ai_registry import LOOPBACK, get_specialist
-                endpoint = LOOPBACK
-                model = get_specialist("chat").model
-        if endpoint is None:
+            if not self._task_chat_ready:
+                raise LocalChatError(
+                    "Отдельный ИИ-диалог Qwen3:4b недоступен. "
+                    "Открой «ИИ ПО ЗАДАЧАМ», запусти Ollama и подключи "
+                    "Qwen3:4b с разрешения. Модель для изображений "
+                    "Qwen3-VL не подменяет отдельный ИИ-диалог. "
+                    "Для прежнего режима отдельно отключи выбор специалиста.")
+            from task_ai_registry import LOOPBACK, get_specialist
+            endpoint = LOOPBACK
+            model = get_specialist("chat").model
+        else:
             endpoint = self.runtime.start()
         payload = {
             "model": model,
