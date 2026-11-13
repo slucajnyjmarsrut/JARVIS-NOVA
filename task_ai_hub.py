@@ -30,7 +30,8 @@ class TaskAIHub(tk.Toplevel):
         ttk.Label(outer,
             text="Сценарии — Gemma3, код — Qwen Coder, монтаж — Llama3.2, "
                  "разговор — Qwen3, зрение — Qwen3-VL. "
-                 "Без отдельного диалога доступна встроенная Qwen Vision.",
+                 "Это разные модели. Если ИИ-диалог не подключён, "
+                 "Qwen Vision не выдаётся за разговорную модель.",
             wraplength=600,justify="left").pack(anchor="w",pady=(4,10))
         rows=ttk.Frame(outer)
         rows.pack(fill="both",expand=True)
@@ -42,8 +43,10 @@ class TaskAIHub(tk.Toplevel):
             ttk.Label(row,text=spec.label,font=("Segoe UI",10,"bold"),
                       width=24).pack(side="left",padx=(0,4))
             ttk.Label(row,text=spec.model,width=23).pack(side="left")
-            state=tk.StringVar(value="встроенная модель" if spec.backend=="bundled"
-                               else "не проверено")
+            state=tk.StringVar(value=(
+                "подключена" if getattr(parent,"_local_model_ready",False)
+                else "не установлена"
+            ) if spec.backend=="bundled" else "не проверено")
             self._states[kind]=state
             ttk.Label(row,textvariable=state,width=16).pack(side="left",padx=4)
             if spec.backend=="ollama":
@@ -82,6 +85,10 @@ class TaskAIHub(tk.Toplevel):
                 from task_ai_registry import local_tags
                 installed=set(local_tags())
                 def display():
+                    self._states["vision"].set(
+                        "подключена" if
+                        getattr(self.parent,"_local_model_ready",False)
+                        else "не установлена")
                     for kind in self._buttons:
                         spec=get_specialist(kind)
                         self._states[kind].set(

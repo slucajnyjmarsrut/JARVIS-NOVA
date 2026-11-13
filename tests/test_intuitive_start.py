@@ -22,6 +22,10 @@ class IntuitiveStartTests(unittest.TestCase):
         self.assertIn("не подключена",model_hint(False))
         self.assertIn("СКАЧАТЬ QWEN",model_hint(False))
         self.assertIn("подключена",model_hint(True))
+        self.assertIn("для изображений",model_hint(True))
+        self.assertIn("Qwen3:4b",model_hint(True))
+        self.assertIn("Gemma3:4b",initial_guidance(True))
+        self.assertNotIn("для переписки уже подключена",initial_guidance(True))
         self.assertIn("загружается",model_hint(False,True))
         self.assertNotIn("подключена",model_hint(False,True))
         self.assertIn("подтверди",initial_guidance(False))
@@ -44,6 +48,8 @@ class IntuitiveStartTests(unittest.TestCase):
         self.assertIn("отдельное подтверждение",
                       clarification("clarify_screen"))
         self.assertIn("СМОНТИРОВАТЬ",clarification("clarify_video"))
+        self.assertIn("ИИ ПО ЗАДАЧАМ",clarification("clarify_model"))
+        self.assertIn("Gemma3",clarification("clarify_model"))
 
 
 if __name__=="__main__":
