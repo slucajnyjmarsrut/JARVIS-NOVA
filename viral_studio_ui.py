@@ -59,7 +59,9 @@ class ViralStudioWindow(tk.Toplevel):
         self.topic=tk.StringVar(value="")
         self.country=tk.StringVar(value="RU")
         self.web_enabled=tk.BooleanVar(value=False)
-        self.scenario_mode=tk.StringVar(value="fast")
+        # A new user's "create scenario" uses the independent AI writer by
+        # default; fast mode remains a clearly labelled non-AI alternative.
+        self.scenario_mode=tk.StringVar(value="standard")
         self.pro_enabled=tk.BooleanVar(value=True)
         self.pro_color=tk.StringVar(value="natural")
         self.pro_transition=tk.StringVar(value="0.22")
@@ -117,7 +119,7 @@ class ViralStudioWindow(tk.Toplevel):
         speed.grid(row=3,column=0,columnspan=2,sticky="w",pady=(1,3))
         for value,label in (
             ("fast","⚡ Быстро · без ожидания ИИ"),
-            ("standard","AI · стандарт"),
+            ("standard","ИИ-сценарист · Gemma3"),
             ("deep","AI · подробно"),
         ):
             ttk.Radiobutton(speed,text=label,value=value,

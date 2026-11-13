@@ -141,6 +141,34 @@ class ScreenwriterSpecialistTests(unittest.TestCase):
         self.assertIn(WRITER_SYSTEM,payload["prompt"])
         self.assertEqual(payload["format"]["type"],"object")
 
+    def test_legacy_brief_path_never_uses_vision_qwen(self):
+        from quick_video_brief import quick_brief, select_brief
+        from dataclasses import replace
+        draft=replace(quick_brief("Овощной салат"),
+                      generator="локальная Gemma3:4b")
+        with mock.patch("scenario_specialist.create_specialist_brief",
+                        return_value=draft) as writer, \
+             mock.patch("viral_studio.create_local_brief") as vision_writer:
+            result,note=select_brief("Овощной салат",mode="standard")
+        writer.assert_called_once()
+        self.assertEqual(result.generator,"локальная Gemma3:4b")
+        self.assertIn("Gemma3:4b",note)
+        vision_writer.assert_not_called()
+        with mock.patch("scenario_specialist.create_specialist_brief",
+                        side_effect=RuntimeError("Gemma not ready")), \
+             mock.patch("viral_studio.create_local_brief") as vision_writer:
+            result,note=select_brief("Овощной салат",mode="deep")
+        self.assertIn("БЕЗ нейросети",note)
+        self.assertNotIn("Qwen3-VL",result.generator)
+        vision_writer.assert_not_called()
+
+    def test_studio_defaults_to_real_writer_not_unmarked_template(self):
+        from pathlib import Path
+        src=(Path(__file__).resolve().parents[1]/
+             "viral_studio_ui.py").read_text(encoding="utf-8")
+        self.assertIn('self.scenario_mode=tk.StringVar(value="standard")',src)
+        self.assertIn('("standard","ИИ-сценарист · Gemma3")',src)
+
     def test_model_absence_never_silently_uses_qwen3_vl(self):
         with mock.patch("scenario_specialist.specialist_available",
                         return_value=False):
