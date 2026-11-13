@@ -136,6 +136,26 @@ def conversational_self_test():
         runtime.stop()
 
 
+def supervisor_self_test():
+    """Actual packaged EXE has the headless queue and usable SQLite state.
+
+    No models, downloads, GUI, external files or background process spawned.
+    """
+    import tempfile
+    from pathlib import Path
+    from night_supervisor import NightSupervisor
+    import night_supervisor_service
+    with tempfile.TemporaryDirectory(prefix="jarvis-supervisor-smoke-") as tmp:
+        queue = NightSupervisor(Path(tmp) / "queue")
+        if not queue.background_enabled() or queue.list_jobs():
+            raise RuntimeError("Headless Supervisor did not start empty and enabled")
+        if queue.background_run_next():
+            raise RuntimeError("Headless Supervisor invented an unapproved job")
+        if not callable(night_supervisor_service.run_forever):
+            raise RuntimeError("Headless Supervisor watcher not bundled")
+    return 0
+
+
 def main():
     import sys
     if "--supervisor-daemon" in sys.argv:
@@ -154,6 +174,8 @@ def main():
             if guard is not None:
                 api, handle = guard
                 api.CloseHandle(handle)
+    if "--supervisor-self-test" in sys.argv:
+        return supervisor_self_test()
     if "--self-test" in sys.argv:
         return smoke_test()
     if "--chat-self-test" in sys.argv:
