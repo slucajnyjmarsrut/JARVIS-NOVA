@@ -33,7 +33,7 @@ def entries(app, section="main"):
         return [
             ("✓", "Разрешить управление ПК", app.grant_control, None),
             ("◉", "Разрешить чтение экрана", app.grant_vision, None),
-            ("★", "Всегда разрешать управление и зрение",
+            ("★", "Повторно включить управление и зрение",
              app.enable_persistent_permissions, None),
             ("×", "Отозвать разрешения", app.revoke, None),
         ]

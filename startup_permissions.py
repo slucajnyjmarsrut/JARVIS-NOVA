@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Remember *explicit* startup screen/control permissions for a Windows user.
+"""Windows startup defaults for local screen and desktop control.
 
-Never grant anything by default. Only an affirmative GUI choice may persist
-the two scope flags. A user-scoped Windows DPAPI envelope protects the record
-from casual edits/copies; corrupt, legacy or copied settings fail closed.
-Neither local model downloads nor external/cloud consent is included.
+A fresh Windows profile starts with both access *flags* enabled, as requested.
+A protected, per-user DPAPI record overrides the defaults (including revocation).
+Corrupt or untrusted existing records fail closed; missing records are first-run
+defaults, never permission to actually execute actions or capture automatically.
+Downloads, uploads, scripts, file deletion and cloud consent remain separate.
 """
 from __future__ import annotations
 
@@ -97,7 +98,7 @@ def _dpapi(data: bytes, *, encrypt: bool) -> bytes:
 
 
 def load_startup_permissions(path: Path | None = None) -> StartupPermissions:
-    """Missing, altered, copied, oversized or legacy settings -> no rights."""
+    """First-run Windows defaults ON; persisted opt-out wins. Tampering -> OFF."""
     if os.name != "nt":
         return StartupPermissions()
     path = Path(path) if path is not None else default_path()
@@ -116,6 +117,10 @@ def load_startup_permissions(path: Path | None = None) -> StartupPermissions:
                 type(raw.get("vision")) is not bool):
             return StartupPermissions()
         return StartupPermissions(raw["control"], raw["vision"])
+    except FileNotFoundError:
+        # No preference on a fresh Windows profile: both scopes are enabled.
+        # An explicit opt-out is saved as a protected False/False record.
+        return StartupPermissions(True, True)
     except (OSError, ValueError, TypeError, UnicodeError):
         return StartupPermissions()
 

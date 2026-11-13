@@ -550,14 +550,14 @@ class TextJarvis(BaseJarvis):
         elif kind == "engine":
             self.set_engine(value)  # FreeLLM retains external-data consent.
         elif kind == "permission_control":
-            self.grant_control()  # Dialog consent, not chat consent.
+            self.grant_control()  # Uses existing right; asks only if revoked.
         elif kind == "permission_screen":
-            # Spoken/typed consent is never enough: grant_vision opens a
-            # separate confirmation and may leave vision_allowed unchanged.
+            # Already-active startup access needs no repeated prompt.
+            # After revocation, grant_vision requires explicit confirmation.
             self.grant_vision()
             if bool(getattr(self, "vision_allowed", False)):
                 self.reply(
-                    "Доступ к экрану разрешён до закрытия JARVIS. "
+                    "Доступ к экрану разрешён. "
                     "Для анализа изображения открой «ПОКАЗАТЬ СКРИНШОТ». "
                     "Это не включает постоянное наблюдение за экраном.")
             else:
@@ -830,7 +830,10 @@ class TextJarvis(BaseJarvis):
         if not 1 <= len(question) <= 1200:
             self.reply("Вопрос должен содержать 1–1200 символов.")
             return
-        if not messagebox.askyesno("Разрешение на экран",
+        # Active Windows startup vision permission covers user-requested
+        # one-shot screenshots. Never capture automatically at startup.
+        if not self.vision_allowed and not messagebox.askyesno(
+            "Разрешение на экран",
             "Разрешить один снимок экрана и его обработку локальной моделью? "
             "Изображение не отправляется в облако.", parent=self):
             self.status.set("Снимок экрана отменён")

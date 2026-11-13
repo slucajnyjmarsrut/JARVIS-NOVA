@@ -449,17 +449,17 @@ class Jarvis(tk.Tk):
         threading.Thread(target=worker,daemon=True,name="jarvis-mic-diagnostic").start()
 
     def _restore_startup_permissions(self):
-        """Restore only the two explicitly approved local Windows scopes."""
+        """Load the Windows first-run defaults or a saved user override."""
         from startup_permissions import load_startup_permissions
         saved = load_startup_permissions()
         self.control_allowed = saved.control
         self.vision_allowed = saved.vision
-        if saved.control or saved.vision:
-            self.status.set(
-                "Сохранённые разрешения: управление ПК — " +
-                ("да" if saved.control else "нет") + ", зрение — " +
-                ("да" if saved.vision else "нет") +
-                ". Захват экрана и команды сами не запускаются.")
+        self.status.set(
+            "Разрешения при запуске: ПК — " +
+            ("включено" if saved.control else "отключено") + ", экран — " +
+            ("включено" if saved.vision else "отключено") +
+            ". Автозахват и выполнение команд не запускаются. "
+            "Отключить можно через Настройки → Разрешения.")
 
     def enable_persistent_permissions(self):
         """An explicit one-time human confirmation; never from LLM output."""
@@ -495,14 +495,24 @@ class Jarvis(tk.Tk):
         return True
 
     def grant_control(self):
+        if self.control_allowed:
+            self.status.set("Управление ПК уже включено в настройках.")
+            return True
         if messagebox.askyesno("Разрешение","Разрешить JARVIS управлять мышью, клавиатурой и окнами до закрытия приложения?"):
             self.control_allowed=True
             self.status.set("Управление разрешено до закрытия JARVIS")
+            return True
+        return False
 
     def grant_vision(self):
+        if self.vision_allowed:
+            self.status.set("Зрение уже включено в настройках.")
+            return True
         if messagebox.askyesno("Разрешение","Разрешить захватывать текущий экран в оперативную память и отправлять кадры только в локальную Ollama?"):
             self.vision_allowed=True
             self.status.set("Локальное зрение разрешено до закрытия JARVIS")
+            return True
+        return False
 
     def revoke(self):
         """Turn off live rights and revoke the persistent Windows preference."""
@@ -521,9 +531,10 @@ class Jarvis(tk.Tk):
                 "Не удалось отозвать сохранённые разрешения",
                 "Доступ отключён в текущем сеансе. "
                 "Ошибка при изменении записи запуска: " + str(exc)[:220] +
-                "\n\nДо следующего запуска удали файл "
-                "%LOCALAPPDATA%\\JarvisNova\\startup_permissions.bin "
-                "вручную, если ошибка не исчезнет.",
+                "\n\nСохранённая настройка всё ещё действует: "
+                "устрани ошибку записи и повтори отзыв. "
+                "НЕ удаляй startup_permissions.bin: без файла "
+                "новая установка Windows использует доступ по умолчанию.",
                 parent=self)
             return False
         self.status.set("Все разрешения отозваны, включая последующие запуски.")
