@@ -243,18 +243,19 @@ jobs:
         run: |
           python scripts/verify_real_qwen_intent_e2e.py
           if ($LASTEXITCODE -ne 0) { throw 'Real Qwen intent routing failed; do not publish a release' }
-      - name: REAL autonomous Qwen screenplay and shooting-plan acceptance
+      # These models are NOT the bundled Vision Qwen and are NOT downloaded
+      # by this full-offline installer workflow. Never count Qwen-VL prompts
+      # as proof of dedicated Gemma or Qwen Coder generation.
+      - name: Verify separated Gemma screenplay routing without extra weights
         shell: pwsh
-        timeout-minutes: 25
         run: |
-          python scripts/verify_local_scenario_e2e.py --topics 3
-          if ($LASTEXITCODE -ne 0) { throw 'Real local Qwen scenario could not pass acceptance' }
-      - name: REAL Qwen-generated Python project static acceptance
+          python -m unittest discover -s tests -p test_task_ai_specialists.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Separate specialist contract tests failed' }
+      - name: Verify dedicated code model cannot fall back to Vision
         shell: pwsh
-        timeout-minutes: 25
         run: |
-          python scripts/verify_real_qwen_coding_e2e.py
-          if ($LASTEXITCODE -ne 0) { throw 'Real Qwen could not write a valid small Python project' }
+          python -m unittest discover -s tests -p test_local_coder_models.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Dedicated Coder routing tests failed' }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
       - name: Generate original dark NOVA installer wizard graphics
