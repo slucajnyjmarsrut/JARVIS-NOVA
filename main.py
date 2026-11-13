@@ -455,7 +455,7 @@ class Jarvis(tk.Tk):
         self.control_allowed = saved.control
         self.vision_allowed = saved.vision
         self.status.set(
-            "Разрешения при запуске: ПК — " +
+            "Готов. Разрешения при запуске: ПК — " +
             ("включено" if saved.control else "отключено") + ", экран — " +
             ("включено" if saved.vision else "отключено") +
             ". Автозахват и выполнение команд не запускаются. "
