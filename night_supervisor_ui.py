@@ -14,12 +14,15 @@ TASKS = (
 
 class NightSupervisorWindow(tk.Toplevel):
     def __init__(self, parent):
+        # Acquire queue access before showing a window. Another live process
+        # must not cause a half-created Tk window or reset in-flight jobs.
+        supervisor = NightSupervisor()
         super().__init__(parent)
         self.parent = parent
         self.title("JARVIS NOVA — Автономная ночная работа")
         self.geometry("790x660")
         self.minsize(570, 480)
-        self.supervisor = NightSupervisor()
+        self.supervisor = supervisor
         self.cancel_event = threading.Event()
         self._busy = False
         self._close_when_stopped = False

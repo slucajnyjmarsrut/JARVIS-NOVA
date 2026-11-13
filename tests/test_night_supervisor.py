@@ -185,6 +185,35 @@ class NightSupervisorTests(unittest.TestCase):
             self.assertEqual(advice.status, "completed", advice.error)
             self.assertTrue((Path(advice.output) / "MONTAGE_ADVICE_RU.md").exists())
 
+    def test_second_instance_cannot_recover_while_queue_is_locked(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp) / "jobs"
+            primary = NightSupervisor(root, executor=screenplay)
+            job_id = primary.enqueue("scenario", "minecraft",
+                                     approved=True, allow_new_files=True)
+            with primary._process_lock():
+                with self.assertRaises(SupervisorError):
+                    NightSupervisor(root, executor=screenplay)
+            self.assertEqual(primary.list_jobs()[0].status, "queued")
+            self.assertTrue((root / "night_supervisor.lock").exists())
+
+    def test_montage_can_be_queued_behind_approved_scenario(self):
+        with TemporaryDirectory() as temp:
+            def executor(job, cb):
+                if job.kind == "scenario":
+                    return screenplay(job, cb)
+                return {"model": "llama3.2:3b", "text": "Раздельные рекомендации.",
+                        "shot_notes": ["Показать отдельный монтажный ракурс"
+                                       for _ in range(5)]}
+            manager = NightSupervisor(Path(temp) / "jobs", executor=executor)
+            origin = manager.enqueue("scenario", "minecraft",
+                                     approved=True, allow_new_files=True)
+            manager.enqueue("montage_advice", source_id=origin,
+                            approved=True, allow_new_files=True)
+            self.assertEqual(manager.run_queue(), 2)
+            self.assertEqual(tuple(j.status for j in manager.list_jobs()),
+                             ("completed", "completed"))
+
     def test_symlink_root_denied(self):
         with TemporaryDirectory() as temp:
             root = Path(temp)

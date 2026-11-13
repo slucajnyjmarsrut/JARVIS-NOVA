@@ -746,7 +746,13 @@ class Jarvis(tk.Tk):
             old.lift()
             return old
         from night_supervisor_ui import NightSupervisorWindow
-        self._night_window = NightSupervisorWindow(self)
+        from night_supervisor import SupervisorError
+        try:
+            self._night_window = NightSupervisorWindow(self)
+        except (SupervisorError, OSError) as exc:
+            messagebox.showerror("Ночной Supervisor недоступен", str(exc),
+                                 parent=self)
+            return None
         return self._night_window
 
     def set_debate_mode(self, enabled=None):
