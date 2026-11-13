@@ -8,6 +8,8 @@ on:
       - 'viral_studio_ui.py'
       - 'quick_video_brief.py'
       - 'video_scenario_autonomy.py'
+      - 'topic_video_engine.py'
+      - 'tests/test_topic_video_engine.py'
       - 'scripts/verify_longform_2hour_e2e.py'
       - 'video_timeline.py'
       - 'video_timeline_ui.py'
@@ -106,6 +108,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Profile mode tests failed' }
           python -m unittest discover -s tests -p 'test_game_video_modes.py' -v
           if ($LASTEXITCODE -ne 0) { throw 'Game and video stage tests failed' }
+      - name: Topic-only real FFmpeg render (zero input footage)
+        shell: pwsh
+        timeout-minutes: 6
+        run: |
+          $env:JARVIS_TEST_REAL_TOPIC_VIDEO = "1"
+          python -m unittest discover -s tests -p 'test_topic_video_engine.py' -v
+          if ($LASTEXITCODE -ne 0) { throw 'Topic-to-MP4 render failed' }
       - name: Real FFmpeg audio-guided highlights without speech models
         shell: pwsh
         timeout-minutes: 5
