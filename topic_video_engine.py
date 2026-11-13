@@ -133,7 +133,7 @@ def _theme(topic):
         return "space"
     if any(x in t for x in ("лес", "природ", "растен", "живот", "океан", "nature")):
         return "nature"
-    if any(x in t for x in ("ai", "ии", "нейросет", "компьютер", "технолог", "код", "robot")):
+    if any(x in t for x in ("ai", "ии", "нейросет", "интеллект", "компьютер", "технолог", "код", "robot")):
         return "tech"
     return "abstract"
 
