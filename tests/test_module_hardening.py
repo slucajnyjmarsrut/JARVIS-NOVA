@@ -140,6 +140,33 @@ class HardeningTests(TestCase):
         self.assertEqual(desk.run(Step("open_app","Notepad")),desk.open_app.return_value)
         desk.open_app.assert_called_once_with("Notepad")
 
+    def test_direct_app_launch_never_bypasses_revoked_control(self):
+        from desktop import Desktop
+        desk = Desktop(allow_control=lambda: False)
+        # An internal caller may invoke open_app directly, not via run().
+        with mock.patch("desktop.os.startfile", create=True) as start:
+            with self.assertRaises(PermissionError):
+                desk.open_app("Notepad")
+            start.assert_not_called()
+            desk.allow_control = lambda: True
+            self.assertEqual(desk.open_app("Notepad"), "Открываю Notepad")
+            start.assert_called_once_with("notepad.exe")
+
+    def test_active_window_title_requires_screen_observation_permission(self):
+        from desktop import Desktop
+        from agent_core import Step
+        desk = Desktop(allow_control=lambda: True, allow_vision=lambda: False)
+        desk.active_window = mock.Mock(return_value=SimpleNamespace(
+            title="Private document name"))
+        with self.assertRaises(PermissionError):
+            desk.run(Step("window_status"))
+        desk.active_window.assert_not_called()
+        # A new explicit screen grant allows the one-shot status request.
+        desk.allow_vision = lambda: True
+        self.assertEqual(desk.run(Step("window_status")),
+                         "Активное окно: Private document name")
+        desk.active_window.assert_called_once_with()
+
     def test_coder_large_project_context_includes_last_modules(self):
         from code_project_engine import _context
         sources={f"mod_{i:03}.py": "long-source-" * 300
