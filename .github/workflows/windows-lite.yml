@@ -14,6 +14,7 @@ on:
       - tests/test_intuitive_start.py
       - tests/test_text_model_controls.py
       - tests/test_text_only_mode.py
+      - tests/test_no_voice_contract.py
       - tests/test_chat_first_intent.py
       - semantic_intent_router.py
       - tests/test_semantic_intent_router.py
