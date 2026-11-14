@@ -20,6 +20,8 @@ on:
       - tests/test_shutdown.py
       - tests/test_no_camera.py
       - tests/test_agent.py
+      - desktop.py
+      - tests/test_self_improve.py
       - scripts/audit_module_health.py
       - tests/test_chat_first_intent.py
       - semantic_intent_router.py
