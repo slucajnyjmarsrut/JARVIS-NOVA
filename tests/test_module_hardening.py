@@ -123,6 +123,30 @@ class HardeningTests(TestCase):
             self.assertNotIn("sensitive", str(caught.exception))
             self.assertEqual(list(path.iterdir()), [])
 
+    def test_coder_large_project_context_includes_last_modules(self):
+        from code_project_engine import _context
+        sources={f"mod_{i:03}.py": "long-source-" * 300
+                 for i in range(72)}
+        result=_context(sources,max_chars=4900)
+        self.assertLessEqual(len(result),4900)
+        self.assertIn("FILE mod_000.py",result)
+        self.assertIn("FILE mod_071.py",result)
+        self.assertEqual(result.count("END FILE"),72)
+
+    def test_coder_small_project_preserves_actual_code(self):
+        from code_project_engine import _context
+        result=_context({"src/a.py":"def add(a,b): return a+b",
+                         "src/b.py":"from src.a import add"})
+        self.assertIn("def add(a,b): return a+b",result)
+        self.assertIn("from src.a import add",result)
+
+    def test_coder_context_rejects_impossible_budget(self):
+        from code_project_engine import _context
+        from code_workspace import WorkspaceError
+        for bad in (0, -1, True, 20001, 40.5, None):
+            with self.subTest(value=bad), self.assertRaises(WorkspaceError):
+                _context({"a.py":"x"},max_chars=bad)
+
     def test_local_chat_rejects_bad_url_ports_as_controlled_error(self):
         for endpoint in (
             "http://127.0.0.1:invalid",
