@@ -70,16 +70,28 @@ def _check_phase(plan: ChangePlan, language: str) -> dict:
 
 
 def _context(files: dict[str,str],max_chars=18000):
-    items=[]
-    size=0
-    for filename,content in sorted(files.items()):
-        excerpt=content[:1400]
-        note=f"\nFILE {filename}\n{excerpt}\nEND FILE\n"
-        if size+len(note)>max_chars:
-            break
-        items.append(note)
-        size+=len(note)
-    return "".join(items)
+    """Give local coder a fair, bounded overview of *all* project modules.
+
+    The old implementation spent its budget on alphabetically early files:
+    late modules vanished completely from large projects, encouraging
+    generated imports that did not match the actual codebase.
+    """
+    if type(max_chars) is not int or not 256 <= max_chars <= 20000:
+        raise WorkspaceError("Недопустимый лимит контекста проекта.")
+    ordered=sorted(files.items())
+    if not ordered:
+        return ""
+    wrappers=[(f"\nFILE {filename}\n", "\nEND FILE\n")
+              for filename, _ in ordered]
+    headers=sum(len(start)+len(end) for start,end in wrappers)
+    if headers >= max_chars:
+        # An extraordinary inventory with very long filenames is still
+        # strictly bounded; never output half of a source file as a header.
+        return "".join(start+end for start,end in wrappers)[:max_chars]
+    share=min(1400,(max_chars-headers)//len(ordered))
+    return "".join(
+        start+content[:share]+end
+        for (filename,content),(start,end) in zip(ordered,wrappers))
 
 def _merge(files:dict[str,str],proposal:ChangePlan,language):
     if proposal.language!=language:
