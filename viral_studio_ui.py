@@ -589,7 +589,6 @@ class ViralStudioWindow(tk.Toplevel):
                 self._show(report)
                 self.status.set('Аудитория изучена: '+str(profile.sample_size)+
                                 ' роликов. Можно создавать сценарий.')
-                self._speak('Я изучил показатели канала. Теперь предложу, что снимать для этой аудитории.')
             self._notify(done)
         self._spawn(work)
 
@@ -970,7 +969,6 @@ class ViralStudioWindow(tk.Toplevel):
         if last_report.is_file():
             self._show(last_report.read_text('utf-8'))
             self.status.set('Проверка закончена: результаты прошлых видео НЕ прогноз будущих просмотров.')
-            self._speak('Проверил монтаж и сохранил вывод. Исторические просмотры не гарантируют новые.')
             return
         if self.profile is None:
             messagebox.showinfo('Просмотры',
@@ -988,7 +986,6 @@ class ViralStudioWindow(tk.Toplevel):
             def done():
                 self._show(file.read_text('utf-8'))
                 self.status.set('Индекс соответствия: '+str(review.index)+'/100. Это НЕ вероятность популярности.')
-                self._speak('Оценка закончена. Это индекс соответствия каналу, а не гарантия просмотров.')
             self._notify(done)
         self._spawn(work)
 
