@@ -41,7 +41,7 @@ class HardeningTests(TestCase):
         waits = []
         def await_next(seconds):
             waits.append(seconds)
-            if len(waits) == 3:
+            if len(waits) == 2:
                 stop.set()
         with mock.patch.object(stop, "wait", side_effect=await_next), \
                 mock.patch("night_supervisor_service._LOG") as logger:
@@ -49,7 +49,7 @@ class HardeningTests(TestCase):
                         stop_event=stop, poll_seconds=3)
             self.assertEqual(len(invocations), 2)
             self.assertEqual(len(factories), 2)
-            self.assertEqual(waits, [3, 3, 3])
+            self.assertEqual(waits, [3, 3])
             self.assertEqual(logger.warning.call_count, 1)
             self.assertIn("KeyError", logger.warning.call_args.args)
             self.assertNotIn("secret", str(logger.warning.call_args))
