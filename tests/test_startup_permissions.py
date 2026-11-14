@@ -187,6 +187,99 @@ class StartupPermissionsTests(unittest.TestCase):
             thread.assert_not_called()
         self.assertFalse(app.executing)
 
+    def test_revoke_invalidates_inflight_one_shot_capture(self):
+        app = Mock()
+        app.control_allowed = True
+        app.vision_allowed = True
+        app._vision_revocation_epoch = 3
+        with patch("startup_permissions.save_startup_permissions"):
+            self.assertTrue(Jarvis.revoke(app))
+        self.assertEqual(app._vision_revocation_epoch, 4)
+        self.assertFalse(app.vision_allowed)
+
+    def test_screen_worker_does_not_capture_after_permission_revoked(self):
+        from threading import Event
+        from text_only_main import TextJarvis
+        app = Mock()
+        app._closing = False
+        app._shutdown = Event()
+        app.executing = False
+        app.vision_allowed = True
+        app._vision_revocation_epoch = 0
+
+        def startup_then_revoke():
+            app.vision_allowed = False
+            app._vision_revocation_epoch += 1
+            return "http://127.0.0.1:11434"
+
+        app.runtime.start.side_effect = startup_then_revoke
+        with patch("text_only_main.simpledialog.askstring",
+                   return_value="Что видно на экране?"), patch(
+                   "text_only_main.threading.Thread") as thread, patch(
+                   "screen_capture.ScreenFrameSource") as capture, patch(
+                   "vision_engine.LocalOllamaVision") as vision:
+            thread.return_value.start.side_effect = (
+                lambda: thread.call_args.kwargs["target"]())
+            TextJarvis.request_screen_analysis(app)
+        capture.assert_not_called()
+        vision.assert_not_called()
+        result = app.q.put.call_args.args[0]
+        self.assertEqual(result[0], "action_result")
+        self.assertFalse(result[1][0])
+        self.assertIn("отозвано", result[1][1])
+
+    def test_one_shot_capture_stops_before_model_request_after_revocation(self):
+        from threading import Event
+        from text_only_main import TextJarvis
+        app = Mock()
+        app._closing = False
+        app._shutdown = Event()
+        app.executing = False
+        app.vision_allowed = False
+        app._vision_revocation_epoch = 0
+
+        def image_then_revoke():
+            app._vision_revocation_epoch += 1
+            return b"photo-in-memory"
+
+        with patch("text_only_main.simpledialog.askstring",
+                   return_value="Проверь экран"), patch(
+                   "text_only_main.messagebox.askyesno",
+                   return_value=True), patch(
+                   "text_only_main.threading.Thread") as thread, patch(
+                   "screen_capture.ScreenFrameSource") as capture, patch(
+                   "vision_engine.LocalOllamaVision") as vision:
+            capture.return_value.capture_jpeg.side_effect = image_then_revoke
+            thread.return_value.start.side_effect = (
+                lambda: thread.call_args.kwargs["target"]())
+            TextJarvis.request_screen_analysis(app)
+        capture.return_value.capture_jpeg.assert_called_once()
+        vision.return_value.describe.assert_not_called()
+        result = app.q.put.call_args.args[0]
+        self.assertFalse(result[1][0])
+        self.assertIn("отозвано", result[1][1])
+
+    def test_screen_worker_errors_never_show_private_windows_paths(self):
+        from threading import Event
+        from text_only_main import TextJarvis
+        app = Mock()
+        app._closing = False
+        app._shutdown = Event()
+        app.executing = False
+        app.vision_allowed = True
+        app._vision_revocation_epoch = 0
+        app.runtime.start.side_effect = OSError("C:/Users/Private/token.png")
+        with patch("text_only_main.simpledialog.askstring",
+                   return_value="Что видно?"), patch(
+                   "text_only_main.threading.Thread") as thread:
+            thread.return_value.start.side_effect = (
+                lambda: thread.call_args.kwargs["target"]())
+            TextJarvis.request_screen_analysis(app)
+        result = app.q.put.call_args.args[0]
+        self.assertFalse(result[1][0])
+        self.assertNotIn("Private", result[1][1])
+        self.assertNotIn("token", result[1][1])
+
     def test_bad_permission_inputs_rejected(self):
         with self.assertRaises(ValueError):
             save_startup_permissions(StartupPermissions(1, True))
