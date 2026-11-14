@@ -49,7 +49,7 @@ class PostMontageReviewTests(unittest.TestCase):
             self.assertEqual(output.output.name,"JARVIS_NOVA_AUTO_VERTICAL_V2.mp4")
             self.assertGreater(output.attempts[1].structure_score,output.attempts[0].structure_score)
             self.assertTrue(all(x[1].exists() for x in calls))
-            self.assertIn("Я сделал",output.speech)
+            self.assertIn("Я сделал",output.summary)
             data=json.loads((root/"POST_MONTAGE_REVIEW.json").read_text("utf-8"))
             self.assertFalse(data["viewer_metrics_are_predictions"])
             self.assertEqual(data["historical_channel_data"]["status"],"no_channel_csv")
@@ -65,7 +65,7 @@ class PostMontageReviewTests(unittest.TestCase):
                                 renderer=renderer_factory(calls))
             self.assertEqual(len(o.attempts),1)
             self.assertEqual(o.output.name,"JARVIS_NOVA_VERTICAL.mp4")
-            self.assertIn("статистики",o.speech)
+            self.assertIn("статистики",o.summary)
 
     def test_real_channel_history_is_not_predicted_future_views(self):
         calls=[]
@@ -91,7 +91,7 @@ class PostMontageReviewTests(unittest.TestCase):
             self.assertEqual(data["historical_channel_data"]["median_retention_pct"],72.5)
             self.assertEqual(data["historical_channel_data"]["median_ctr_pct"],3.5)
             self.assertEqual(o.output.name,"JARVIS_NOVA_AUTO_VERTICAL_V2.mp4")
-            self.assertIn("не прогноз",o.speech)
+            self.assertIn("не прогноз",o.summary)
             self.assertEqual(len(reviews),2)
 
     def test_failed_recut_keeps_previous_video_and_reports_failure(self):
@@ -103,7 +103,7 @@ class PostMontageReviewTests(unittest.TestCase):
             self.assertEqual(len(o.attempts),1)
             self.assertTrue(o.output.exists())
             self.assertEqual(o.output.name,"JARVIS_NOVA_AUTO_VERTICAL.mp4")
-            self.assertIn("ошибкой",o.speech)
+            self.assertIn("ошибкой",o.summary)
             self.assertEqual(len(json.loads((root/"POST_MONTAGE_REVIEW.json").
                        read_text("utf-8"))["revision_errors"]),1)
 
@@ -185,7 +185,7 @@ class PostMontageReviewTests(unittest.TestCase):
             o=analyze_and_recut(template_brief("Лес"),root,root,
                                renderer=renderer_factory([]),media_auditor=failing)
             self.assertFalse(o.attempts[0].media_checked)
-            self.assertIn("не завершилась",o.speech)
+            self.assertIn("не завершилась",o.summary)
             data=json.loads((root/"POST_MONTAGE_REVIEW.json").read_text("utf-8"))
             self.assertEqual(data["media_audits"][0]["status"],"unavailable")
 
