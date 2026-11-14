@@ -123,6 +123,23 @@ class HardeningTests(TestCase):
             self.assertNotIn("sensitive", str(caught.exception))
             self.assertEqual(list(path.iterdir()), [])
 
+    def test_revoked_pc_access_blocks_opening_apps_and_urls(self):
+        from desktop import Desktop
+        from agent_core import Step
+        from unittest.mock import Mock, patch
+        desk=Desktop(allow_control=lambda:False)
+        desk.open_app=Mock()
+        with patch("desktop.webbrowser.open") as browser:
+            for step in (Step("open_app","Notepad"),
+                         Step("open_url","https://example.org")):
+                with self.subTest(kind=step.kind), self.assertRaises(PermissionError):
+                    desk.run(step)
+        desk.open_app.assert_not_called()
+        browser.assert_not_called()
+        desk.allow_control=lambda:True
+        self.assertEqual(desk.run(Step("open_app","Notepad")),desk.open_app.return_value)
+        desk.open_app.assert_called_once_with("Notepad")
+
     def test_coder_large_project_context_includes_last_modules(self):
         from code_project_engine import _context
         sources={f"mod_{i:03}.py": "long-source-" * 300
