@@ -442,8 +442,7 @@ class TextJarvis(BaseJarvis):
             old.lift()
             old.focus_stage(stage)
             return old
-        # Video soundtracks are media-editing data, not assistant speech.
-        self._viral_window = ViralStudioWindow(self, speaker=None)
+        self._viral_window = ViralStudioWindow(self)
         self._viral_window.focus_stage(stage)
         return self._viral_window
 
