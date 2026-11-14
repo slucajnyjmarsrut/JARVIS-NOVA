@@ -71,6 +71,9 @@ class Desktop:
             key=canonicalize(name)
         builtin=self.builtin_programs()
         if key in builtin:
+            # Authorization can be revoked while shortcut lookup is running.
+            if not self.allow_control():
+                raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
             os.startfile(builtin[key])
             return "Открываю "+name
         candidates=[p for p in self.shortcuts()
@@ -79,6 +82,8 @@ class Desktop:
         if candidates:
             candidates.sort(key=lambda p:(len(p.parts),str(p)))
             # Exact verified name only. Do not execute a random fuzzy shortcut.
+            if not self.allow_control():
+                raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
             os.startfile(str(candidates[0]))
             return "Запускаю "+candidates[0].stem
         guess=propose_installed_name(spoken,self.installed_names())
