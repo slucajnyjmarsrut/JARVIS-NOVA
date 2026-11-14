@@ -169,6 +169,43 @@ class HardeningTests(TestCase):
             with self.subTest(url=endpoint), self.assertRaises(LocalChatError):
                 LocalChat._request(endpoint, {"messages":[]})
 
+    def test_all_model_routes_block_malformed_or_credentialed_urls(self):
+        from task_ai_registry import _local_endpoint, SpecialistUnavailable
+        from task_ai_registry import get_specialist
+        from scenario_specialist import request_local_writer
+        from montage_specialist import _request as request_montage
+        cases=(
+            "http://127.0.0.1:bad/api/generate",
+            "http://127.0.0.1:99999/api/generate",
+            "http://@127.0.0.1:11434/api/generate",
+            "http://user@127.0.0.1:11434/api/generate",
+            "http://127.0.0.1:11434@evil.example/api/generate",
+            "https://127.0.0.1:11434/api/generate",
+        )
+        writer={"model":get_specialist("scenario").model}
+        montage={"model":get_specialist("montage").model}
+        with mock.patch("urllib.request.build_opener") as http:
+            for url in cases:
+                with self.subTest(url=url):
+                    with self.assertRaises(SpecialistUnavailable):
+                        _local_endpoint(url)
+                    with self.assertRaises(SpecialistUnavailable):
+                        request_local_writer(url,writer)
+                    with self.assertRaises(SpecialistUnavailable):
+                        request_montage(url,montage)
+        http.assert_not_called()
+
+    def test_writer_timeout_rejects_invalid_values_without_network(self):
+        from task_ai_registry import get_specialist, SpecialistUnavailable
+        from scenario_specialist import request_local_writer
+        payload={"model":get_specialist("scenario").model}
+        with mock.patch("urllib.request.build_opener") as http:
+            for value in (True, 0, -1, 91, "80"):
+                with self.subTest(value=value), self.assertRaises(SpecialistUnavailable):
+                    request_local_writer("http://127.0.0.1:11434/api/generate",
+                                         payload,timeout=value)
+        http.assert_not_called()
+
     def test_malformed_local_model_json_is_never_a_success(self):
         class Reply:
             def __init__(self, payload):
