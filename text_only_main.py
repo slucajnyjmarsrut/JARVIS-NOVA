@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """Production JARVIS NOVA controller: keyboard and text replies only.
 
-No voice/microphone/speaker/ASR/TTS engine is ever created.
-Older modules are retained for legacy test coverage, not for app use.
+Typed chat, local vision, coding and video editing. No audio devices or speech engines.
 """
 from __future__ import annotations
 import os
@@ -34,23 +33,8 @@ from semantic_intent_router import (
 from agent_core import parse_local
 
 
-class NoAudio:
-    """Inert compatibility object; owns no device and plays no sound."""
-    busy = False
-    speaking = False
-    whisper_busy = False
-    until = 0
-
-    def vision_source(self, text):
-        phrase = str(text).casefold().replace("ё", "е")
-        return "screen" if any(s in phrase for s in (
-            "посмотри на экран", "опиши экран", "что на экране",
-            "что ты видишь", "что видишь на экране", "покажи экран",
-            "анализ экрана")) else None
-
-
 class TextJarvis(BaseJarvis):
-    """Keep code, desktop, model and video capabilities; disable speech."""
+    """Keep code, desktop, model and video capabilities; without speech output."""
 
     def __init__(self):
         tk.Tk.__init__(self)
@@ -68,8 +52,6 @@ class TextJarvis(BaseJarvis):
         self.protocol("WM_DELETE_WINDOW", self.close)
 
         self.q = queue.Queue()
-        self.voice_enabled = False
-        self._answer_style = "normal"
         self.overlay_show_text = True
         self.overlay_last_user = ""
         self.overlay_last_answer = ""
@@ -99,9 +81,6 @@ class TextJarvis(BaseJarvis):
         self._last_input_activity = time.monotonic()
         self.update_preferences = load_preferences()
 
-        self.voice = NoAudio()
-        self.speaker = NoAudio()
-        self.trimodal = NoAudio()
         assets = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "assets"
         self._asset_root=assets
         self._model_download_busy=False
@@ -119,7 +98,6 @@ class TextJarvis(BaseJarvis):
         self._self_development_window=None
         self.runtime = BundledVisionRuntime(BundledRuntimeConfig(
             root=assets,model_store=active_model_store(assets)))
-        self.trimodal.runtime = self.runtime
         self.local_chat = LocalChat(self.runtime)
         # Do not opt into the separate Qwen3 chat before a user selects it.
         # TaskAIHub enables Qwen3 only after its explicit model setup.
@@ -432,13 +410,6 @@ class TextJarvis(BaseJarvis):
             return
         return super().set_engine(engine)
 
-    def init_voice(self):
-        return None
-
-    def toggle_voice(self):
-        # Inert legacy compatibility; no UI entry point or device activation.
-        return None
-
     def f9(self, event=None):
         self.entry.focus_set()
         return "break"
@@ -689,7 +660,7 @@ class TextJarvis(BaseJarvis):
             self.log("Вы",text)
             self.open_multitrack()
             self.reply("Открыл многодорожечный монтаж: наложения, титры, "
-                       "музыка и озвучка. Твои файлы не будут изменены, "
+                       "музыка и титры. Твои файлы не будут изменены, "
                        "пока ты не подтвердил экспорт.")
             return
         if is_publish_prep_request(text):
@@ -819,7 +790,7 @@ class TextJarvis(BaseJarvis):
                          name="jarvis-local-screenshot-review").start()
         return True
 
-    def request_trimodal(self, source="screen", audio_pcm=None):
+    def request_screen_analysis(self, source="screen"):
         """Text question + user-approved screenshot; never record audio."""
         if self._closing or self.executing:
             return
