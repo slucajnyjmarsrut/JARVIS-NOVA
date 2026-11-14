@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
 """Compact conversation-only NOVA bubble displayed when main window is minimized.
 
-No second microphone and no permissions: buttons delegate to the existing Jarvis
-controller. The preview contains the user's own recent chat, never raw audio.
+No recording or playback; buttons delegate only to the text controller.
 """
 from __future__ import annotations
 import time
 import tkinter as tk
 
-from nova_ui import BG, SURFACE, SURFACE_ALT, EDGE, CYAN, CYAN_DIM, GREEN, MUTED, TEXT, AMBER, level_readout, visual_state
+from nova_ui import SURFACE, SURFACE_ALT, EDGE, CYAN, CYAN_DIM, GREEN, MUTED, TEXT
 
 MINI_WIDTH = 334
 MINI_HEIGHT = 242
@@ -35,10 +34,9 @@ def clamp_drag_position(x, y, screen_width, screen_height,
 class NovaOverlay(tk.Toplevel):
     """A draggable always-on-top chat bubble, shown ONLY while main is hidden."""
 
-    def __init__(self, app, *, text_only=False):
+    def __init__(self, app):
         super().__init__(app)
         self.app = app
-        self._text_only = bool(text_only)
         self.withdraw()
         self.overrideredirect(True)
         self.configure(bg=CYAN_DIM)
@@ -74,13 +72,9 @@ class NovaOverlay(tk.Toplevel):
         mode = tk.Frame(shell, bg=SURFACE)
         mode.pack(fill="x", padx=12, pady=(3, 2))
         self.status_label = tk.Label(
-            mode, text="ГОТОВ К ПЕРЕПИСКЕ" if self._text_only else "МИКРОФОН ВЫКЛ.",
+            mode, text="ГОТОВ К ПЕРЕПИСКЕ",
             fg=MUTED, bg=SURFACE, font=("Segoe UI", 10, "bold"), anchor="w")
         self.status_label.pack(side="left", fill="x", expand=True)
-        if not self._text_only:
-            self.level = tk.Label(mode, text="НЕТ ДАННЫХ",
-                                  bg=SURFACE, fg=MUTED, font=("Segoe UI", 8))
-            self.level.pack(side="right")
 
         # This miniature shows no modes, computer controls, app launchers or
         # permission toggles: it is strictly the conversation window.
@@ -89,7 +83,7 @@ class NovaOverlay(tk.Toplevel):
         self.conversation.pack(fill="both", expand=True, padx=10, pady=(4, 5))
         self.last_user = tk.Label(
             self.conversation,
-            text="ВЫ  ·  напишите сообщение" if self._text_only else "ВЫ  ·  скажи «Джарвис»",
+            text="ВЫ  ·  напишите сообщение",
                                   bg=SURFACE_ALT, fg=TEXT, anchor="w",
                                   justify="left", wraplength=292, font=("Segoe UI", 9))
         self.last_user.pack(fill="x", padx=9, pady=(8, 2))
@@ -100,21 +94,12 @@ class NovaOverlay(tk.Toplevel):
 
         controls = tk.Frame(shell, bg=SURFACE)
         controls.pack(fill="x", padx=9, pady=(0, 7))
-        if not self._text_only:
-            self.mic_button = self.button(controls, "МИКРОФОН", app.toggle_voice)
-            self.mic_button.pack(side="left", expand=True, fill="x", padx=2)
-            self.listen_button = self.button(controls, "◉  F9", app.f9)
-            self.listen_button.pack(side="left", expand=True, fill="x", padx=2)
         self.privacy_button = self.button(controls, "◌  ТЕКСТ", self.toggle_preview)
         self.privacy_button.pack(side="left", expand=True, fill="x", padx=2)
         self.restore_button = self.button(controls, "РАЗВЕРНУТЬ", self.restore_main)
         self.restore_button.pack(side="left", expand=True, fill="x", padx=2)
 
         self.protocol("WM_DELETE_WINDOW", self.restore_main)
-        if not self._text_only:
-            self.bind("<F9>", lambda e: (self.app.f9(), "break")[1])
-            self.bind("<Control-Shift-M>",
-                      lambda e: (self.app.toggle_voice(), "break")[1])
         self.bind("<Control-Shift-O>", lambda e: (self.restore_main(), "break")[1])
         self.bind("<Control-Shift-R>", lambda e: (self.app.revoke(), "break")[1])
 
@@ -183,7 +168,7 @@ class NovaOverlay(tk.Toplevel):
     def refresh_preview(self):
         visible = bool(getattr(self.app, "overlay_show_text", True))
         if visible:
-            user = getattr(self.app, "overlay_last_user", "") or "ВЫ  ·  скажи «Джарвис»"
+            user = getattr(self.app, "overlay_last_user", "") or "ВЫ  ·  напишите сообщение"
             reply = getattr(self.app, "overlay_last_answer", "") or "NOVA  ·  готов к разговору"
         else:
             user = "ВЫ  ·  реплика скрыта"
@@ -201,29 +186,11 @@ class NovaOverlay(tk.Toplevel):
             return
         self._timer_id = None
         app = self.app
-        if self._text_only:
-            self.status_label.configure(
-                text="ОБРАБАТЫВАЮ ТЕКСТ…" if app.executing else "ГОТОВ К ПЕРЕПИСКЕ",
-                fg=MUTED if app.executing else GREEN)
-            self.refresh_preview()
-            self._timer_id = self.after(190, self.refresh)
-            return
-        speaking = bool(getattr(app.speaker, "busy", False) or
-                        getattr(app.trimodal, "speaking", False))
-        mode, label, color = visual_state(
-            bool(app.voice_enabled), app.mic_state.get(), app.status.get(),
-            bool(app.executing), speaking,
-            listening=time.monotonic() < getattr(app.voice, "until", 0))
-        self.status_label.configure(text=label, fg=color)
-        self.mic_button.configure(text="ВЫКЛ. МИК." if app.voice_enabled else "ВКЛ. МИК.")
-        current = None
-        if (app.voice_enabled and app.hud_level_at and
-                time.monotonic()-app.hud_level_at < 1.4):
-            current = app.hud_level_value
-        _, reading = level_readout(current)
-        self.level.configure(text=reading if app.voice_enabled else "МИК. ВЫКЛ.")
+        self.status_label.configure(
+            text="ОБРАБАТЫВАЮ ТЕКСТ…" if app.executing else "ГОТОВ К ПЕРЕПИСКЕ",
+            fg=MUTED if app.executing else GREEN)
         self.refresh_preview()
-        self._timer_id = self.after(170, self.refresh)
+        self._timer_id=self.after(190,self.refresh)
 
     def shutdown(self):
         if self._closed:
