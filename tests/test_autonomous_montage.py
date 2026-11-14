@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""No cloud calls: full automatic edit GUI/voice routing and explicit consent."""
+"""No cloud calls: fully automatic typed video editing and explicit consent."""
 from pathlib import Path
 from dataclasses import replace
 from tempfile import TemporaryDirectory
@@ -14,7 +14,7 @@ from viral_studio_ui import ViralStudioWindow
 
 
 class AutonomousMontageTests(TestCase):
-    def test_voice_topic_opens_autostudio_but_does_not_download(self):
+    def test_typed_topic_opens_autostudio_but_does_not_download(self):
         window=SimpleNamespace(topic=mock.Mock())
         app=SimpleNamespace(_closing=False, log=mock.Mock(),
             show_main=mock.Mock(), hide_main=mock.Mock(),
@@ -45,7 +45,7 @@ class AutonomousMontageTests(TestCase):
                 profile=None,status=SimpleNamespace(set=mock.Mock()),
                 stop_event=threading.Event(), _spawn=lambda work: work(),
                 _notify=lambda callback:callback(),_show=mock.Mock(),
-                _speak=mock.Mock(),project=None,brief=None,rendered_video=None)
+                project=None,brief=None,rendered_video=None)
             def downloader(clips,folder,**opts):
                 self.assertTrue(opts["consent"])
                 self.assertEqual(len(clips),len(brief.shots))
@@ -63,7 +63,7 @@ class AutonomousMontageTests(TestCase):
                 return SimpleNamespace(brief=brief,output=output,
                    rendered={"duration":23.,"technical_quality":{"quality_checked":True}},
                    attempts=[1],report=project/"POST_MONTAGE_REVIEW_RU.md",
-                   speech="Проверил ролик. Повторный монтаж не нужен.")
+                   summary="Проверил ролик. Повторный монтаж не нужен.")
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=source),
                   mock.patch("task_ai_registry.specialist_available",return_value=True),
@@ -80,7 +80,6 @@ class AutonomousMontageTests(TestCase):
             self.assertEqual(app.rendered_video.parent,app.project)
             self.assertTrue(app._show.called)
             self.assertIn("Отчёт о просмотрах",app._show.call_args.args[0])
-            app._speak.assert_called_once()
 
     def test_model_failure_uses_explicitly_marked_template_not_fake_ai(self):
         with TemporaryDirectory() as t:
@@ -89,7 +88,7 @@ class AutonomousMontageTests(TestCase):
                 profile=None,status=SimpleNamespace(set=mock.Mock()),
                 stop_event=threading.Event(),_spawn=lambda work:work(),
                 _notify=lambda cb:cb(),_show=mock.Mock(),
-                _speak=mock.Mock(),project=None,brief=None,rendered_video=None)
+                project=None,brief=None,rendered_video=None)
             with (mock.patch("viral_studio_ui.messagebox.askyesno",return_value=True),
                   mock.patch("viral_studio_ui._home",return_value=Path(t)),
                   mock.patch("task_ai_registry.specialist_available",return_value=True),
@@ -104,7 +103,7 @@ class AutonomousMontageTests(TestCase):
                                brief=brief,output=project/"result.mp4",
                                rendered={"duration":23.,"technical_quality":{}},
                                attempts=[1],report=project/"review.md",
-                               speech="Проверил и объяснил результат."))):
+                               summary="Проверил и объяснил результат."))):
                 ViralStudioWindow.auto_montage(app)
             self.assertIn("без нейросети",app.brief.generator)
             self.assertIn("шаблон",app._show.call_args.args[0])
