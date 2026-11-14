@@ -224,6 +224,10 @@ class Jarvis(tk.Tk):
         )
         self.control_allowed = False
         self.vision_allowed = False
+        # Invalidate any one-shot screenshot request queued in a worker.
+        # Do this even if the persistent permission store cannot be saved.
+        epoch = getattr(self, "_vision_revocation_epoch", 0)
+        self._vision_revocation_epoch = (epoch if type(epoch) is int else 0) + 1
         try:
             save_startup_permissions(StartupPermissions(False, False))
         except (OSError, ValueError) as exc:
