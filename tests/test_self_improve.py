@@ -138,7 +138,7 @@ class SelfImprovementTests(unittest.TestCase):
         self.assertIsNone(propose_installed_name('steam', ['Steam']))
 
     def test_shortcut_proposed_but_not_run_without_confirmation(self):
-        d = Desktop(learning=self.learning)
+        d = Desktop(allow_control=lambda: True, learning=self.learning)
         with mock.patch.object(d, 'shortcuts', return_value=[Path('C:/Fake/Steam.lnk')]), \
              mock.patch('desktop.os.startfile', create=True) as launcher:
             with self.assertRaises(AppSuggestion) as cm:
@@ -148,7 +148,7 @@ class SelfImprovementTests(unittest.TestCase):
 
     def test_learned_alias_rechecks_installed_target(self):
         self.learning.learn('стимм', 'Steam', verified=True)
-        d=Desktop(learning=self.learning)
+        d=Desktop(allow_control=lambda: True, learning=self.learning)
         with mock.patch.object(d, 'shortcuts', return_value=[]), \
              mock.patch('desktop.os.startfile', create=True) as launcher:
             with self.assertRaises(FileNotFoundError):
@@ -157,7 +157,7 @@ class SelfImprovementTests(unittest.TestCase):
 
     def test_confirmed_alias_launches_only_verified_shortcut(self):
         self.learning.learn('стимм', 'Steam', verified=True)
-        d=Desktop(learning=self.learning)
+        d=Desktop(allow_control=lambda: True, learning=self.learning)
         with mock.patch.object(d, 'shortcuts', return_value=[Path('C:/Start/Steam.lnk')]), \
              mock.patch('desktop.os.startfile', create=True) as launcher:
             self.assertIn('Steam', d.open_app('стимм'))
