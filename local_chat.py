@@ -6,6 +6,7 @@ back to the image model. No unapproved downloads or external APIs.
 """
 from __future__ import annotations
 import json
+import re
 import threading
 import time
 from urllib.parse import urlsplit
@@ -42,6 +43,13 @@ def explain_local_model_failure(error: Exception) -> str:
             return ("Qwen3-VL для чата не установлена либо загрузка не завершена. "
                     "Нажми «СКАЧАТЬ QWEN» и подтверди загрузку. "
                     "Найденная Qwen Coder — отдельная модель для программирования.")
+    # Exceptions from filesystem/network adapters can include private user
+    # paths, API secrets or credential-bearing URLs. Never echo them into chat.
+    if isinstance(error, (OSError, TimeoutError)) or re.search(
+            r"(?:[A-Za-z]:[/\\\\]|/Users/|/home/|/mnt/|(?:password|secret|token|api[_-]?key)\\s*[=:])",
+            detail, re.IGNORECASE):
+        return ("Локальная модель недоступна. Проверь состояние Ollama, "
+                "доступность модели и локальные разрешения.")
     return "Локальная модель недоступна: " + detail[:160]
 
 
@@ -200,6 +208,14 @@ class LocalChat:
             model = get_specialist("chat").model
         else:
             endpoint = self.runtime.start()
+        # A fixed 56-token cap truncated multi-step questions. Keep everyday
+        # replies responsive, but allow deeper user-requested explanations.
+        detailed = (len(question) > 110 or any(term in question.casefold() for term in (
+            "подроб", "объясни", "пошагов", "по шагам", "сравни",
+            "инструкц", "примеры", "разбери", "план действий",
+        )))
+        max_reply_tokens = 240 if self.debate_mode else (256 if detailed else 112)
+        context_tokens = 2048 if self.debate_mode else (2560 if detailed else 1536)
         payload = {
             "model": model,
             "stream": False,
@@ -216,8 +232,8 @@ class LocalChat:
                 *self._conversation,
                 {"role": "user", "content": question},
             ],
-            "options": {"num_predict": 240 if self.debate_mode else 56,
-                        "num_ctx": 2048 if self.debate_mode else 1536,
+            "options": {"num_predict": max_reply_tokens,
+                        "num_ctx": context_tokens,
                         "temperature": 0.4 if self.debate_mode else 0.3},
         }
         result = self._requester(endpoint, payload)
