@@ -36,6 +36,35 @@ class LocalChatTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["stream"], False)
         self.assertNotIn("tools", captured["payload"])
 
+    def test_detailed_questions_get_room_for_real_explanations(self):
+        messages = []
+        chat = LocalChat(FakeRuntime(), requester=lambda _url, data: (
+            messages.append(data), {"message": {"content": "Тестовый ответ"}}
+        )[1])
+        chat.ask("Что такое Docker?")
+        self.assertEqual(messages[-1]["options"]["num_predict"], 112)
+        self.assertEqual(messages[-1]["options"]["num_ctx"], 1536)
+        chat.ask("Объясни подробно по шагам, как устроена контейнеризация.")
+        self.assertEqual(messages[-1]["options"]["num_predict"], 256)
+        self.assertEqual(messages[-1]["options"]["num_ctx"], 2560)
+        self.assertFalse(messages[-1]["think"])
+        self.assertNotIn("tools", messages[-1])
+
+    def test_private_runtime_errors_are_sanitized_without_fake_model_diagnosis(self):
+        for error in (
+            OSError("C:/Users/Alice/private/token.json"),
+            RuntimeError(r"C:\\Users\\Alice\\private.txt"),
+            RuntimeError("api_key=very-secret-value"),
+            RuntimeError("/home/person/private/model.bin"),
+        ):
+            with self.subTest(message=str(error)):
+                message = explain_local_model_failure(error)
+                self.assertNotIn("Alice", message)
+                self.assertNotIn("person", message)
+                self.assertNotIn("very-secret", message)
+                self.assertNotIn("token.json", message)
+                self.assertIn("Ollama", message)
+
     def test_debate_is_opt_in_and_returns_to_normal(self):
         payloads=[]
         chat=LocalChat(FakeRuntime(),requester=lambda _,data: (
