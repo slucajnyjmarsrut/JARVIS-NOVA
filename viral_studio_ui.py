@@ -153,7 +153,7 @@ class ViralStudioWindow(tk.Toplevel):
         self.audience_button=action(0,0,"1. Загрузить статистику CSV",self.import_audience)
         self.make_button=action(0,1,"2. СОЗДАТЬ СЦЕНАРИЙ",self.generate,True)
         self.load_button=action(1,0,"Открыть сохранённый сценарий",self.open_brief)
-        self.speak_button=action(1,1,"Показать план съёмки",self.read_shots)
+        self.shot_plan_button=action(1,1,"Показать план съёмки",self.read_shots)
         self.edit_button=action(2,0,"3. Монтаж · мои или онлайн-видео",self.montage)
         self.review_button=action(2,1,"4. Проверить монтаж и оценку",self.review)
         self.auto_button=action(3,0,"АВТОМОНТАЖ · СОБРАТЬ MP4",self.auto_montage,True)
@@ -511,7 +511,7 @@ class ViralStudioWindow(tk.Toplevel):
         descriptions={
             'audience':('1. Анализ аудитории: импортируй свою статистику CSV.',self.audience_button),
             'script':('2. Сценарий: введи тему и выбери быстрый или AI режим.',self.make_button),
-            'shoot':('3. Съёмка: открой текстовый список кадров.',self.speak_button),
+            'shoot':('3. Съёмка: открой текстовый список кадров.',self.shot_plan_button),
             'edit':('4. Монтаж: выбери отснятые кадры и подтверди обработку.',self.edit_button),
             'edits':('Эдиты: выбери стиль и папку собственных клипов.',self.quick_edit_button),
             'review':('5. Оценка: проверь готовый MP4 относительно данных аудитории.',self.review_button),
