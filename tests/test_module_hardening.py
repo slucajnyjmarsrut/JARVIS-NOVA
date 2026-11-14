@@ -140,6 +140,17 @@ class HardeningTests(TestCase):
         self.assertIn("def add(a,b): return a+b",result)
         self.assertIn("from src.a import add",result)
 
+    def test_coder_long_prompt_still_includes_last_module(self):
+        from code_project_engine import _prompt_with_context
+        intro="Пользовательская задача: " + "описание " * 380
+        sources={f"app/module_{i:03}.py":"def function(): pass\\n"*400
+                 for i in range(70)}
+        prompt=_prompt_with_context(intro,sources)
+        self.assertTrue(prompt.startswith(intro))
+        self.assertLessEqual(len(prompt),20000)
+        self.assertIn("FILE app/module_069.py",prompt)
+        self.assertEqual(prompt.count("END FILE"),70)
+
     def test_coder_context_rejects_impossible_budget(self):
         from code_project_engine import _context
         from code_workspace import WorkspaceError
