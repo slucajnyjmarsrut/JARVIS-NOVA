@@ -412,10 +412,11 @@ def render_timeline(project: TimelineProject, *, cancel: threading.Event | None 
                     with staged_file.open("rb") as src:
                         _copy_export_with_cancel(src, dest, cancel=cancel)
             if cancel is not None and cancel.is_set():
-                raise TimelineError("Монтаж отменён. Частичные файлы удалены.")
+                raise TimelineError("Монтаж отменён. Частичные файлы оставлены в папке "
+                                    "результата для ручной проверки.")
         except Exception:
-            for path in reversed(committed):
-                path.unlink(missing_ok=True)
+            # Never delete even an incomplete user-visible MP4 or JSON.
+            # Explorer can show the output for the user to handle manually.
             raise
         if progress:
             progress(len(parts), len(parts), "Готово")

@@ -197,15 +197,6 @@ def download_free_video(clips: list[FreeClip], folder: Path, *, consent=False,
                 stream.write(text)
         return folder
     except Exception:
-        # Only delete files created during this attempt. If something else was
-        # added concurrently, rmdir fails safely instead of deleting its data.
-        for item in reversed(owned):
-            try:
-                item.unlink()
-            except OSError:
-                pass
-        try:
-            folder.rmdir()
-        except OSError:
-            pass
+        # Do not delete downloaded or partially downloaded files, including
+        # on cancellation. The owner decides how to handle them in Explorer.
         raise

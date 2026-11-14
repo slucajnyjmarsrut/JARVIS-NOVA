@@ -29,17 +29,20 @@ class VisionConfig:
 
 
 def _validated_endpoint(endpoint: str) -> str:
-    u = urllib.parse.urlsplit(endpoint)
+    if not isinstance(endpoint, str) or not 9 <= len(endpoint) <= 256:
+        raise VisionError("Invalid local Vision endpoint")
+    try:
+        u = urllib.parse.urlsplit(endpoint)
+        hostname = u.hostname
+        port = u.port
+    except (ValueError, TypeError) as exc:
+        raise VisionError("Malformed local Vision endpoint") from exc
     if u.scheme != "http" or u.username is not None or u.password is not None:
         raise VisionError("Only local HTTP without credentials is permitted")
-    if u.hostname not in {"localhost", "127.0.0.1", "::1"}:
+    if hostname not in {"localhost", "127.0.0.1", "::1"}:
         raise VisionError("Vision endpoint must be loopback; no remote image uploads allowed")
     if u.path not in {"", "/"} or u.query or u.fragment:
         raise VisionError("Vision endpoint must not include path/query/fragment")
-    try:
-        port = u.port
-    except ValueError as exc:
-        raise VisionError("Invalid local Vision port") from exc
     if port is None or not 1 <= port <= 65535:
         raise VisionError("Explicit local Vision port required")
     return endpoint.rstrip("/")
@@ -53,12 +56,14 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class LocalOllamaVision:
     def __init__(self, config: VisionConfig,
                  *, transport: Callable[[str, dict | None], dict] | None = None):
-        if not config.model or len(config.model) > 128:
+        if not isinstance(config.model, str) or not config.model or len(config.model) > 128:
             raise VisionError("Invalid Vision model name")
-        if not 0 < config.timeout_seconds <= 300:
+        if type(config.timeout_seconds) not in (int, float) or not 0 < config.timeout_seconds <= 300:
             raise VisionError("Invalid Vision timeout")
-        if not 64_000 <= config.max_image_bytes <= 16_000_000:
+        if type(config.max_image_bytes) is not int or not 64_000 <= config.max_image_bytes <= 16_000_000:
             raise VisionError("Invalid image size limit")
+        if type(config.max_response_bytes) is not int or not 1_024 <= config.max_response_bytes <= 8_000_000:
+            raise VisionError("Invalid response size limit")
         self.config = config
         self.endpoint = _validated_endpoint(config.endpoint)
         self._transport = transport or self._request
@@ -85,7 +90,8 @@ class LocalOllamaVision:
             with self._opener.open(req, timeout=self.config.timeout_seconds) as response:
                 raw = response.read(self.config.max_response_bytes + 1)
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise VisionError("Local Vision service unavailable: " + str(exc)[:200]) from exc
+            # Transport exceptions may embed private profile paths or tokens.
+            raise VisionError("Local Vision service unavailable") from exc
         if len(raw) > self.config.max_response_bytes:
             raise VisionError("Vision server response too large")
         try:
@@ -123,6 +129,8 @@ class LocalOllamaVision:
         """Answer one question using one JPEG camera frame, held only in memory."""
         if not self.ready:
             raise VisionError("Initialize a real Vision model before processing images")
+        if not isinstance(question, str):
+            raise VisionError("Question must be text")
         text = question.strip()
         if not text or len(text) > 1200:
             raise VisionError("Question must be 1–1200 characters")

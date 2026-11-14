@@ -8,6 +8,7 @@ The source screenshot is never modified.
 from __future__ import annotations
 
 from io import BytesIO
+import math
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -40,12 +41,30 @@ def load_screenshot(filename: str | Path) -> Image.Image:
 
 
 def annotate_jpeg(image: Image.Image, strokes: list[list[tuple[float, float]]]) -> bytes:
-    """Draw red marks onto a copy; return a bounded JPEG for local Vision."""
+    """Draw bounded red marks onto a copy; never trust incoming stroke data."""
+    if not isinstance(strokes, (list, tuple)) or len(strokes) > 1_024:
+        raise ValueError("Слишком много отметок на изображении.")
     picture = image.convert("RGB").copy()
     pen = ImageDraw.Draw(picture)
     width = max(3, round(min(picture.size) / 170))
+    total_points = 0
     for stroke in strokes:
-        points = [(int(x), int(y)) for x, y in stroke]
+        if not isinstance(stroke, (list, tuple)):
+            raise ValueError("Некорректная отметка на изображении.")
+        total_points += len(stroke)
+        if total_points > 50_000:
+            raise ValueError("Слишком много точек на изображении.")
+        points = []
+        for point in stroke:
+            if not isinstance(point, (list, tuple)) or len(point) != 2:
+                raise ValueError("Некорректная точка отметки.")
+            x, y = point
+            if (type(x) not in (int, float) or type(y) not in (int, float)
+                    or not math.isfinite(x) or not math.isfinite(y)
+                    or not 0 <= x < picture.width or
+                    not 0 <= y < picture.height):
+                raise ValueError("Точка отметки вне изображения.")
+            points.append((int(x), int(y)))
         if len(points) == 1:
             x, y = points[0]
             pen.ellipse((x-width, y-width, x+width, y+width), fill="#FF3434")
@@ -67,7 +86,9 @@ def screenshot_folder() -> Path:
 
 def save_annotated(jpeg: bytes, folder: Path | None = None) -> Path:
     """Save the reviewed copy to user data, outside the EXE installation."""
-    if not isinstance(jpeg, bytes) or not 32 <= len(jpeg) <= MAX_JPEG_BYTES:
+    if (not isinstance(jpeg, bytes) or not 32 <= len(jpeg) <= MAX_JPEG_BYTES
+            or not jpeg.startswith(b"\xff\xd8\xff")
+            or not jpeg.endswith(b"\xff\xd9")):
         raise ValueError("Неправильный скриншот.")
     destination = Path(folder) if folder is not None else screenshot_folder()
     destination.mkdir(parents=True, exist_ok=True)

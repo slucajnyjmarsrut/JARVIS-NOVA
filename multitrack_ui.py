@@ -44,7 +44,7 @@ class MultitrackWindow(tk.Toplevel):
         ttk.Label(outer,text="МНОГОДОРОЖЕЧНЫЙ МОНТАЖ · OFFLINE",
                   style="Studio.Heading.TLabel").pack(anchor="w")
         ttk.Label(
-            outer,text="Основа + 3 наложения + титр + музыка + озвучка. "
+            outer,text="Основа + 3 наложения + титр + фоновая музыка. "
             "Оригиналы не меняются, аккаунты и интернет не используются.",
             wraplength=800,style="Studio.Small.TLabel"
         ).pack(anchor="w",pady=(0,9))
@@ -64,7 +64,6 @@ class MultitrackWindow(tk.Toplevel):
         self.output=tk.StringVar()
         self.title_text=tk.StringVar()
         self.music=tk.StringVar()
-        self.voice=tk.StringVar()
         self.layer_files=[]
         self.layer_positions=[]
         self.layer_starts=[]
@@ -74,7 +73,6 @@ class MultitrackWindow(tk.Toplevel):
         self.layer_motions=[]
         self.layer_motion_times=[]
         self.music_volume=tk.StringVar(value="0.22")
-        self.duck_music=tk.BooleanVar(value=False)
 
         self._picker(body,"01 · ОСНОВНОЕ MP4",self.base,"video")
         for index in (1,2,3):
@@ -139,11 +137,7 @@ class MultitrackWindow(tk.Toplevel):
                   style="Studio.TLabel").pack(side="left")
         ttk.Entry(volume_row,textvariable=self.music_volume,
                   width=8,style="Studio.TEntry").pack(side="left",padx=(8,0))
-        self._picker(body,"05 · ОЗВУЧКА / ГОЛОС",self.voice,"audio")
-        ttk.Checkbutton(
-            body,text="Автоматически приглушать музыку, когда звучит голос",
-            variable=self.duck_music).pack(anchor="w",pady=(0,8))
-        self._picker(body,"06 · НОВЫЙ РЕЗУЛЬТАТ MP4",self.output,"output")
+        self._picker(body,"05 · НОВЫЙ РЕЗУЛЬТАТ MP4",self.output,"output")
 
         footer=ttk.Frame(self,style="Studio.TFrame",padding=12)
         footer.pack(fill="x")
@@ -229,9 +223,7 @@ class MultitrackWindow(tk.Toplevel):
             layers=tuple(layers),
             title=self.title_text.get().strip(),
             music=Path(self.music.get()) if self.music.get().strip() else None,
-            voiceover=Path(self.voice.get()) if self.voice.get().strip() else None,
             music_volume=float(self.music_volume.get()),
-            duck_music=self.duck_music.get(),
         ),for_export=for_export)
 
     def save_project(self):
@@ -268,9 +260,7 @@ class MultitrackWindow(tk.Toplevel):
         self.base.set(str(project.base_video))
         self.title_text.set(project.title)
         self.music.set(str(project.music) if project.music else "")
-        self.voice.set(str(project.voiceover) if project.voiceover else "")
         self.music_volume.set(str(project.music_volume))
-        self.duck_music.set(project.duck_music)
         for i in range(3):
             layer=project.layers[i] if i<len(project.layers) else None
             self.layer_files[i].set(str(layer.path) if layer else "")
@@ -297,15 +287,12 @@ class MultitrackWindow(tk.Toplevel):
         except (MultitrackError,ValueError,OSError) as exc:
             messagebox.showerror("Многодорожечный монтаж",str(exc),parent=self)
             return
-        layers=len(project.layers)+int(bool(project.title.strip()))+(
-            int(project.music is not None)+int(project.voiceover is not None))
+        layers=len(project.layers)+int(bool(project.title.strip()))+int(project.music is not None)
         if not messagebox.askyesno(
             "Разрешить локальный монтаж?",
             "Основа: "+Path(project.base_video).name+
             "\nДополнительных слоёв: "+str(layers)+
             "\nНовый файл: "+str(project.output_video)+
-            ("\nМузыка приглушается под голос: да" if project.duck_music else
-             "\nМузыка приглушается под голос: нет")+
             "\n\nЗапустить FFmpeg? Исходники не изменяются. "
             "Видео и музыка никуда не публикуются.",
             parent=self,
@@ -357,7 +344,7 @@ class MultitrackWindow(tk.Toplevel):
                 self._last_busy_second=seconds
                 self.status.set(
                     f"FFmpeg обрабатывает слои: {seconds} с. "
-                    "При ошибке/остановке частичный MP4 удаляется. "
+                    "При ошибке/остановке частичный MP4 остаётся для ручной проверки. "
                     "Нажми ОТМЕНА, чтобы остановить.")
         self.after(130,self._pump)
 
@@ -383,7 +370,7 @@ class MultitrackWindow(tk.Toplevel):
     def cancel(self):
         if self._busy:
             self._cancel.set()
-            self.status.set("Остановка FFmpeg. Недописанный MP4 будет удалён.")
+            self.status.set("Остановка FFmpeg. Недописанный MP4 сохраняется для ручной проверки.")
         else:
             self.status.set("Сейчас нет активного монтажа.")
 

@@ -36,6 +36,35 @@ class LocalChatTests(unittest.TestCase):
         self.assertEqual(captured["payload"]["stream"], False)
         self.assertNotIn("tools", captured["payload"])
 
+    def test_detailed_questions_get_room_for_real_explanations(self):
+        messages = []
+        chat = LocalChat(FakeRuntime(), requester=lambda _url, data: (
+            messages.append(data), {"message": {"content": "Тестовый ответ"}}
+        )[1])
+        chat.ask("Что такое Docker?")
+        self.assertEqual(messages[-1]["options"]["num_predict"], 112)
+        self.assertEqual(messages[-1]["options"]["num_ctx"], 1536)
+        chat.ask("Объясни подробно по шагам, как устроена контейнеризация.")
+        self.assertEqual(messages[-1]["options"]["num_predict"], 256)
+        self.assertEqual(messages[-1]["options"]["num_ctx"], 2560)
+        self.assertFalse(messages[-1]["think"])
+        self.assertNotIn("tools", messages[-1])
+
+    def test_private_runtime_errors_are_sanitized_without_fake_model_diagnosis(self):
+        for error in (
+            OSError("C:/Users/Alice/private/token.json"),
+            RuntimeError(r"C:\\Users\\Alice\\private.txt"),
+            RuntimeError("api_key=very-secret-value"),
+            RuntimeError("/home/person/private/model.bin"),
+        ):
+            with self.subTest(message=str(error)):
+                message = explain_local_model_failure(error)
+                self.assertNotIn("Alice", message)
+                self.assertNotIn("person", message)
+                self.assertNotIn("very-secret", message)
+                self.assertNotIn("token.json", message)
+                self.assertIn("Ollama", message)
+
     def test_debate_is_opt_in_and_returns_to_normal(self):
         payloads=[]
         chat=LocalChat(FakeRuntime(),requester=lambda _,data: (
@@ -81,14 +110,41 @@ class LocalChatTests(unittest.TestCase):
         error = BundledRuntimeError(
             "Missing offline Vision model manifest: C:/Users/test/Models/ollama/manifests/foo")
         message = explain_local_model_failure(error)
-        self.assertIn("Проверить локальную модель", message)
+        self.assertIn("СКАЧАТЬ QWEN", message)
+        self.assertNotIn("повреждены", message)
         self.assertNotIn("C:/Users", message)
         self.assertNotIn("manifest", message)
+
+    def test_corrupt_model_error_is_distinguished_from_missing_model(self):
+        error=BundledRuntimeError("blob SHA256 mismatch in private path")
+        message=explain_local_model_failure(error)
+        self.assertIn("целостности",message)
+        self.assertIn("СКАЧАТЬ QWEN",message)
+        self.assertNotIn("private path",message)
 
     def test_non_model_error_is_not_misreported_as_missing_weights(self):
         message = explain_local_model_failure(RuntimeError("Connection refused"))
         self.assertIn("Connection refused", message)
         self.assertNotIn("файлы повреждены", message)
+
+    def test_missing_dedicated_chat_rechecks_after_ollama_install(self):
+        from unittest.mock import Mock
+        runtime = FakeRuntime()
+        transport = Mock(return_value={"message": {"content": "Модель готова"}})
+        chat = LocalChat(runtime, requester=transport)
+        chat.prefer_task_specialist(True)
+        with patch("task_ai_registry.specialist_available",
+                   side_effect=[False, True]) as present, patch(
+                   "local_chat.time.monotonic", side_effect=[100., 105., 121.]):
+            with self.assertRaises(LocalChatError):
+                chat.ask("Расскажи о городе")
+            with self.assertRaises(LocalChatError):
+                chat.ask("Расскажи о городе")
+            self.assertEqual(present.call_count, 1)
+            self.assertEqual(chat.ask("Расскажи о городе"), "Модель готова")
+            self.assertEqual(present.call_count, 2)
+        self.assertEqual(runtime.calls, 0)
+        self.assertEqual(transport.call_args.args[1]["model"], "qwen3:4b")
 
     def test_chat_refuses_external_hosts(self):
         for host in ("https://127.0.0.1:1234", "http://localhost:1234",

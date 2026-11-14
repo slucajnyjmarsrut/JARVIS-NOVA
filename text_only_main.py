@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """Production JARVIS NOVA controller: keyboard and text replies only.
 
-No voice/microphone/speaker/ASR/TTS engine is ever created.
-Older modules are retained for legacy test coverage, not for app use.
+Typed chat, local vision, coding and video editing. No audio devices or speech engines.
 """
 from __future__ import annotations
 import os
@@ -27,26 +26,15 @@ from freellm_client import FreeLLMChat, FreeLLMError
 from update_preferences import load_preferences
 from model_storage import active_model_store, local_model_available, installed_edition
 from chat_first_intent import route_chat_request
+from intuitive_start import initial_guidance, clarification
+from semantic_intent_router import (
+    classify_local_intent, suitable_for_semantic_routing,
+)
 from agent_core import parse_local
 
 
-class NoAudio:
-    """Inert compatibility object; owns no device and plays no sound."""
-    busy = False
-    speaking = False
-    whisper_busy = False
-    until = 0
-
-    def vision_source(self, text):
-        phrase = str(text).casefold().replace("ё", "е")
-        return "screen" if any(s in phrase for s in (
-            "посмотри на экран", "опиши экран", "что на экране",
-            "что ты видишь", "что видишь на экране", "покажи экран",
-            "анализ экрана")) else None
-
-
 class TextJarvis(BaseJarvis):
-    """Keep code, desktop, model and video capabilities; disable speech."""
+    """Keep code, desktop, model and video capabilities; without speech output."""
 
     def __init__(self):
         tk.Tk.__init__(self)
@@ -64,8 +52,6 @@ class TextJarvis(BaseJarvis):
         self.protocol("WM_DELETE_WINDOW", self.close)
 
         self.q = queue.Queue()
-        self.voice_enabled = False
-        self._answer_style = "normal"
         self.overlay_show_text = True
         self.overlay_last_user = ""
         self.overlay_last_answer = ""
@@ -74,6 +60,8 @@ class TextJarvis(BaseJarvis):
         self.executing = False
         self.control_allowed = False
         self.vision_allowed = False
+        # Revocation generation invalidates in-flight one-shot screen tasks.
+        self._vision_revocation_epoch = 0
         self.engine = "bundled"
         self._debate_mode = False
         # The legacy mode dispatcher updates this variable even when the
@@ -95,9 +83,6 @@ class TextJarvis(BaseJarvis):
         self._last_input_activity = time.monotonic()
         self.update_preferences = load_preferences()
 
-        self.voice = NoAudio()
-        self.speaker = NoAudio()
-        self.trimodal = NoAudio()
         assets = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "assets"
         self._asset_root=assets
         self._model_download_busy=False
@@ -106,14 +91,19 @@ class TextJarvis(BaseJarvis):
         self._model_scan_busy=False
         self._model_scan_queue=queue.Queue()
         self._model_scan_cancel=threading.Event()
+        self._semantic_queue=queue.Queue()
+        self._semantic_busy=False
+        self._semantic_epoch=0  # Invalidates old model actions after new input.
         self._model_download_last_size=0
         self._model_download_last_change=time.monotonic()
         self._last_screenshot_report=""
         self._self_development_window=None
         self.runtime = BundledVisionRuntime(BundledRuntimeConfig(
             root=assets,model_store=active_model_store(assets)))
-        self.trimodal.runtime = self.runtime
         self.local_chat = LocalChat(self.runtime)
+        # Do not opt into the separate Qwen3 chat before a user selects it.
+        # TaskAIHub enables Qwen3 only after its explicit model setup.
+        # Once selected, missing Qwen3 never silently falls back to Vision.
         self.freellm_chat = FreeLLMChat()
         self._freellm_consent = False
         self.desktop = Desktop(
@@ -121,6 +111,12 @@ class TextJarvis(BaseJarvis):
             learning=self.learning)
 
         build_text_interface(self)
+        self._restore_startup_permissions()
+        # The current-user Supervisor monitors approved tasks from startup,
+        # even when the queue is initially empty. Frozen builds start a
+        # separate headless process that survives closing this UI.
+        from night_autorecovery import start_always_on
+        self.after(1200, start_always_on)
         self.overlay = TextOverlay(self)
         mini_default = dock_geometry(self.winfo_screenwidth(), self.winfo_screenheight())
         mini = safe_window_geometry(self._ui_layout.get("mini"), mini_default,
@@ -143,19 +139,18 @@ class TextJarvis(BaseJarvis):
         self.hud_settings_button.configure(command=self.show_settings_menu)
         self.bind("<F10>", self.show_settings_menu)
 
-        self.log("Система", "JARVIS готов. Напиши, что нужно сделать, и нажми Enter.")
-        if not self._local_model_ready:
-            self.log("Система", "Qwen пока не подключена. Для поиска ранее скачанных "
-                     "моделей напиши «найди модели на всех дисках». "
-                     "Установка новой Qwen — только с твоего разрешения.")
+        # First-use guidance is in the chat and on the screen: no blocking
+        # modal and no need to remember a special command.
+        self.log("Система", "JARVIS готов. "+
+                 initial_guidance(self._local_model_ready))
         self.after(100, self.pump)
         self.after(3500, self._check_auto_update)
         self.after(150, self.entry.focus_set)
         self.after(250,self._pump_model_download)
         self.after(300,self._pump_model_scan)
 
-    def check_models(self):
-        """No speech asset imports. Offer Lite users a consent-gated Qwen pull."""
+    def check_models(self, *, offer_scan=True):
+        """Explicit download skips disk scan but still asks for UI permission."""
         from bundled_vision_runtime import validate_offline_model_store
         try:
             validate_offline_model_store(
@@ -167,7 +162,7 @@ class TextJarvis(BaseJarvis):
                     "Загрузка модели уже идёт. Прогресс отображается в чате.",
                     parent=self)
                 return
-            if (not self._model_scan_busy and
+            if (offer_scan and not self._model_scan_busy and
                     messagebox.askyesno(
                         "Сначала найти уже скачанные модели?",
                         "JARVIS проверяет только свой кеш. Возможно, Qwen "
@@ -189,9 +184,13 @@ class TextJarvis(BaseJarvis):
                 self.download_local_model()
             return
         self._local_model_ready=True
-        messagebox.showinfo("Локальная модель готова",
-            "Qwen установлена и может отвечать без интернета. "
-            "Модель находится в "+str(self.runtime.config.model_store),parent=self)
+        messagebox.showinfo("Qwen готова к работе",
+            "Qwen подключена и может отвечать без интернета.\n\n"
+            "Что дальше: напиши вопрос в чат или нажми "
+            "«РАЗОБРАТЬ СНИМОК», чтобы выбрать изображение. "
+            "Доступ к экрану не включается автоматически.\n\n"
+            "Модель находится в "+str(self.runtime.config.model_store),
+            parent=self)
 
     def scan_models_on_pc(self, *, confirmed=False):
         """Explicit read-only inventory across all fixed local Windows disks."""
@@ -284,8 +283,10 @@ class TextJarvis(BaseJarvis):
                     self._local_model_ready=True
                     self.hud_engine.configure(
                         text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
-                    self.reply("Найдена и проверена готовая Qwen. "
-                               "Теперь JARVIS использует её из прежней папки.")
+                    self.reply("Нашёл и подключил Qwen из прежней папки. "
+                               "Можно задавать вопросы в чате или нажать "
+                               "«РАЗОБРАТЬ СНИМОК», чтобы выбрать файл. "
+                               "Экран не просматривается без разрешения.")
                 elif event=="error":
                     self._model_scan_busy=False
                     self.reply("Поиск или подключение модели не завершены: "+str(data))
@@ -347,7 +348,7 @@ class TextJarvis(BaseJarvis):
                         self.status.set(
                             "Qwen: "+f"{bytes_received/1_000_000_000:.2f} ГБ; "
                             +f"нет новых данных {idle//60} мин. "
-                            "Отмена через ⚙ → «Отменить загрузку Qwen».")
+                            "Отмена через видимую кнопку «СТОП QWEN».")
                     else:
                         self.status.set("Скачивание локальной Qwen: "+
                             f"{bytes_received/1_000_000_000:.2f} ГБ загружено")
@@ -359,9 +360,11 @@ class TextJarvis(BaseJarvis):
                     self._model_download_busy=False
                     self._local_model_ready=True
                     self.hud_engine.configure(text="QWEN · ЛОКАЛЬНО",fg="#6CDEAF")
-                    self.log("Система","Локальная Qwen установлена и проверена. "
-                             "Теперь чат и анализ экрана работают офлайн.")
-                    self.status.set("Локальная Qwen установлена и готова")
+                    self.log("Система","Qwen установлена и проверена. "
+                             "Следующий шаг: напиши вопрос JARVIS или нажми "
+                             "«РАЗОБРАТЬ СНИМОК», чтобы выбрать изображение. "
+                             "Для прямого просмотра экрана нужно отдельное разрешение.")
+                    self.status.set("Qwen готова · Напиши вопрос или выбери снимок")
                 elif kind=="error":
                     self._model_download_busy=False
                     self._local_model_ready=False
@@ -409,22 +412,23 @@ class TextJarvis(BaseJarvis):
             return
         return super().set_engine(engine)
 
-    def init_voice(self):
-        return None
-
-    def toggle_voice(self):
-        # Inert legacy compatibility; no UI entry point or device activation.
-        return None
-
     def f9(self, event=None):
         self.entry.focus_set()
         return "break"
 
     def show_capabilities(self):
-        messagebox.showinfo("JARVIS NOVA — текст",
-            "Пиши сообщения в чате, ответы появляются только текстом.\n\n"
-            "Локальная Qwen, команды Windows, 20 языков, Roblox 3D, монтаж и "
-            "анализ экрана с подтверждением и режим спора доступны.", parent=self)
+        messagebox.showinfo(
+            "Что можно сделать в JARVIS",
+            "Выбери задачу в главном окне:\n"
+            "• СОЗДАТЬ ВИДЕО — сценарии и ролики.\n"
+            "• СМОНТИРОВАТЬ — работа с готовыми файлами.\n"
+            "• НАПИСАТЬ КОД — откроется редактор проекта.\n"
+            "• РАЗОБРАТЬ СНИМОК — выбрать скриншот с компьютера.\n\n"
+            "Можно просто написать просьбу своими словами.\n"
+            "Для беседы с Qwen и анализа изображений нужна Qwen3-VL.\n"
+            "Доступ к экрану, скачивание и запись файлов "
+            "требуют отдельного подтверждения.",
+            parent=self)
 
     def open_filmcraft(self):
         studio=self.open_viral_studio(stage="edit")
@@ -440,10 +444,39 @@ class TextJarvis(BaseJarvis):
             old.lift()
             old.focus_stage(stage)
             return old
-        # Video soundtracks are media-editing data, not assistant speech.
-        self._viral_window = ViralStudioWindow(self, speaker=None)
+        self._viral_window = ViralStudioWindow(self)
         self._viral_window.focus_stage(stage)
         return self._viral_window
+
+    def open_task_ai_hub(self, role="scenario"):
+        """Task AI setup is separate from bundled Qwen and opt-in only."""
+        if self._closing:
+            return None
+        old=getattr(self,"_task_ai_hub",None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from task_ai_hub import TaskAIHub
+        self._task_ai_hub=TaskAIHub(self,role=role)
+        return self._task_ai_hub
+
+    def open_night_supervisor(self):
+        """Open the approval-scoped overnight queue; no automatic startup."""
+        if self._closing:
+            return None
+        old = getattr(self, "_night_window", None)
+        if old is not None and old.winfo_exists():
+            old.lift()
+            return old
+        from night_supervisor_ui import NightSupervisorWindow
+        from night_supervisor import SupervisorError
+        try:
+            self._night_window = NightSupervisorWindow(self)
+        except (SupervisorError, OSError) as exc:
+            messagebox.showerror("Ночной Supervisor недоступен", str(exc),
+                                 parent=self)
+            return None
+        return self._night_window
 
     def open_self_development(self, task=""):
         """Guided, review-first source fixes. Installed EXE is never modified."""
@@ -463,24 +496,28 @@ class TextJarvis(BaseJarvis):
         kind, value = intent.kind, intent.value
         self.log("Вы", text)
         if kind == "help":
-            self.reply(
-                "Просто напиши: «хочу смонтировать видео», "
-                "«хочу написать программу на Python», «хочу эдит», "
-                "«сделай 15 минут из двухчасового видео», "
-                "«хочу добавить озвучку», «давай поспорим», "
-                "«открой настройки», «проверь обновления», "
-                "«создай сценарий про Minecraft», «найди модели на всём ПК», "
-                "«хочу показать скриншот» или «открой калькулятор». "
-                "Я открою нужную функцию. Для установки, запуска кода, "
-                "доступа к экрану, сохранения файлов и публикации "
-                "по-прежнему нужно твоё подтверждение.")
+            self.reply(initial_guidance(
+                bool(getattr(self, "_local_model_ready", False))))
+        elif kind in ("clarify_video", "clarify_model",
+                      "clarify_screen", "clarify_code"):
+            self.reply(clarification(kind))
+        elif kind == "manual_delete":
+            self.show_manual_delete_location(folder=value=="folder")
+        elif kind == "clarify_workflow":
+            self.reply("Могу работать по плану: сначала разделить задачу, "
+                       "затем проверять каждый этап и проверить всё вместе. "
+                       "Для кода напиши «сделай по шагам программу ...». "
+                       "Для видео: «создай сценарий по шагам про ...». "
+                       "Неизвестные действия и доступ к ПК не запускаю автоматически.")
         elif kind == "settings":
             self.reply("Открываю настройки JARVIS.")
             self.show_settings_menu()
         elif kind == "updates":
             self.show_update_center()
         elif kind == "model":
-            self.check_models()  # Separate explicit download permission.
+            self.check_models()  # Search optional; download needs consent.
+        elif kind == "model_download":
+            self.check_models(offer_scan=False)  # Direct consent dialog.
         elif kind == "model_scan":
             self.scan_models_on_pc()
         elif kind == "cancel_model_scan":
@@ -490,9 +527,21 @@ class TextJarvis(BaseJarvis):
         elif kind == "engine":
             self.set_engine(value)  # FreeLLM retains external-data consent.
         elif kind == "permission_control":
-            self.grant_control()  # Dialog consent, not chat consent.
+            self.grant_control()  # Uses existing right; asks only if revoked.
         elif kind == "permission_screen":
+            # Already-active startup access needs no repeated prompt.
+            # After revocation, grant_vision requires explicit confirmation.
             self.grant_vision()
+            if bool(getattr(self, "vision_allowed", False)):
+                self.reply(
+                    "Доступ к экрану разрешён. "
+                    "Для анализа изображения открой «ПОКАЗАТЬ СКРИНШОТ». "
+                    "Это не включает постоянное наблюдение за экраном.")
+            else:
+                self.reply(
+                    "Доступ к экрану не предоставлен. "
+                    "Включить его можно через кнопку «РАЗРЕШИТЬ ЭКРАН» "
+                    "с отдельным подтверждением.")
         elif kind == "revoke":
             self.revoke()
             self.reply("Доступ к компьютеру и экрану отключён.")
@@ -506,6 +555,26 @@ class TextJarvis(BaseJarvis):
                        "или название своей игры — никаких кнопок не требуется.")
         elif kind == "open_desktop":
             self.execute_plan(parse_local("открой " + value))
+        elif kind == "code_steps":
+            self.open_code_assistant("python", value, auto_start=False)
+            self.reply("Открыл редактор кода с задачей. Здесь виден план "
+                       "из этапов; нажми «Составить план → выполнить и проверить». "
+                       "Каждый этап проверяется отдельно, затем весь проект "
+                       "вместе. Запись в твою папку — только после подтверждения.")
+        elif kind == "scenario_steps":
+            studio=self.open_viral_studio(stage="script")
+            if studio is not None and value:
+                studio.topic.set(value)
+                studio.scenario_mode.set("deep")
+            self.reply("Открыл отдельный ИИ-сценарист Gemma3:4b: тема, пять кадров, "
+                       "проверка каждого кадра, затем проверка всего сценария. "
+                       "Запусти генерацию в студии после проверки темы. "
+                       "Если Gemma3 не подключена, выбери «ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА».")
+        elif kind == "code_start":
+            self.open_code_assistant("python", "", auto_start=False)
+            self.reply("Открыл редактор кода. Выбери папку и опиши, "
+                       "какую программу хочешь получить. "
+                       "Запись файлов и запуск потребуют подтверждения.")
         elif kind == "code":
             if not value:
                 self.reply("Назови один язык программирования — например "
@@ -521,12 +590,12 @@ class TextJarvis(BaseJarvis):
             if studio is not None:
                 if value:
                     studio.topic.set(value)
-                    studio.scenario_mode.set(
-                        "deep" if self._local_model_ready else "fast")
+                    studio.scenario_mode.set("deep")
                     # Entire request creates a script; no second button.
                     studio.after(70,studio.generate)
-                    self.reply("Создаю сценарий и план кадров по теме. "
-                               "Без доступной Qwen явно обозначу шаблон.")
+                    self.reply("Сценарий создаёт отдельная Gemma3:4b. "
+                               "Если она не установлена, нажми в студии "
+                               "«ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА».")
                 else:
                     self.reply("Напиши тему сценария.")
         elif kind == "studio":
@@ -560,6 +629,11 @@ class TextJarvis(BaseJarvis):
         from self_development import is_self_fix_command
         if self._closing:
             return
+        if getattr(self, "_semantic_busy", False) is True:
+            # A newer message cancels the previous proposed action. The
+            # worker may finish, but its stale answer cannot reach the UI.
+            self._semantic_epoch += 1
+            self._semantic_busy=False
         chat_intent=route_chat_request(text)
         if chat_intent is not None:
             self._dispatch_chat_first(chat_intent, text)
@@ -587,7 +661,7 @@ class TextJarvis(BaseJarvis):
             self.log("Вы",text)
             self.open_multitrack()
             self.reply("Открыл многодорожечный монтаж: наложения, титры, "
-                       "музыка и озвучка. Твои файлы не будут изменены, "
+                       "музыка и титры. Твои файлы не будут изменены, "
                        "пока ты не подтвердил экспорт.")
             return
         if is_publish_prep_request(text):
@@ -613,7 +687,54 @@ class TextJarvis(BaseJarvis):
                        "Пароль, дату рождения и проверочные коды вводи "
                        "самостоятельно на официальном сайте.")
             return
-        return super().handle_text(text)
+        if (getattr(self, "engine", None) == "bundled"
+                and bool(getattr(self, "_local_model_ready", False))
+                and not getattr(self, "executing", False)
+                and suitable_for_semantic_routing(text)):
+            if getattr(self, "_semantic_busy", False) is True:
+                self.log("Вы", text)
+                self.reply("Обрабатываю предыдущую команду. Повтори запрос позже.")
+                return
+            self._semantic_busy=True
+            self._semantic_epoch += 1
+            epoch=self._semantic_epoch
+            self.status.set("Локальная Qwen определяет действие…")
+            def semantic_worker():
+                try:
+                    intent=classify_local_intent(text, self.runtime)
+                except Exception:
+                    intent=None  # Fail closed; ordinary chat still works.
+                if not self._shutdown.is_set():
+                    self._semantic_queue.put((epoch,text,intent))
+            threading.Thread(target=semantic_worker,daemon=True,
+                             name="jarvis-local-intent").start()
+            return
+        return BaseJarvis.handle_text(self,text)
+
+    def _complete_semantic_request(self, text, intent):
+        """Called on the Tk thread only; never trust model-provided arguments."""
+        self._semantic_busy=False
+        if self._closing:
+            return
+        if intent is not None:
+            self._dispatch_chat_first(intent,text)
+        else:
+            # No fabricated success: use the original chat/plan handling.
+            BaseJarvis.handle_text(self,text)
+
+    def pump(self):
+        # BaseJarvis.pump owns the ordinary chat and OS-action queues; this
+        # separate queue only carries inert, validated semantic classifications.
+        if self._closing:
+            return
+        try:
+            while True:
+                epoch,text,intent=self._semantic_queue.get_nowait()
+                if epoch == self._semantic_epoch:
+                    self._complete_semantic_request(text,intent)
+        except queue.Empty:
+            pass
+        return BaseJarvis.pump(self)
 
     def open_screenshot_review(self):
         """User selects and marks an image; nothing is captured automatically."""
@@ -670,7 +791,7 @@ class TextJarvis(BaseJarvis):
                          name="jarvis-local-screenshot-review").start()
         return True
 
-    def request_trimodal(self, source="screen", audio_pcm=None):
+    def request_screen_analysis(self, source="screen"):
         """Text question + user-approved screenshot; never record audio."""
         if self._closing or self.executing:
             return
@@ -686,27 +807,57 @@ class TextJarvis(BaseJarvis):
         if not 1 <= len(question) <= 1200:
             self.reply("Вопрос должен содержать 1–1200 символов.")
             return
-        if not messagebox.askyesno("Разрешение на экран",
+        # Active Windows startup vision permission covers user-requested
+        # one-shot screenshots. Never capture automatically at startup.
+        if not self.vision_allowed and not messagebox.askyesno(
+            "Разрешение на экран",
             "Разрешить один снимок экрана и его обработку локальной моделью? "
             "Изображение не отправляется в облако.", parent=self):
             self.status.set("Снимок экрана отменён")
             return
+        # An explicit "allow once" is valid for this request only. A later
+        # global revoke invalidates BOTH saved grants and one-shot requests.
+        persistent_grant = bool(self.vision_allowed)
+        generation = getattr(self, "_vision_revocation_epoch", 0)
+        if type(generation) is not int:
+            generation = 0
+
+        def request_still_authorized():
+            return (not self._shutdown.is_set() and
+                    getattr(self, "_vision_revocation_epoch", 0) == generation and
+                    (not persistent_grant or bool(self.vision_allowed)))
+
         self.executing = True
         self.status.set("Анализирую экран локально…")
         def work():
             try:
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
                 from screen_capture import ScreenFrameSource
                 from vision_engine import LocalOllamaVision, VisionConfig
                 endpoint = self.runtime.start()
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
                 model = LocalOllamaVision(VisionConfig(endpoint=endpoint))
                 model.initialize()
-                answer = model.describe(question, ScreenFrameSource().capture_jpeg())
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
+                jpeg = ScreenFrameSource().capture_jpeg()
+                # Do not send a captured frame to a model after revocation.
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
+                answer = model.describe(question, jpeg)
                 if not self._shutdown.is_set():
                     self.q.put(("action_result", (True, answer, (), "normal")))
-            except Exception as exc:
+            except PermissionError:
                 if not self._shutdown.is_set():
                     self.q.put(("action_result", (
-                        False, "Не могу проанализировать экран: "+str(exc)[:180], (), "normal")))
+                        False, "Анализ экрана отменён: разрешение отозвано.", (), "normal")))
+            except Exception:
+                # Exceptions may contain local profile paths or file names.
+                if not self._shutdown.is_set():
+                    self.q.put(("action_result", (
+                        False, "Не удалось проанализировать экран. Проверь локальную модель и доступ к экрану.", (), "normal")))
         threading.Thread(target=work, daemon=True, name="jarvis-text-vision").start()
 
     def reply(self, message):

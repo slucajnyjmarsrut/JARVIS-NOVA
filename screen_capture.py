@@ -23,7 +23,11 @@ class ScreenConfig:
 
 class ScreenFrameSource:
     def __init__(self, config: ScreenConfig = ScreenConfig(), *, grab: Any = None):
-        if not 128 <= config.max_width <= 4096 or not 128 <= config.max_height <= 4096:
+        if (type(config.max_width) is not int or
+                type(config.max_height) is not int or
+                type(config.quality) is not int or
+                not 128 <= config.max_width <= 4096 or
+                not 128 <= config.max_height <= 4096):
             raise ValueError('Screen resolution out of bounds')
         if not 30 <= config.quality <= 95:
             raise ValueError('JPEG quality out of bounds')
@@ -52,4 +56,6 @@ class ScreenFrameSource:
         except ScreenCaptureError:
             raise
         except Exception as exc:
-            raise ScreenCaptureError(f'Cannot capture screen: {exc}') from exc
+            # ImageGrab errors can contain a screenshot filename or Windows
+            # profile path; never show those values in the app status/log.
+            raise ScreenCaptureError('Cannot capture screen') from exc

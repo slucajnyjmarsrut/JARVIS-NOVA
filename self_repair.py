@@ -130,27 +130,24 @@ def inspect_configs(folder: Path | None = None) -> tuple[Finding, ...]:
 
 
 def _backup_exclusive(source: Path) -> Path:
+    # Read and validate all bounded bytes BEFORE creating the backup name.
+    # If the source changed or grew, no incomplete .bak is created or erased.
+    with source.open("rb") as original:
+        size=os.fstat(original.fileno()).st_size
+        if size>MAX_REPAIR_BYTES:
+            raise RepairError("Настройки изменились: файл слишком велик")
+        data=original.read(MAX_REPAIR_BYTES+1)
+        if len(data)>MAX_REPAIR_BYTES or len(data)!=size:
+            raise RepairError("Настройки изменились при копировании")
     for number in range(1,MAX_BACKUPS+1):
         backup=source.with_name(source.name+f".corrupt-{number}.bak")
         try:
             with backup.open("xb") as stream:
-                try:
-                    with source.open("rb") as original:
-                        size=os.fstat(original.fileno()).st_size
-                        if size>MAX_REPAIR_BYTES:
-                            raise RepairError("Настройки изменились: файл слишком велик")
-                        # Bounded copy even if another process grows the
-                        # settings file during backup; never fill the disk.
-                        data=original.read(MAX_REPAIR_BYTES+1)
-                        if len(data)>MAX_REPAIR_BYTES or len(data)!=size:
-                            raise RepairError("Настройки изменились при копировании")
-                        stream.write(data)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                except Exception:
-                    stream.close()
-                    backup.unlink(missing_ok=True)
-                    raise
+                # A disk-full or write error can leave an incomplete backup.
+                # We NEVER delete it; it can be inspected manually.
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
             return backup
         except FileExistsError:
             continue

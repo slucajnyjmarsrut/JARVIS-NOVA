@@ -27,7 +27,7 @@ def _home():
 
 
 class ViralStudioWindow(tk.Toplevel):
-    def __init__(self, parent, speaker=None):
+    def __init__(self, parent):
         super().__init__(parent)
         from studio_theme import (
             apply_video_theme, BG, CARD, ALT, EDGE, CYAN, TEXT, MUTED,
@@ -45,7 +45,6 @@ class ViralStudioWindow(tk.Toplevel):
         self.geometry(f"{width}x{height}")
         self.minsize(min(650,screen_w),min(520,screen_h))
         self.parent=parent
-        self.speaker=speaker
         self.brief=None
         self.project=None
         self.profile=None
@@ -59,7 +58,9 @@ class ViralStudioWindow(tk.Toplevel):
         self.topic=tk.StringVar(value="")
         self.country=tk.StringVar(value="RU")
         self.web_enabled=tk.BooleanVar(value=False)
-        self.scenario_mode=tk.StringVar(value="fast")
+        # A new user's "create scenario" uses the independent AI writer by
+        # default; fast mode remains a clearly labelled non-AI alternative.
+        self.scenario_mode=tk.StringVar(value="standard")
         self.pro_enabled=tk.BooleanVar(value=True)
         self.pro_color=tk.StringVar(value="natural")
         self.pro_transition=tk.StringVar(value="0.22")
@@ -117,7 +118,7 @@ class ViralStudioWindow(tk.Toplevel):
         speed.grid(row=3,column=0,columnspan=2,sticky="w",pady=(1,3))
         for value,label in (
             ("fast","⚡ Быстро · без ожидания ИИ"),
-            ("standard","AI · стандарт"),
+            ("standard","ИИ-сценарист · Gemma3"),
             ("deep","AI · подробно"),
         ):
             ttk.Radiobutton(speed,text=label,value=value,
@@ -127,6 +128,16 @@ class ViralStudioWindow(tk.Toplevel):
                         variable=self.web_enabled,
                         style="Studio.TCheckbutton").grid(
             row=4,column=0,columnspan=2,sticky="w",pady=(3,1))
+        self.writer_button=ttk.Button(
+            setup,text="ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА · Gemma 3",
+            command=self.connect_writer,style="Studio.TButton")
+        self.writer_button.grid(row=5,column=0,columnspan=2,
+                                sticky="w",pady=(6,3))
+        ttk.Label(setup,
+                  text="ИИ-сценарист — отдельная модель 3,4 ГБ; "
+                       "Qwen Vision остаётся для изображений.",
+                  style="Studio.Card.TLabel").grid(
+            row=6,column=0,columnspan=2,sticky="w",pady=(0,3))
         # Actual interactive actions arranged in a grid, not a row clipping
         # off the right side of a 790px studio window.
         actions=ttk.LabelFrame(controls,text="02 / ДЕЙСТВИЯ",padding=(12,9),
@@ -142,11 +153,14 @@ class ViralStudioWindow(tk.Toplevel):
         self.audience_button=action(0,0,"1. Загрузить статистику CSV",self.import_audience)
         self.make_button=action(0,1,"2. СОЗДАТЬ СЦЕНАРИЙ",self.generate,True)
         self.load_button=action(1,0,"Открыть сохранённый сценарий",self.open_brief)
-        self.speak_button=action(1,1,"Показать план съёмки",self.read_shots)
+        self.shot_plan_button=action(1,1,"Показать план съёмки",self.read_shots)
         self.edit_button=action(2,0,"3. Монтаж · мои или онлайн-видео",self.montage)
         self.review_button=action(2,1,"4. Проверить монтаж и оценку",self.review)
         self.auto_button=action(3,0,"АВТОМОНТАЖ · СОБРАТЬ MP4",self.auto_montage,True)
         action(3,1,"Отменить текущую работу",self.cancel)
+        self.montage_advisor_button=action(
+            4,0,"ИИ-МОНТАЖЁР · советы по кадрам",self.montage_advice)
+        action(4,1,"ИИ ПО ЗАДАЧАМ · управление",self.connect_writer)
         # Pro options and music remain available, but no crowded single row.
         pro=ttk.LabelFrame(controls,text="03 / ПРОФЕССИОНАЛЬНЫЙ МОНТАЖ",
                             style="Studio.TLabelframe",padding=(12,9))
@@ -242,7 +256,8 @@ class ViralStudioWindow(tk.Toplevel):
         self.viewer.configure(yscrollcommand=bar.set)
         self.viewer.insert("end","Напиши тему и нажми «СОЗДАТЬ СЦЕНАРИЙ».\n"
                            "⚡ Быстрый режим создаёт сценарий без ожидания модели.\n"
-                           "AI-режимы доступны для более подробной версии.\n\n"
+                           "AI-режимы используют отдельную Gemma3:4b.\n"
+                           "Если её нет, нажми «ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА».\n\n"
                            "После съёмки положи кадры 01.mp4, 02.mp4... в одну папку.\n"
                            "JARVIS не публикует видео без твоего решения.")
         self.viewer.configure(state="disabled")
@@ -480,8 +495,7 @@ class ViralStudioWindow(tk.Toplevel):
         if opts is None or not opts.semantic:
             return None
         parent=getattr(self,'parent',None)
-        runtime=(getattr(parent,'runtime',None) or
-                 getattr(getattr(parent,'trimodal',None),'runtime',None))
+        runtime=getattr(parent,'runtime',None)
         if runtime is None:return None
         try:
             from vision_engine import LocalOllamaVision, VisionConfig
@@ -497,7 +511,7 @@ class ViralStudioWindow(tk.Toplevel):
         descriptions={
             'audience':('1. Анализ аудитории: импортируй свою статистику CSV.',self.audience_button),
             'script':('2. Сценарий: введи тему и выбери быстрый или AI режим.',self.make_button),
-            'shoot':('3. Съёмка: открой текстовый список кадров.',self.speak_button),
+            'shoot':('3. Съёмка: открой текстовый список кадров.',self.shot_plan_button),
             'edit':('4. Монтаж: выбери отснятые кадры и подтверди обработку.',self.edit_button),
             'edits':('Эдиты: выбери стиль и папку собственных клипов.',self.quick_edit_button),
             'review':('5. Оценка: проверь готовый MP4 относительно данных аудитории.',self.review_button),
@@ -553,10 +567,6 @@ class ViralStudioWindow(tk.Toplevel):
                 self._notify(lambda:self._busy(False))
         threading.Thread(target=task,daemon=True,name='jarvis-viral-studio').start()
 
-    def _speak(self, text):
-        if self.speaker and not self.parent._closing:
-            threading.Thread(target=self.speaker.say,args=(text[:500],),daemon=True).start()
-
     def import_audience(self):
         path=filedialog.askopenfilename(parent=self,title='Выбери экспорт статистики своего канала',
                                         filetypes=[('Экспорт CSV','*.csv')])
@@ -579,9 +589,76 @@ class ViralStudioWindow(tk.Toplevel):
                 self._show(report)
                 self.status.set('Аудитория изучена: '+str(profile.sample_size)+
                                 ' роликов. Можно создавать сценарий.')
-                self._speak('Я изучил показатели канала. Теперь предложу, что снимать для этой аудитории.')
             self._notify(done)
         self._spawn(work)
+
+    def montage_advice(self):
+        """One text-only plan from separate local Llama; never edit footage."""
+        if self.running:
+            return
+        brief=self.brief
+        if brief is None:
+            messagebox.showinfo(
+                "Сначала сценарий",
+                "Сначала создай или открой сценарий с пятью кадрами. "
+                "Затем ИИ-монтажёр отдельно предложит темп и склейки.",
+                parent=self)
+            return
+        self.status.set("Отдельная Llama3.2 готовит рекомендации по монтажу…")
+        def work():
+            from montage_specialist import advise_montage
+            try:
+                advice=advise_montage(brief)
+            except Exception as exc:
+                msg=str(exc)[:270]
+                def failed():
+                    self.status.set("ИИ-монтажёр недоступен. Открой «ИИ ПО ЗАДАЧАМ».")
+                    self._show("ИИ-монтажёр: "+msg+
+                               "\nЧтобы подключить отдельную Llama3.2, "
+                               "нажми «ИИ ПО ЗАДАЧАМ · управление».")
+                self._notify(failed)
+                return
+            def finished():
+                self._show(advice.render())
+                self.status.set(
+                    "Рекомендации готовы. Видео не менялось — "
+                    "теперь выбери исходники и подтверди монтаж.")
+            self._notify(finished)
+        self._spawn(work)
+
+    def connect_writer(self):
+        """Open separate role-specific model setup; no implicit download."""
+        from task_ai_hub import TaskAIHub
+        parent=getattr(self,"parent",self)
+        hub=getattr(self,"_ai_hub",None)
+        if hub is not None and hub.winfo_exists():
+            hub.lift()
+            return hub
+        hub=TaskAIHub(parent,role="scenario")
+        self._ai_hub=hub
+        self.status.set(
+            "ИИ-сценарист Gemma3:4b подключается отдельно. "
+            "Скачивание только по твоему подтверждению.")
+        return hub
+
+    def _check_writer_for_generation(self, mode):
+        """AI mode must not quietly run the bundled Vision Qwen."""
+        if mode in ("fast","legacy"):
+            return True
+        from task_ai_registry import specialist_available, specialist_help
+        try:
+            ready=specialist_available("scenario")
+        except Exception:
+            ready=False
+        if not ready:
+            messagebox.showinfo(
+                "Нужен отдельный ИИ-сценарист",
+                specialist_help("scenario")+
+                "\n\nНажми «ПОДКЛЮЧИТЬ ИИ-СЦЕНАРИСТА» в этом окне "
+                "и подтверди скачивание. Быстрый режим работает "
+                "без модели, но не называется ИИ.",parent=self)
+            self.status.set("Gemma3:4b не подключена — сценарий не запущен.")
+        return ready
 
     def generate(self):
         from video_scenario_autonomy import create_checked_scenario
@@ -610,9 +687,11 @@ class ViralStudioWindow(tk.Toplevel):
             return
         geo=self.country.get()
         mode=self.scenario_mode.get()
-        runtime=getattr(self.parent,"runtime",None)
+        if not self._check_writer_for_generation(mode):
+            return
+        runtime=None  # Dedicated Gemma is NOT the bundled Qwen runtime.
         self.status.set("⚡ Готовлю быстрый сценарий…" if mode=="fast"
-                        else "Qwen готовит сценарий · можно отменить…")
+                        else "Отдельная Gemma3 готовит сценарий · можно отменить…")
         def work():
             trends=[]
             note=""
@@ -623,8 +702,11 @@ class ViralStudioWindow(tk.Toplevel):
                     note="Тренды недоступны ("+str(exc)[:100]+").\n"
             if self.stop_event.is_set():
                 return
+            def show_stage(message):
+                self._notify(lambda msg=message:self.status.set(msg))
             brief,message,assessment,attempts=create_checked_scenario(
-                topic,trends,mode=mode,audience=self.profile,runtime=runtime)
+                topic,trends,mode=mode,audience=self.profile,runtime=runtime,
+                progress=show_stage)
             if self.stop_event.is_set():
                 return
             project=_home()/("video_"+datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -729,24 +811,34 @@ class ViralStudioWindow(tk.Toplevel):
             return
         from video_scenario_autonomy import create_checked_scenario
         speed_selector=getattr(self,"scenario_mode",None)
-        mode=speed_selector.get() if speed_selector is not None else "legacy"
-        runtime=getattr(getattr(self,"parent",None),"runtime",None)
-        self.status.set('Автомонтаж: создаю сценарий по теме…')
+        mode=speed_selector.get() if speed_selector is not None else "fast"
+        if not ViralStudioWindow._check_writer_for_generation(self,mode):
+            return
+        runtime=None
+        self.status.set('Автомонтаж: создаю сценарий отдельной Gemma3 либо быстрым шаблоном…')
         def work():
             if mode=="legacy":
-                # Preserve API for earlier automation and editor integrations.
+                # Legacy entrypoints attempt the genuine independent writer.
+                # If unavailable, explicitly label the non-AI template.
+                # The bundled Vision Qwen never impersonates a screenwriter.
                 try:
-                    brief=create_local_brief(topic,audience=self.profile)
-                    note=""
+                    from scenario_specialist import create_specialist_brief
+                    brief=create_specialist_brief(topic,audience=self.profile)
+                    note="Сценарий отдельного ИИ-сценариста "+brief.generator
                 except Exception as exc:
                     brief=template_brief(topic)
-                    note="Локальная модель недоступна; использован шаблон: "+str(exc)[:120]
+                    note="Отдельный ИИ-сценарист недоступен, использован шаблон БЕЗ ИИ: "+str(exc)[:130]
             else:
+                def show_stage(message):
+                    self._notify(lambda msg=message:self.status.set(msg))
                 brief,note,assessment,attempts=create_checked_scenario(
-                    topic,mode=mode,audience=self.profile,runtime=runtime)
+                    topic,mode=mode,audience=self.profile,runtime=runtime,
+                    progress=show_stage)
             if self.stop_event.is_set():return
             project=_home()/('auto_'+datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid4().hex[:6])
             save_brief(brief,project)
+            self._notify(lambda:self.status.set(
+                "Монтаж 2/4: ищу лицензированные исходники…"))
             candidates=retry_readonly('commons_search',
                                       lambda:search_free_video(topic,consent=True),
                                       cancel=self.stop_event)
@@ -757,12 +849,16 @@ class ViralStudioWindow(tk.Toplevel):
                     'Готовый сценарий сохранён: '+str(project))
             if self.stop_event.is_set():return
             source=project/'licensed_media'
+            self._notify(lambda:self.status.set(
+                "Монтаж 3/4: загружаю выбранные видео после разрешения…"))
             download_free_video(candidates[:len(brief.shots)],source,
                                 consent=True,cancel=self.stop_event)
             if self.stop_event.is_set():return
             options=({'pro_options':pro,
                       'semantic_describe':ViralStudioWindow._semantic_describer(self,pro)}
                      if pro is not None else {})
+            self._notify(lambda:self.status.set(
+                "Монтаж 4/4: собираю MP4 и проверяю всё вместе…"))
             outcome=analyze_and_recut(
                 brief,source,project,profile=self.profile,
                 filename='JARVIS_NOVA_AUTO_VERTICAL.mp4',cancel=self.stop_event,
@@ -788,7 +884,6 @@ class ViralStudioWindow(tk.Toplevel):
                     'Проверь сюжет, права, музыку, качество и соответствие теме перед публикацией.'
                 )
                 self.status.set('Автомонтаж и повторная оценка закончены. Публикации нет.')
-                self._speak(outcome.speech)
             self._notify(done)
         self._spawn(work)
 
@@ -861,7 +956,6 @@ class ViralStudioWindow(tk.Toplevel):
                            'Оценка и повторный монтаж: '+str(report)+'\n'
                            'Проверено вариантов: '+str(len(outcome.attempts))+'\n\n'
                            'Проверь результат перед публикацией. JARVIS ничего не публикует автоматически.')
-                self._speak(outcome.speech)
             self._notify(done)
         self._spawn(work)
 
@@ -875,7 +969,6 @@ class ViralStudioWindow(tk.Toplevel):
         if last_report.is_file():
             self._show(last_report.read_text('utf-8'))
             self.status.set('Проверка закончена: результаты прошлых видео НЕ прогноз будущих просмотров.')
-            self._speak('Проверил монтаж и сохранил вывод. Исторические просмотры не гарантируют новые.')
             return
         if self.profile is None:
             messagebox.showinfo('Просмотры',
@@ -893,7 +986,6 @@ class ViralStudioWindow(tk.Toplevel):
             def done():
                 self._show(file.read_text('utf-8'))
                 self.status.set('Индекс соответствия: '+str(review.index)+'/100. Это НЕ вероятность популярности.')
-                self._speak('Оценка закончена. Это индекс соответствия каналу, а не гарантия просмотров.')
             self._notify(done)
         self._spawn(work)
 

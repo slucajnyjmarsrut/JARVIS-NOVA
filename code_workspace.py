@@ -96,10 +96,13 @@ def apply_plan(plan: ChangePlan, root: Path, *, confirmed: bool = False) -> list
             with path.open('x', encoding='utf-8', newline='\n') as f:
                 f.write(item.content)
             written.append(path)
-    except Exception:
-        for path in reversed(written):
-            path.unlink(missing_ok=True)
-        raise
+    except Exception as exc:
+        # User-created files are never deleted, even after a partial failure.
+        # The owner can inspect these files in Explorer and remove them manually.
+        saved=", ".join(str(path) for path in written[:6]) or "нет"
+        raise WorkspaceError(
+            "Запись прервана; JARVIS не удаляет файлы. "
+            "Сохранённые результаты для ручной проверки: "+saved) from exc
     return [str(path) for path in written]
 
 def starter_project(language: str, name: str) -> ChangePlan:

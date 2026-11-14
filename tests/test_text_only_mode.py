@@ -10,7 +10,8 @@ from unittest.mock import Mock
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import text_only_main as text_main
-from text_only_main import TextJarvis, NoAudio
+from text_only_main import TextJarvis
+from main import screen_question
 
 
 class TextModeTests(unittest.TestCase):
@@ -34,18 +35,13 @@ class TextModeTests(unittest.TestCase):
         from text_only_overlay import TextOverlay
         base=inspect.getsource(NovaOverlay.__init__)
         text=inspect.getsource(TextOverlay.__init__)
-        self.assertIn("if not self._text_only:",base)
-        self.assertIn("super().__init__(app, text_only=True)",text)
+        self.assertNotIn("mic_button",base)
+        self.assertIn("super().__init__(app)",text)
         self.assertNotIn("mic_button.destroy()",text)
 
-    def test_no_audio_object_does_not_have_hardware_methods(self):
-        obj=NoAudio()
-        self.assertFalse(obj.busy)
-        self.assertFalse(obj.speaking)
-        self.assertFalse(hasattr(obj,"start"))
-        self.assertFalse(hasattr(obj,"say"))
-        self.assertEqual(obj.vision_source("опиши экран"),"screen")
-        self.assertIsNone(obj.vision_source("напиши код на Java"))
+    def test_screen_question_is_pure_typed_text_not_audio(self):
+        self.assertTrue(screen_question("опиши экран"))
+        self.assertFalse(screen_question("напиши код на Java"))
 
     def test_reply_never_calls_speaker(self):
         app=Mock()
@@ -53,11 +49,12 @@ class TextModeTests(unittest.TestCase):
         TextJarvis.reply(app,"Письменный ответ")
         app.log.assert_called_once_with("JARVIS","Письменный ответ")
         app.status.set.assert_called_once()
-        app.speaker.say.assert_not_called()
+        self.assertNotIn("speaker", inspect.getsource(TextJarvis.reply))
 
     def test_video_window_is_not_passed_a_speaker(self):
         source=inspect.getsource(TextJarvis.open_viral_studio)
-        self.assertIn("speaker=None",source)
+        self.assertIn("ViralStudioWindow(self)",source)
+        self.assertNotIn("speaker=",source)
 
     def test_audio_controls_absent_in_text_layout(self):
         from text_only_ui import build_text_interface
@@ -88,11 +85,19 @@ class TextModeTests(unittest.TestCase):
             encoding="utf-8")
         self.assertIn('"test_debate_mode.py"',suite)
 
-    def test_chat_first_ui_has_no_visible_shortcut_buttons(self):
+    def test_chat_first_ui_has_visible_model_controls_without_unrelated_shortcuts(self):
         from text_only_ui import build_text_interface
         source=inspect.getsource(build_text_interface)
         self.assertIn('app.hud_mode_buttons = {}',source)
-        self.assertNotIn('app.hud_settings_button.pack(',source)
+        self.assertIn('app.hud_settings_button.pack(',source)
+        self.assertIn('app.hud_quick_actions = {}',source)
+        self.assertIn('button.grid(row=index // 2',source)
+        self.assertIn('app.hud_model_hint',source)
+        self.assertIn('app.hud_find_models.pack(',source)
+        self.assertIn('app.hud_download_qwen.pack(',source)
+        self.assertIn('app.hud_enable_screen.pack(',source)
+        self.assertIn('app.hud_show_screenshot.pack(',source)
+        self.assertIn('app.hud_cancel_scan',source)
         self.assertNotIn('"ОТПРАВИТЬ"',source)
         self.assertNotIn('"СКРИН"',source)
         self.assertIn('app.entry.bind("<Return>",app.enter)',source)
@@ -116,7 +121,9 @@ class TextModeTests(unittest.TestCase):
                 try:
                     app.update_idletasks()
                     app.update()
-                    self.assertFalse(app.voice_enabled)
+                    self.assertFalse(hasattr(app,"voice_enabled"))
+                    self.assertFalse(hasattr(app,"speaker"))
+                    self.assertFalse(hasattr(app,"voice"))
                     self.assertFalse(hasattr(app,"mic_toggle_button"))
                     self.assertFalse(hasattr(app.overlay,"mic_button"))
                     self.assertFalse(hasattr(app.overlay,"listen_button"))
@@ -124,7 +131,41 @@ class TextModeTests(unittest.TestCase):
                     self.assertTrue(app.entry.winfo_exists())
                     self.assertTrue(app.overlay.quick_entry.winfo_exists())
                     self.assertEqual(app.hud_mode_buttons,{})
-                    self.assertFalse(app.hud_settings_button.winfo_manager())
+                    self.assertEqual(app.hud_settings_button.winfo_manager(),"pack")
+                    self.assertEqual(set(app.hud_quick_actions),
+                                     {"video","edit","code","image"})
+                    self.assertTrue(all(
+                        x.winfo_manager()=="grid"
+                        for x in app.hud_quick_actions.values()))
+                    self.assertTrue(app.hud_model_hint.winfo_exists())
+                    # Primary entry remains usable on a compact laptop display.
+                    app.geometry("390x600")
+                    # WM Configure is a real event, not an idle geometry job.
+                    # update_idletasks alone still reports the prior 448x735
+                    # child layout while the root already says 390x600.
+                    app.update()
+                    app.update_idletasks()
+                    self.assertTrue(app.entry.winfo_ismapped())
+                    self.assertGreater(app.entry.winfo_height(),12)
+                    shell=app.entry.master.master
+                    writer=app.entry.master
+                    chat=app.history.master.master
+                    footer=app.hud_access.master
+                    layout={
+                        name:(w.winfo_geometry(),w.winfo_reqheight(),
+                              w.winfo_rooty(),w.winfo_ismapped())
+                        for name,w in (("app",app),("shell",shell),
+                                       ("chat",chat),("writer",writer),
+                                       ("footer",footer),("entry",app.entry))
+                    }
+                    self.assertLessEqual(
+                        app.entry.winfo_rooty()+app.entry.winfo_height(),
+                        app.winfo_rooty()+app.winfo_height()+2,
+                        f"Compact layout widgets: {layout}")
+                    self.assertEqual(app.hud_find_models.winfo_manager(),"pack")
+                    self.assertEqual(app.hud_download_qwen.winfo_manager(),"pack")
+                    self.assertEqual(app.hud_enable_screen.winfo_manager(),"pack")
+                    self.assertEqual(app.hud_show_screenshot.winfo_manager(),"pack")
                     self.assertFalse(app.hud_update_button.winfo_manager())
                     self.assertFalse(app.hud_minimize_button.winfo_manager())
                     self.assertIn("Готов", app.status.get())

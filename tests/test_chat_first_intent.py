@@ -21,7 +21,7 @@ class ChatFirstTests(unittest.TestCase):
             "хочу показать скриншот":("screenshot",""),
             "открой настройки":("settings",""),
             "проверь обновления":("updates",""),
-            "установи Qwen":("model",""),
+            "установи Qwen":("model_download",""),
             "отмени загрузку Qwen":("cancel_model",""),
             "давай поиграем":("gaming",""),
             "хочу открыть браузер":("open_desktop","браузер"),
@@ -33,6 +33,198 @@ class ChatFirstTests(unittest.TestCase):
                 intent=route_chat_request(sentence)
                 self.assertIsNotNone(intent)
                 self.assertEqual((intent.kind,intent.value),(kind,value))
+
+    def test_visible_action_names_are_recognized_as_safe_requests(self):
+        phrases={
+            "создать видео":"studio",
+            "смонтировать видео":"timeline",
+            "написать код":"code_start",
+            "разобрать снимок":"screenshot",
+        }
+        for phrase,kind in phrases.items():
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertEqual(intent.kind,kind)
+                app=Mock()
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                app.execute_plan.assert_not_called()
+                app.grant_vision.assert_not_called()
+                app.grant_control.assert_not_called()
+                app.download_local_model.assert_not_called()
+                if kind=="code_start":
+                    app.open_code_assistant.assert_called_once_with(
+                        "python", "", auto_start=False)
+                elif kind=="studio":
+                    app.open_viral_studio.assert_called_once_with(
+                        stage="audience")
+                elif kind=="timeline":
+                    app.open_timeline.assert_called_once_with()
+                elif kind=="screenshot":
+                    app.open_screenshot_review.assert_called_once_with()
+
+    def test_stepwise_requests_open_reviewable_editors_not_system_tools(self):
+        examples={
+            "разбей задачу на шаги":("clarify_workflow",""),
+            "сделай по шагам программу калькулятора":(
+                "code_steps","программу калькулятора"),
+            "напиши сайт по этапам для фотостудии":(
+                "code_steps","для фотостудии"),
+            "создай сценарий по шагам про Minecraft":(
+                "scenario_steps","minecraft"),
+        }
+        for text,(kind,value) in examples.items():
+            with self.subTest(text=text):
+                intent=route_chat_request(text)
+                self.assertEqual((intent.kind,intent.value),(kind,value))
+                app=Mock()
+                app._local_model_ready=True
+                TextJarvis._dispatch_chat_first(app,intent,text)
+                app.execute_plan.assert_not_called()
+                app.grant_vision.assert_not_called()
+                app.grant_control.assert_not_called()
+                app.download_local_model.assert_not_called()
+                if kind=="code_steps":
+                    app.open_code_assistant.assert_called_once_with(
+                        "python",value,auto_start=False)
+                elif kind=="scenario_steps":
+                    app.open_viral_studio.assert_called_once_with(stage="script")
+                    app.open_viral_studio.return_value.generate.assert_not_called()
+                else:
+                    app.open_code_assistant.assert_not_called()
+        for negated in ("не делай по шагам программу",
+                        "как сделать программу по шагам",
+                        "если составишь план"):
+            self.assertIsNone(route_chat_request(negated))
+
+    def test_short_ambiguous_requests_get_choices_not_actions(self):
+        prompts={
+            "видео":"clarify_video",
+            "Джарвис, ролик":"clarify_video",
+            "модели":"clarify_model",
+            "Qwen":"clarify_model",
+            "экран":"clarify_screen",
+            "скриншот":"clarify_screen",
+            "код":"clarify_code",
+            "программа":"clarify_code",
+            "помоги":"help",
+            "не понимаю что делать":"help",
+        }
+        for phrase,expected in prompts.items():
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertEqual(intent.kind,expected)
+                app=Mock()
+                app._local_model_ready=False
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                app.reply.assert_called_once()
+                self.assertTrue(app.reply.call_args.args[0])
+                app.execute_plan.assert_not_called()
+                app.grant_vision.assert_not_called()
+                app.grant_control.assert_not_called()
+                app.download_local_model.assert_not_called()
+                app.open_screenshot_review.assert_not_called()
+        for sentence in ("как скачать модель", "не разрешаю экран",
+                         "почему видео не работает", "если я скажу модель"):
+            with self.subTest(negative=sentence):
+                self.assertIsNone(route_chat_request(sentence))
+
+    def test_screen_consent_phrasing_does_not_skip_the_confirmation(self):
+        requests=(
+            "зрение и экран разрешаю",
+            "экран и зрение разрешаю",
+            "зрение разрешаю",
+            "разрешаю доступ к экрану",
+            "разрешить доступ к экрану",
+            "включи зрение",
+            "разреши видеть экран",
+            "хочу дать доступ к экрану",
+        )
+        for phrase in requests:
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.kind,"permission_screen")
+                app=Mock()
+                app.vision_allowed=False  # User has not approved modal.
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                app.grant_vision.assert_called_once_with()
+                app.reply.assert_called_once()
+                self.assertIn("не предоставлен",app.reply.call_args.args[0])
+                app.execute_plan.assert_not_called()
+
+        app=Mock()
+        app.vision_allowed=False
+        def approved():
+            app.vision_allowed=True
+        app.grant_vision.side_effect=approved
+        TextJarvis._dispatch_chat_first(
+            app,ChatIntent("permission_screen"),"зрение и экран разрешаю")
+        self.assertIn("Доступ к экрану разрешён",app.reply.call_args.args[0])
+        app.grant_control.assert_not_called()
+        app.request_trimodal.assert_not_called()
+
+    def test_model_commands_accept_ui_text_and_natural_infinitives(self):
+        # These phrases are shown to users by JARVIS or typed in the chat.
+        phrases={
+            "проверить локальную модель":"model",
+            "проверь локальную модель":"model",
+            "скачать модель":"model_download",
+            "скачай модель":"model_download",
+            "скачать Qwen":"model_download",
+            "скачай qwen":"model_download",
+            "проверить Qwen":"model",
+            "найди модели":"model_scan",
+            "найти модели":"model_scan",
+            "найди модели на всех дисках":"model_scan",
+        }
+        for phrase,kind in phrases.items():
+            with self.subTest(phrase=phrase):
+                intent=route_chat_request(phrase)
+                self.assertIsNotNone(intent)
+                self.assertEqual(intent.kind,kind)
+                app=Mock()
+                TextJarvis._dispatch_chat_first(app,intent,phrase)
+                if kind=="model_download":
+                    app.check_models.assert_called_once_with(offer_scan=False)
+                else:
+                    method="check_models" if kind=="model" else "scan_models_on_pc"
+                    getattr(app,method).assert_called_once_with()
+                app.execute_plan.assert_not_called()
+                app.download_local_model.assert_not_called()
+
+    def test_model_questions_negations_do_not_start_model_actions(self):
+        for phrase in (
+            "как скачать модель", "почему проверить локальную модель",
+            "не скачай модель", "не надо скачивать модель",
+            "объясни как установить qwen", "если я напишу скачать модель",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIsNone(route_chat_request(phrase))
+
+    def test_direct_download_skips_search_but_requires_permission(self):
+        from unittest.mock import patch
+        app=Mock()
+        app._model_download_busy=False
+        app._model_scan_busy=False
+        app._asset_root="assets"
+        app.runtime.config.model_store="empty"
+        with patch("bundled_vision_runtime.validate_offline_model_store",
+                   side_effect=RuntimeError("No Qwen")):
+            with patch("text_only_main.messagebox.askyesno",return_value=True) as ask:
+                TextJarvis.check_models(app,offer_scan=False)
+        ask.assert_called_once()
+        self.assertIn("Скачать",ask.call_args.args[0])
+        app.scan_models_on_pc.assert_not_called()
+        app.download_local_model.assert_called_once()
+
+        app.reset_mock()
+        with patch("bundled_vision_runtime.validate_offline_model_store",
+                   side_effect=RuntimeError("No Qwen")):
+            with patch("text_only_main.messagebox.askyesno",return_value=False) as ask:
+                TextJarvis.check_models(app,offer_scan=False)
+        ask.assert_called_once()
+        app.scan_models_on_pc.assert_not_called()
+        app.download_local_model.assert_not_called()
 
     def test_longform_chat_requests_one_permission_autoexport(self):
         request="хочу сделать 15 минут из двухчасового видео"
@@ -69,6 +261,9 @@ class ChatFirstTests(unittest.TestCase):
             "не открывай настройки", "я не хочу открыть браузер",
             "если я скажу хочу сделать монтаж, что будет?",
             "объясни как разрешить управление ПК",
+            "как разрешить зрение", "почему ты не видишь экран",
+            "не разрешаю зрение", "не разрешай экран",
+            "если я напишу зрение и экран разрешаю, что будет",
             "давай поспорим", "открой Chrome", "открой cmd",
             "", "а"*1201,
         ):
@@ -81,12 +276,16 @@ class ChatFirstTests(unittest.TestCase):
             ("studio","open_viral_studio"),("edits","open_viral_studio"),
             ("publish","open_publish_preparation"),("screenshot","open_screenshot_review"),
             ("updates","show_update_center"),("model","check_models"),
+            ("model_download","check_models"),
             ("settings","show_settings_menu"),("cancel_model","cancel_local_model_download"),
         ):
             with self.subTest(kind=kind):
                 app=Mock()
                 TextJarvis._dispatch_chat_first(app,ChatIntent(kind),"Пожелание")
-                getattr(app,method).assert_called_once()
+                if kind=="model_download":
+                    app.check_models.assert_called_once_with(offer_scan=False)
+                else:
+                    getattr(app,method).assert_called_once()
                 app.execute_plan.assert_not_called()
                 app.log.assert_called_once_with("Вы","Пожелание")
 
@@ -129,12 +328,17 @@ class ChatFirstTests(unittest.TestCase):
     def test_text_handler_routes_before_generic_model_chat(self):
         app=Mock()
         app._closing=False
+        # A regular command must bypass semantic inference and its state.
+        app._semantic_busy=False
+        app._semantic_epoch=0
         TextJarvis.handle_text(app,"хочу смонтировать видео")
         app._dispatch_chat_first.assert_called_once()
         intent,original=app._dispatch_chat_first.call_args.args
         self.assertEqual(intent.kind,"timeline")
         self.assertEqual(original,"хочу смонтировать видео")
         app.open_code_assistant.assert_not_called()
+        self.assertEqual(app._semantic_epoch,0)
+        app._semantic_queue.put.assert_not_called()
 
 
 if __name__=="__main__":

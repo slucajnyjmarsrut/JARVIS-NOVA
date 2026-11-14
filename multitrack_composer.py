@@ -2,7 +2,7 @@
 """Offline, non-destructive multi-track video compositor for JARVIS NOVA.
 
 V1: base video, up to three image/video picture-in-picture tracks, an optional
-title graphic, narration and a music bed. All filter arguments are constructed
+title graphic and an optional music bed. All filter arguments are constructed
 from strictly typed/range-checked values, not text or model-supplied shell.
 No network calls, publishing, mutable source media or credential access.
 """
@@ -58,10 +58,8 @@ class MultitrackProject:
     output_video: Path
     layers: tuple[VisualLayer, ...] = ()
     title: str = ""
-    voiceover: Path | None = None
     music: Path | None = None
     music_volume: float = 0.22
-    duck_music: bool = False
 
 
 def is_multitrack_request(text: str) -> bool:
@@ -71,7 +69,7 @@ def is_multitrack_request(text: str) -> bool:
     return any(phrase in value for phrase in (
         "многодорожечный монтаж", "многослойный монтаж",
         "наложи логотип на видео", "добавь логотип на видео",
-        "наложи видео на видео", "добавь озвучку к видео",
+        "наложи видео на видео",
         "добавь картинку на видео",
     ))
 
@@ -116,9 +114,8 @@ def validate_project(project: MultitrackProject, *, for_export=True) -> Multitra
                 not .3 <= layer.duration <= MAX_DURATION or
                 not .1 <= layer.opacity <= 1.0):
             raise MultitrackError("Неверная позиция, прозрачность или время слоя.")
-    for path in (project.voiceover, project.music):
-        if path is not None:
-            used.add(_safe_media(path, AUDIO_TYPES))
+    if project.music is not None:
+        used.add(_safe_media(project.music, AUDIO_TYPES))
     if not isinstance(project.title, str) or len(project.title) > 120:
         raise MultitrackError("Заголовок должен быть короче 120 символов.")
     if any(ord(ch) < 32 and ch not in "\t" for ch in project.title):
@@ -128,11 +125,6 @@ def validate_project(project: MultitrackProject, *, for_export=True) -> Multitra
             or not math.isfinite(project.music_volume)
             or not 0 <= project.music_volume <= .7):
         raise MultitrackError("Громкость музыки должна быть от 0 до 70%.")
-    if type(project.duck_music) is not bool:
-        raise MultitrackError("Неверная настройка приглушения музыки.")
-    if project.duck_music and (project.music is None or project.voiceover is None):
-        raise MultitrackError(
-            "Для автоматического приглушения выбери и музыку, и озвучку.")
     if out in used:
         raise MultitrackError("Выходной файл не должен совпадать с исходниками.")
     edl = out.with_name(out.stem + "_MULTITRACK.json")
@@ -155,10 +147,7 @@ def save_multitrack(project: MultitrackProject, destination: Path) -> Path:
         "title":project.title,
         "music":str(_safe_media(project.music,AUDIO_TYPES))
                  if project.music else None,
-        "narration":str(_safe_media(project.voiceover,AUDIO_TYPES))
-                    if project.voiceover else None,
         "music_volume":project.music_volume,
-        "duck_music":project.duck_music,
         "layers":[{
             "file":str(_safe_media(item.path,IMAGE_TYPES|VIDEO_TYPES)),
             "start":item.start,"duration":item.duration,
@@ -202,15 +191,15 @@ def load_multitrack(path: Path) -> MultitrackProject:
                 motion=item.get("motion","static"),
                 motion_seconds=item.get("motion_seconds",.45)))
         music=data.get("music")
-        voice=data.get("narration")
+        # Never silently drop requested voiceover from an old project.
+        if data.get("narration") is not None or data.get("duck_music",False):
+            raise ValueError("Voiceover is no longer supported")
         project=MultitrackProject(
             base_video=Path(data["base"]),
             output_video=Path(data["output"]),
             layers=tuple(layers),title=data["title"],
             music=Path(music) if music is not None else None,
-            voiceover=Path(voice) if voice is not None else None,
             music_volume=data["music_volume"],
-            duck_music=data.get("duck_music",False),
         )
     except (KeyError,TypeError,ValueError,UnicodeError,OSError) as exc:
         raise MultitrackError("Повреждённый или неподдерживаемый проект.") from exc
@@ -252,7 +241,7 @@ def build_filter_graph(project: MultitrackProject, *, duration: float,
     """Return validated FFmpeg filtergraph; caller supplies inputs in order.
 
     Input 0 is the base, 1..N visual layers, then optional title, music,
-    voiceover, and finally anullsrc if the original has no audio.
+    and finally anullsrc if the original has no audio.
     """
     if not .7 <= duration <= MAX_DURATION:
         raise MultitrackError("Многодорожечный монтаж поддерживает 0.7–90 секунд.")
@@ -299,7 +288,6 @@ def build_filter_graph(project: MultitrackProject, *, duration: float,
         next_index += 1
     music_index = next_index if project.music else None
     next_index += int(project.music is not None)
-    voice_index = next_index if project.voiceover else None
     if has_base_audio:
         filters.append(
             f"[0:a:0]aresample=48000,atrim=duration={duration:.3f},"
@@ -319,21 +307,6 @@ def build_filter_graph(project: MultitrackProject, *, duration: float,
             "asetpts=PTS-STARTPTS,"
             f"volume={float(project.music_volume):.3f}[music]")
         audio_inputs.append("music")
-    if voice_index is not None:
-        filters.append(
-            f"[{voice_index}:a:0]aresample=48000,"
-            f"atrim=duration={duration:.3f},"
-            "asetpts=PTS-STARTPTS,volume=1.0[voice]")
-        audio_inputs.append("voice")
-    if project.duck_music and music_index is not None and voice_index is not None:
-        # The voice stream is explicitly split; a FFmpeg filter output
-        # cannot feed both the sidechain and the final mix without asplit.
-        filters.extend([
-            "[voice]asplit=2[voice_detector][voice_for_mix]",
-            "[music][voice_detector]sidechaincompress="
-            "threshold=0.020:ratio=5:attack=50:release=400[ducked_music]",
-        ])
-        audio_inputs=["abase","ducked_music","voice_for_mix"]
     if len(audio_inputs) == 1:
         final_audio = "abase"
     else:
@@ -404,14 +377,11 @@ def render_multitrack(project: MultitrackProject, *,
         if project.music is not None:
             music = _safe_media(project.music, AUDIO_TYPES)
             command += ["-stream_loop", "-1", "-i", str(music)]
-        if project.voiceover is not None:
-            command += ["-i", str(_safe_media(project.voiceover, AUDIO_TYPES))]
         silent_index = None
         if not has_audio:
             silent_index = (1 + len(project.layers) +
                             int(title_index is not None) +
-                            int(project.music is not None) +
-                            int(project.voiceover is not None))
+                            int(project.music is not None))
             command += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
         graph, vlabel, alabel = build_filter_graph(
             project, duration=duration, width=width, height=height,
@@ -444,9 +414,7 @@ def render_multitrack(project: MultitrackProject, *,
             ],
             "title": project.title,
             "music": str(project.music) if project.music is not None else None,
-            "narration": str(project.voiceover) if project.voiceover is not None else None,
             "music_volume": float(project.music_volume),
-            "duck_music": project.duck_music,
             "technical_quality": technical,
             "duration": duration,
             "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -467,7 +435,7 @@ def render_multitrack(project: MultitrackProject, *,
             if cancel is not None and cancel.is_set():
                 raise MultitrackError("Монтаж отменён.")
         except Exception:
-            for name in reversed(committed):
-                name.unlink(missing_ok=True)
+            # Partial exports remain available for the owner to inspect.
+            # JARVIS must never delete user-visible files on failure.
             raise
         return metadata

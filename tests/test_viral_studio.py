@@ -154,6 +154,155 @@ class ViralTests(unittest.TestCase):
                 "Не Minecraft",model_runtime=runtime,requester=requester,
                 previous_brief=prior)
 
+    def test_caption_schema_matches_editorial_bounds_and_reports_bad_frame(self):
+        from dataclasses import replace
+        from viral_studio import validate_brief
+        prop=SCENARIO_JSON_SCHEMA['properties']['scenes']['properties']['hook']
+        self.assertEqual(prop['properties']['caption']['maxLength'],100)
+        self.assertEqual(prop['properties']['caption']['minLength'],1)
+        base=template_brief('Кофе')
+        invalid=replace(base,shots=(
+            replace(base.shots[0],caption='А'*101), *base.shots[1:]))
+        with self.assertRaisesRegex(
+                ViralStudioError,r'Текст на экране: недопустимая длина.*кадр 1, длина 101'):
+            validate_brief(invalid)
+
+    def test_ai_ending_schema_is_bounded_and_editorially_shortened(self):
+        from viral_studio import _short_ai_ending, validate_brief
+        from dataclasses import replace
+        prop=SCENARIO_JSON_SCHEMA["properties"]["call_to_action"]
+        self.assertEqual(prop["maxLength"],160)
+        self.assertEqual(prop["minLength"],5)
+        self.assertEqual(SCENARIO_JSON_SCHEMA["properties"]["title"]["maxLength"],120)
+        self.assertEqual(SCENARIO_JSON_SCHEMA["properties"]["script"]["minLength"],100)
+        self.assertEqual(
+            _short_ai_ending("Напиши своё мнение? "+("А"*180)),
+            "Напиши своё мнение?")
+        self.assertLessEqual(len(_short_ai_ending("Сохрани и покажи результат " * 20)),160)
+        self.assertEqual(_short_ai_ending("Напиши мнение?"),"Напиши мнение?")
+        with self.assertRaises(ViralStudioError):
+            _short_ai_ending("")
+        with self.assertRaises(ViralStudioError):
+            _short_ai_ending(123)
+        authored=replace(template_brief("Рецепт"),call_to_action="М"*201)
+        with self.assertRaises(ViralStudioError):
+            validate_brief(authored)
+
+    def test_repeated_ai_captions_get_unique_qwen_authored_alternatives(self):
+        from viral_studio import _parse_model_brief
+        from video_scenario_autonomy import assess_scenario
+        source={
+            'title':'Рабочее место без проводов',
+            'hook':'Как быстро убрать беспорядок?',
+            'script':('Сначала видны провода на рабочем месте. '
+                      'Подготавливаю органайзер, аккуратно размещаю кабели '
+                      'за столом. Показываю результат с другого ракурса '
+                      'и предлагаю повторить простой приём дома.'),
+            'scenes':{
+                'hook':{'seconds':3,'film':'Крупно снять спутанные провода на столе',
+                        'caption':'Было неудобно'},
+                'setup':{'seconds':6,'film':'Показать коробку с крепежом и липучками',
+                         'caption':'Что понадобится'},
+                'action':{'seconds':6,'film':'Закрепить липучки вокруг проводов',
+                          'caption':'Было неудобно'},
+                'result':{'seconds':6,'film':'Сравнить стол до и после уборки кабелей',
+                          'caption':'Что понадобится'},
+                'ending':{'seconds':6,'film':'Показать порядок и пригласить повторить',
+                          'caption':'Было неудобно'},
+            },
+            'call_to_action':'Как организованы кабели у тебя?',
+        }
+        brief=_parse_model_brief(source,"Порядок на рабочем месте",())
+        self.assertIn("подписи взяты из инструкций Qwen",brief.generator)
+        self.assertEqual(brief.shots[0].caption,"Было неудобно")
+        self.assertEqual(brief.shots[1].caption,"Что понадобится")
+        self.assertEqual(brief.shots[2].caption,
+                         "Закрепить липучки вокруг проводов")
+        self.assertEqual(len(set(s.caption for s in brief.shots)),5)
+        self.assertTrue(assess_scenario(brief).passed)
+        self.assertEqual(brief.shots[2].film,
+                         source['scenes']['action']['film'])
+
+    def test_repeated_ai_film_is_still_rejected_as_unverified(self):
+        from viral_studio import _parse_model_brief
+        from video_scenario_autonomy import assess_scenario
+        raw={
+            'title':'Рисуем простой дом',
+            'hook':'Смотри на результат',
+            'script':'Рисуем дом в несколько этапов и показываем результат. '
+                     'Затем добавляем крышу и окна. Под конец предлагаем '
+                     'поделиться своим рисунком и повторить приём.',
+            'scenes':{role:{
+                'seconds':3 if i==0 else 6,
+                'film':'Повтори одну и ту же съёмку',
+                'caption':'Повторяй'}
+                for i,role in enumerate(('hook','setup','action','result','ending'))},
+            'call_to_action':'А вы повторили рисунок?',
+        }
+        brief=_parse_model_brief(raw,"Как нарисовать дом",())
+        self.assertFalse(assess_scenario(brief).passed)
+        self.assertTrue(any("Повторяются инструкции" in issue
+                            for issue in assess_scenario(brief).issues))
+
+    def test_invalid_real_qwen_draft_is_revised_instead_of_silent_template(self):
+        from video_scenario_autonomy import create_checked_scenario
+        from viral_studio import RejectedScenarioDraft
+        topic='Организация рабочего места'
+        descriptions=(
+            'Показать до начала уборки запутанные провода',
+            'Показать стол до сортировки вещей',
+            'Уложить кабели за монитор',
+            'Сравнить рабочую поверхность до и после',
+            'Завершить показом аккуратно сложенных предметов',
+        )
+        roles=('hook','setup','action','result','ending')
+        data={
+            'title':'Порядок на рабочем месте',
+            'hook':'Что можно изменить за минуту?',
+            'script':('На рабочем столе мешают провода и лишние вещи. '
+                      'Показываю исходную проблему, затем убираю предметы '
+                      'и аккуратно укладываю кабели. В конце сравниваю '
+                      'пространство до и после и проверяю результат.'),
+            'scenes':{
+                role:{'seconds':3 if idx==0 else 6,
+                      'film':descriptions[idx], 'caption':f'Шаг {idx+1}'}
+                for idx,role in enumerate(roles)},
+            'call_to_action':'Сохрани идею и проверь свой стол.',
+        }
+        invalid=dict(data,title='Х'*125)
+        runtime=Mock()
+        runtime.start.return_value='http://127.0.0.1:1234'
+        prompts=[]
+        def requester(url,payload):
+            self.assertEqual(url,'http://127.0.0.1:1234/api/generate')
+            prompts.append(payload['prompt'])
+            response=invalid if len(prompts)==1 else data
+            return {'response':json.dumps(response,ensure_ascii=False)}
+        def generator(topic,trends,**kwargs):
+            return create_local_brief(
+                topic,trends,model_runtime=runtime,requester=requester,
+                stop_runtime=False,**kwargs)
+        brief,note,assessment,attempts=create_checked_scenario(
+            topic,mode='deep',ai_generator=generator)
+        self.assertTrue(assessment.passed,assessment.issues)
+        self.assertEqual(brief.generator,'локальная Qwen3-VL')
+        self.assertEqual(brief.title,data['title'])
+        self.assertEqual(attempts,2)
+        self.assertEqual(len(prompts),2)
+        self.assertIn('Заголовок: недопустимая длина',prompts[1])
+        self.assertIn('ПРЕДЫДУЩИЙ ЧЕРНОВИК',prompts[1])
+        self.assertIn('Х'*80,prompts[1])
+        self.assertIn('Qwen',note)
+        self.assertTrue(issubclass(RejectedScenarioDraft,ViralStudioError))
+        invalid_previous=template_brief(topic)
+        from dataclasses import replace
+        invalid_previous=replace(invalid_previous,title='Х'*125)
+        with self.assertRaises(ViralStudioError):
+            create_local_brief(
+                topic,model_runtime=runtime,requester=requester,
+                previous_brief=invalid_previous,
+                quality_feedback='Заголовок: недопустимая длина')
+
     def test_long_qwen_overlay_is_shortened_without_weakening_story_checks(self):
         from viral_studio import _parse_model_brief, _short_ai_caption
         paragraph="Текст для экрана крупным планом " * 9

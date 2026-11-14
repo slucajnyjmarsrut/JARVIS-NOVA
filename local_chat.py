@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Offline conversational answers with the REAL bundled local Qwen Vision model.
+"""Offline chat with optional dedicated Qwen3 weights or legacy bundled Vision.
 
-This module never executes suggested Windows actions and never sends data to
-cloud APIs. The same BundledVisionRuntime instance is shared with Stage 2.
+Once a user selects dedicated chat, missing Qwen3 MUST NOT silently fall
+back to the image model. No unapproved downloads or external APIs.
 """
 from __future__ import annotations
 import json
+import re
 import threading
+import time
 from urllib.parse import urlsplit
 import urllib.request
 
@@ -29,12 +31,27 @@ def explain_local_model_failure(error: Exception) -> str:
     from bundled_vision_runtime import BundledRuntimeError
 
     detail = str(error)
-    if isinstance(error, BundledRuntimeError) and any(marker in detail for marker in (
-        "model manifest", "model blob", "blob digest", "blob SHA256",
-        "manifest JSON", "manifest structure", "model blob size",
-    )):
-        return ("Локальная Qwen не установлена или её файлы повреждены. "
-                "Открой ⚙ → «Проверить локальную модель» и подтверди загрузку.")
+    if isinstance(error, BundledRuntimeError):
+        if any(marker in detail for marker in (
+                "blob digest", "blob SHA256", "model blob size")):
+            return ("Файлы Qwen3-VL не прошли проверку целостности. "
+                    "Нажми «СКАЧАТЬ QWEN» для повторной загрузки "
+                    "после подтверждения.")
+        if any(marker in detail for marker in (
+                "model manifest", "model blob", "manifest JSON",
+                "manifest structure")):
+            return ("Qwen3-VL для чата не установлена либо загрузка не завершена. "
+                    "Нажми «СКАЧАТЬ QWEN» и подтверди загрузку. "
+                    "Найденная Qwen Coder — отдельная модель для программирования.")
+    # Exceptions from filesystem/network adapters can include private user
+    # paths, API secrets or credential-bearing URLs. Never echo them into chat.
+    private_path = re.search(
+        r"(?:[A-Za-z]:[/\\]|/(?:Users|home|mnt)/)", detail, re.IGNORECASE)
+    credential = re.search(
+        r"(?:password|secret|token|api[_-]?key)\s*[:=]", detail, re.IGNORECASE)
+    if isinstance(error, (OSError, TimeoutError)) or private_path or credential:
+        return ("Локальная модель недоступна. Проверь состояние Ollama, "
+                "доступность модели и локальные разрешения.")
     return "Локальная модель недоступна: " + detail[:160]
 
 
@@ -47,6 +64,22 @@ class LocalChat:
         self._lock = threading.Lock()
         self._closed = False
         self.debate_mode = False
+        self._prefer_task_chat = False
+        self._task_chat_checked = False
+        self._task_chat_ready = False
+        self._task_chat_next_check = 0.0
+
+    def prefer_task_specialist(self, enabled=True):
+        """Select independent Qwen3 chat; fail closed if it is unavailable.
+
+        Only reads the local Ollama inventory. Never installs or starts Ollama.
+        Set False to explicitly return to legacy bundled Qwen Vision chat.
+        """
+        if type(enabled) is not bool:
+            raise ValueError("Нужно выбрать True или False")
+        self._prefer_task_chat = enabled
+        self._task_chat_checked = False
+        self._task_chat_next_check = 0.0
 
     def set_debate_mode(self, enabled: bool) -> None:
         if type(enabled) is not bool:
@@ -67,10 +100,18 @@ class LocalChat:
         self.debate_mode = False
 
     @staticmethod
-    def _request(endpoint: str, payload: dict) -> dict:
-        parts = urlsplit(endpoint)
+    def _request(endpoint: str, payload: dict, *, timeout: float = 150) -> dict:
+        if type(timeout) not in (int,float) or not 1 <= timeout <= 150:
+            raise LocalChatError("Недопустимое время ожидания Ollama.")
+        # Invalid port syntax (e.g. :abc or :99999) must be a
+        # controlled validation error, not an uncaught ValueError in the UI.
+        try:
+            parts = urlsplit(endpoint)
+            port = parts.port
+        except (ValueError, TypeError) as exc:
+            raise LocalChatError("Некорректный адрес локальной Ollama.") from exc
         if (parts.scheme != "http" or parts.hostname != "127.0.0.1"
-                or not (1 <= (parts.port or 0) <= 65535) or
+                or not (1 <= (port or 0) <= 65535) or
                 parts.path or parts.query or parts.fragment or
                 parts.username is not None or parts.password is not None):
             raise LocalChatError("Локальная модель должна отвечать только с 127.0.0.1")
@@ -82,14 +123,18 @@ class LocalChat:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with opener.open(req, timeout=150) as response:
+        with opener.open(req, timeout=timeout) as response:
             body = response.read(300_001)
         if len(body) > 300_000:
             raise LocalChatError("Слишком длинный ответ модели")
         try:
-            return json.loads(body)
+            parsed = json.loads(body)
         except (UnicodeError, ValueError) as exc:
             raise LocalChatError("Неверный ответ локальной модели") from exc
+        if not isinstance(parsed, dict) or not isinstance(
+                parsed.get("message"), dict):
+            raise LocalChatError("Локальная модель вернула неверную структуру.")
+        return parsed
 
     def ask(self, question: str) -> str:
         question = str(question or "").strip()
@@ -136,9 +181,45 @@ class LocalChat:
                 {"role":"user","content":question},
                 {"role":"assistant","content":answer}])[-8:]
             return answer
-        endpoint = self.runtime.start()
+        endpoint = None
+        model = self.model
+        if self._prefer_task_chat:
+            # Missing models are rechecked after 20 seconds: installing
+            # Ollama later must not require restarting JARVIS or changing
+            # the chosen specialist. Never downloads or starts a model.
+            now = time.monotonic()
+            if (not self._task_chat_checked or
+                    (not self._task_chat_ready and
+                     now >= self._task_chat_next_check)):
+                try:
+                    from task_ai_registry import specialist_available
+                    self._task_chat_ready = specialist_available("chat")
+                except Exception:
+                    self._task_chat_ready = False
+                self._task_chat_checked = True
+                self._task_chat_next_check = now + 20.0
+            if not self._task_chat_ready:
+                raise LocalChatError(
+                    "Отдельный ИИ-диалог Qwen3:4b недоступен. "
+                    "Открой «ИИ ПО ЗАДАЧАМ», запусти Ollama и подключи "
+                    "Qwen3:4b с разрешения. Модель для изображений "
+                    "Qwen3-VL не подменяет отдельный ИИ-диалог. "
+                    "Для прежнего режима отдельно отключи выбор специалиста.")
+            from task_ai_registry import LOOPBACK, get_specialist
+            endpoint = LOOPBACK
+            model = get_specialist("chat").model
+        else:
+            endpoint = self.runtime.start()
+        # A fixed 56-token cap truncated multi-step questions. Keep everyday
+        # replies responsive, but allow deeper user-requested explanations.
+        detailed = (len(question) > 110 or any(term in question.casefold() for term in (
+            "подроб", "объясни", "пошагов", "по шагам", "сравни",
+            "инструкц", "примеры", "разбери", "план действий",
+        )))
+        max_reply_tokens = 240 if self.debate_mode else (256 if detailed else 112)
+        context_tokens = 2048 if self.debate_mode else (2560 if detailed else 1536)
         payload = {
-            "model": self.model,
+            "model": model,
             "stream": False,
             "think": False,  # no long hidden reasoning before short spoken reply
             "keep_alive": "20m",  # keep local model hot for follow-up questions
@@ -153,12 +234,13 @@ class LocalChat:
                 *self._conversation,
                 {"role": "user", "content": question},
             ],
-            "options": {"num_predict": 240 if self.debate_mode else 56,
-                        "num_ctx": 2048 if self.debate_mode else 1536,
+            "options": {"num_predict": max_reply_tokens,
+                        "num_ctx": context_tokens,
                         "temperature": 0.4 if self.debate_mode else 0.3},
         }
         result = self._requester(endpoint, payload)
-        answer = result.get("message", {}).get("content", "") if isinstance(result, dict) else ""
+        message = result.get("message") if isinstance(result, dict) else None
+        answer = message.get("content", "") if isinstance(message, dict) else ""
         if not isinstance(answer, str) or not answer.strip():
             raise LocalChatError("Локальная модель не дала ответа")
         if self._closed:

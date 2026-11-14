@@ -19,7 +19,7 @@ from code_agent import CodeResult, request_local_model
 from code_languages import SUPPORTED, LANGUAGE_LABELS
 from code_checks import check_project
 from roblox_world_builder import build_world, build_model, THEMES, MODELS, SIZES
-from code_project_engine import build_one_shot_project
+from code_project_engine import build_one_shot_project, describe_execution_plan
 from code_quality_review import review_change_plan, unified_plan_diff
 from code_test_sandbox import run_python_tests
 from code_test_repair import repair_after_tests
@@ -64,12 +64,12 @@ class CodeWindow(tk.Toplevel):
         ttk.Checkbutton(frame,text='Изменять существующий проект (с резервными копиями и подтверждением)',
                         variable=self.modify_existing).pack(anchor='w',pady=(7,0))
         ttk.Checkbutton(frame,
-            text='Полный проект: архитектура → функции → тесты и документация (3 шага)',
+            text='Полный проект: план → шаги с проверкой → итоговая проверка',
             variable=self.full_project).pack(anchor='w')
         ttk.Label(frame,text='Задача (для генерации) или имя проекта (для шаблона)').pack(anchor='w',pady=(8,0))
         ttk.Entry(frame,textvariable=self.task).pack(fill='x')
         bar=ttk.Frame(frame);bar.pack(fill='x',pady=8)
-        self.gen=ttk.Button(bar,text='Создать проект и проверить за один запуск',command=self.generate)
+        self.gen=ttk.Button(bar,text='Составить план → выполнить и проверить',command=self.generate)
         self.gen.pack(side='left')
         self.starter_button=ttk.Button(bar,text='Создать шаблон',command=self.starter)
         self.starter_button.pack(side='left',padx=6)
@@ -136,29 +136,30 @@ class CodeWindow(tk.Toplevel):
         return Path(value)
 
     def _model_generator(self, task, language):
-        """Prefer the shared, offline runtime already running inside JARVIS."""
+        """Only the dedicated programmer model; never use Vision as coder."""
         host=self.master
         if getattr(host,"engine",None)=="freellm":
             return host.freellm_chat.generate_code(task,language)
-        if self._coder_opt_in and not self._coder_checked:
+        if not self._coder_opt_in:
+            raise WorkspaceError(
+                "ИИ-программист не был разрешён. Отдельно подтверди "
+                "использование Qwen Coder в окне программирования.")
+        if not self._coder_checked:
             self._coder_checked=True
             try:
                 from local_coder_models import best_installed_coder
                 found=best_installed_coder(confirmed=True)
-                if found is not None:
-                    self._coder_choice=found.name
+                self._coder_choice=found.name if found is not None else None
             except (OSError,ValueError,RuntimeError,TypeError):
-                # Offline or missing Ollama: use the already configured Qwen.
                 self._coder_choice=None
-        if self._coder_choice is not None:
-            return request_local_model(
-                task,language,endpoint="http://127.0.0.1:11434",
-                model=self._coder_choice)
-        runtime=getattr(getattr(host,'trimodal',None),'runtime',None)
-        if runtime is None:
-            return request_local_model(task,language)
-        endpoint=runtime.start()
-        return request_local_model(task,language,endpoint=endpoint,model=runtime.config.model)
+        if self._coder_choice is None:
+            raise WorkspaceError(
+                "Отдельный ИИ-программист не подключён: запусти Ollama "
+                "на 127.0.0.1:11434 и установи Qwen2.5-Coder:7b "
+                "через «ИИ ПО ЗАДАЧАМ». Vision Qwen не подменяет программиста.")
+        return request_local_model(
+            task,language,endpoint="http://127.0.0.1:11434",
+            model=self._coder_choice)
 
     def _preview_text(self,plan):
         lines=['Файлы проекта (проверь содержимое до сохранения):']
@@ -278,6 +279,20 @@ class CodeWindow(tk.Toplevel):
                 "проверка синтаксиса. При согласии можно также проверить "
                 "запущенную локальную Ollama и выбрать уже установленную "
                 "кодовую модель без скачивания.",parent=self)
+        coder_opt_in=bool(sandbox_consent)
+        if (getattr(self.master, "engine", None)!="freellm"
+                and not coder_opt_in):
+            coder_opt_in=messagebox.askyesno(
+                "Отдельный ИИ-программист · Qwen Coder",
+                "Программирование выполняет специализированная модель "
+                "Qwen2.5-Coder:7b через локальную Ollama "
+                "(127.0.0.1:11434), а НЕ Qwen Vision.\n\n"
+                "Разрешить проверить установленные кодовые модели и "
+                "использовать их для этой задачи? "
+                "Новых моделей не скачиваем и в облако код не отправляем. "
+                "Если модель отсутствует, открой «ИИ ПО ЗАДАЧАМ» "
+                "для её установки после подтверждения.",
+                parent=self)
         self._generation_busy=True
         self.gen.configure(state='disabled')
         self.starter_button.configure(state='disabled')
@@ -286,18 +301,25 @@ class CodeWindow(tk.Toplevel):
         self.repair_button.configure(state='disabled')
         self._last_test_gate_status=None
         self._auto_save_target=root if auto_write else None
-        self._coder_opt_in=bool(sandbox_consent)
+        self._coder_opt_in=bool(coder_opt_in)
         self._coder_checked=False
         self._coder_choice=None
         self.result=None
-        self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
+        if full_project:
+            self.show(describe_execution_plan(task,language)+
+                "\n\nПодготавливаю черновик. Оригинальные файлы не меняются.\n")
+        else:
+            self.show('ИИ создаёт проект и проверяет его. Файлы ещё не меняются.')
+        def stage_progress(message):
+            self._on_ui(lambda msg=message:self._append_plan_progress(msg))
         def worker():
             try:
                 if full_project:
                     result=build_one_shot_project(
                         task,language,generator=self._model_generator,
                         workspace=root if existing else None,
-                        allow_sandbox_tests=sandbox_consent)
+                        allow_sandbox_tests=sandbox_consent,
+                        stepwise=True,progress=stage_progress)
                 else:
                     result=generate_and_check(task,language,
                         generator=self._model_generator,
@@ -316,6 +338,12 @@ class CodeWindow(tk.Toplevel):
             if self.winfo_exists():self.after(0,callback)
         except (RuntimeError,tk.TclError):
             pass
+
+    def _append_plan_progress(self, message):
+        if not self.winfo_exists():
+            return
+        self.log.insert('end',str(message)[:400]+'\n')
+        self.log.see('end')
 
     def _unblock(self):
         self._generation_busy=False
@@ -338,7 +366,9 @@ class CodeWindow(tk.Toplevel):
                'Модель проекта: '+str(model_label),
                'Инженерная рецензия (AST, без запуска): '+review.summary(),
                *findings[:30],
-               'Проверка: '+('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
+               'Общая статическая проверка: '+
+               ('ПРОЙДЕНА' if result.verified else 'НЕ ПОДТВЕРЖДЕНА'),
+               'Отчёт по шагам: выполнено → проверено отдельно → проверено вместе.',
                'Для Python автоматические тесты идут в Docker только после согласия; '
                'проверка синтаксиса других языков не доказывает полную работоспособность.',
                *[f'Попытка {a.number}: {a.status}; {a.diagnostics}' for a in result.attempts],

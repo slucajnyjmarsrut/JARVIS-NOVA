@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""REAL local Qwen software-writing smoke, not deterministic generator.
+"""REAL optional Qwen2.5-Coder:7b software-writing smoke (no Vision).
 
 For runner security, untrusted model-written Python is NEVER executed on
 the Windows host. Parses the full project, performs Python AST checks and
@@ -17,7 +17,7 @@ import tempfile
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 
-from bundled_vision_runtime import BundledRuntimeConfig, BundledVisionRuntime
+from task_ai_registry import LOOPBACK, get_specialist, specialist_available
 from code_agent import request_local_model
 from code_workspace import parse_model_proposal, WorkspaceError
 from code_checks import check_project
@@ -85,9 +85,6 @@ def main() -> int:
     for out in (sys.stdout,sys.stderr):
         if out is not None and hasattr(out,"reconfigure"):
             out.reconfigure(encoding="utf-8",errors="backslashreplace")
-    assets=Path(getattr(sys,"_MEIPASS",Path(__file__).resolve().parents[1]))/"assets"
-    runtime=BundledVisionRuntime(BundledRuntimeConfig(
-        root=assets,startup_seconds=90))
     topic=(
         "Build a small COMPLETE Python project with exactly these files: "
         "calculator.py, tests/test_calculator.py, README.md. "
@@ -102,19 +99,24 @@ def main() -> int:
         "No operating-system actions or network access. Each file <150 lines."
     )
     try:
-        endpoint=runtime.start()
+        spec=get_specialist("code")
+        if not specialist_available("code"):
+            print("REAL CODER NOT RUN: dedicated "+spec.model+
+                  " is unavailable. Start Ollama and approve model download "
+                  "separately before retrying.",file=sys.stderr,flush=True)
+            return 2
         failures=[]
         for attempt in range(1,4):
             try:
                 raw=request_local_model(
-                    topic,"python",endpoint=endpoint,
-                    model=runtime.config.model)
+                    topic,"python",endpoint=LOOPBACK,
+                    model=spec.model)
                 plan=parse_model_proposal(raw)
                 with tempfile.TemporaryDirectory(
                     prefix="nova-real-qwen-code-") as tmp:
                     count,cases=_assert_small_real_project(plan,Path(tmp))
                 print(
-                    "REAL QWEN CODE PASS: "+str(attempt)+" attempts; "+
+                    "REAL QWEN CODER PASS: "+str(attempt)+" attempts; "+
                     str(count)+" real generated files, "+str(cases)+
                     " model-written test cases, independent AST semantics "
                     "and syntax passed; UNTRUSTED CODE WAS NOT EXECUTED.",
@@ -129,12 +131,11 @@ def main() -> int:
             "Qwen could not meet even the bounded Python smoke contract: "+
             " | ".join(failures)[-800:])
     except Exception as exc:
-        print("REAL QWEN CODE FAILED: "+
+        print("REAL QWEN CODER FAILED: "+
               type(exc).__name__+": "+str(exc),
               file=sys.stderr,flush=True)
         return 1
-    finally:
-        runtime.stop()
+
 
 
 if __name__=="__main__":

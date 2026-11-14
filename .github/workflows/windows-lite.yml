@@ -1,11 +1,31 @@
 name: JARVIS NOVA Lite small Windows installer
 on:
   push:
-    branches: [jarvis]
+    branches: [jarvis, fix/qwen-scenario-stability-2026-11]
     paths:
       - jarvis_nova.spec
       - bootstrap.py
       - text_only_main.py
+      - local_chat.py
+      - tests/test_autonomous_montage.py
+      - manual_file_deletion.py
+      - tests/test_manual_file_deletion.py
+      - intuitive_start.py
+      - tests/test_intuitive_start.py
+      - tests/test_text_model_controls.py
+      - tests/test_text_only_mode.py
+      - tests/test_no_voice_contract.py
+      - post_montage_review.py
+      - tests/test_post_montage_review.py
+      - tests/test_shutdown.py
+      - tests/test_no_camera.py
+      - tests/test_agent.py
+      - desktop.py
+      - tests/test_self_improve.py
+      - scripts/audit_module_health.py
+      - tests/test_chat_first_intent.py
+      - semantic_intent_router.py
+      - tests/test_semantic_intent_router.py
       - text_only_ui.py
       - main.py
       - nova_command_palette.py
@@ -26,6 +46,24 @@ on:
       - model_storage.py
       - local_model_inventory.py
       - video_scenario_autonomy.py
+      - startup_permissions.py
+      - tests/test_startup_permissions.py
+      - night_resource_guard.py
+      - night_autorecovery.py
+      - night_supervisor_service.py
+      - tests/test_supervisor_always_on.py
+      - tests/test_night_unattended.py
+      - topic_video_engine.py
+      - tests/test_topic_video_engine.py
+      - night_supervisor.py
+      - night_supervisor_ui.py
+      - tests/test_night_supervisor.py
+      - tests/test_text_suite_runner.py
+      - task_ai_registry.py
+      - scenario_specialist.py
+      - montage_specialist.py
+      - task_ai_hub.py
+      - tests/test_task_ai_specialists.py
       - quick_video_brief.py
       - tests/test_model_inventory.py
       - tests/test_scenario_and_model_route.py
@@ -52,6 +90,8 @@ on:
       - tests/test_longform_autoexport.py
       - tests/test_chat_first_intent.py
       - tests/test_one_shot_project.py
+      - tests/test_code_stepwise_project.py
+      - tests/test_module_hardening.py
       - tests/test_video_timeline.py
       - code_project_engine.py
       - local_coder_models.py
@@ -153,6 +193,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_video_preview.py -v
       - name: Verify code repair guardrails and real coding window
         run: python -m unittest discover -s tests -p "test_code_*.py" -v
+      - name: Source audit of all modules
+        run: python scripts/audit_module_health.py
       - name: Run existing text-only application tests
         shell: pwsh
         run: |
@@ -217,7 +259,7 @@ jobs:
         shell: pwsh
         run: |
           $exe=(Resolve-Path 'dist/lite/JarvisNova/JarvisNova.exe').Path
-          foreach ($arg in @('--self-test','--video-self-test')) {
+          foreach ($arg in @('--self-test','--video-self-test','--supervisor-self-test')) {
             $result=Start-Process -FilePath $exe -ArgumentList $arg -Wait -PassThru
             if ($result.ExitCode -ne 0) { throw "Lite EXE $arg failed: $($result.ExitCode)" }
           }
@@ -248,6 +290,15 @@ jobs:
           $installDir=Join-Path $env:LOCALAPPDATA 'Programs/JarvisNova'
           $exe=Join-Path $installDir 'JarvisNova.exe'
           if (!(Test-Path $exe)) { throw 'Installed Lite executable not found' }
+          # Inno default-selected visible Startup option must register the
+          # current-user headless Supervisor without any admin privilege.
+          $startup=[Environment]::GetFolderPath('Startup')
+          $shortcut=Join-Path $startup 'JARVIS NOVA Supervisor.lnk'
+          if (!(Test-Path $shortcut)) { throw 'Headless Supervisor login shortcut missing' }
+          $link=(New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
+          if ($link.Arguments -ne '--supervisor-daemon') { throw 'Wrong Supervisor startup arguments' }
+          $headless=Start-Process $exe -ArgumentList '--supervisor-self-test' -PassThru -Wait
+          if ($headless.ExitCode -ne 0) { throw 'Installed headless Supervisor smoke failed' }
           $test=Start-Process $exe -ArgumentList '--self-test' -PassThru -Wait
           if ($test.ExitCode -ne 0) { throw "Installed Lite self-test failed: $($test.ExitCode)" }
           if (Test-Path (Join-Path $installDir '_internal/assets/models/ollama')) {

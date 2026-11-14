@@ -46,6 +46,30 @@ class ScreenshotReviewTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 save_annotated(b"bad", Path(root))
 
+    def test_annotations_reject_unbounded_or_invalid_coordinates(self):
+        image = Image.new("RGB", (180, 120), "white")
+        cases = (
+            [[(float("nan"), 5)]],
+            [[(float("inf"), 5)]],
+            [[(-1, 5)]],
+            [[(180, 5)]],
+            [[("7", 8)]],
+            [["bad"]],
+            "not strokes",
+            [[]] * 1025,
+            [[(1, 1)] * 50_001],
+        )
+        for marks in cases:
+            with self.subTest(case=str(marks)[:45]), self.assertRaises(ValueError):
+                annotate_jpeg(image, marks)
+
+    def test_copied_jpeg_requires_real_jpeg_markers(self):
+        with tempfile.TemporaryDirectory() as root:
+            fake = b"not a JPEG" * 15
+            with self.assertRaises(ValueError):
+                save_annotated(fake, Path(root) / "reports")
+            self.assertFalse((Path(root) / "reports").exists())
+
     def test_writes_only_after_explicit_save_or_send(self):
         import inspect
         from screenshot_review import ScreenshotReview

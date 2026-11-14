@@ -58,7 +58,7 @@ def smoke_test():
            else 'TEXT-ONLY full offline package: Qwen and FFmpeg present'),flush=True)
     return 0
 
-def _acquire_windows_single_instance():
+def _acquire_windows_single_instance(name="JarvisNovaRuntime"):
     """Named mutex: installer refuses upgrading a running JARVIS."""
     import os
     if os.name != "nt":
@@ -70,7 +70,7 @@ def _acquire_windows_single_instance():
     api.CreateMutexW.restype = wintypes.HANDLE
     api.CloseHandle.argtypes = [wintypes.HANDLE]
     api.CloseHandle.restype = wintypes.BOOL
-    handle = api.CreateMutexW(None, False, "JarvisNovaRuntime")
+    handle = api.CreateMutexW(None, False, name)
     if not handle:
         raise OSError(ctypes.get_last_error(), "Cannot create JARVIS mutex")
     if ctypes.get_last_error() == 183:
@@ -136,8 +136,46 @@ def conversational_self_test():
         runtime.stop()
 
 
+def supervisor_self_test():
+    """Actual packaged EXE has the headless queue and usable SQLite state.
+
+    No models, downloads, GUI, external files or background process spawned.
+    """
+    import tempfile
+    from pathlib import Path
+    from night_supervisor import NightSupervisor
+    import night_supervisor_service
+    with tempfile.TemporaryDirectory(prefix="jarvis-supervisor-smoke-") as tmp:
+        queue = NightSupervisor(Path(tmp) / "queue")
+        if not queue.background_enabled() or queue.list_jobs():
+            raise RuntimeError("Headless Supervisor did not start empty and enabled")
+        if queue.background_run_next():
+            raise RuntimeError("Headless Supervisor invented an unapproved job")
+        if not callable(night_supervisor_service.run_forever):
+            raise RuntimeError("Headless Supervisor watcher not bundled")
+    return 0
+
+
 def main():
     import sys
+    if "--supervisor-daemon" in sys.argv:
+        # Separate named mutex; the UI's "JarvisNovaRuntime" guard must
+        # not block this deliberately headless per-user background service.
+        if sys.argv != [sys.argv[0], "--supervisor-daemon"]:
+            return 11
+        guard = _acquire_windows_single_instance("JarvisNovaSupervisorDaemon")
+        if guard is False:
+            return 0
+        try:
+            from night_supervisor_service import run_forever
+            run_forever()
+            return 0
+        finally:
+            if guard is not None:
+                api, handle = guard
+                api.CloseHandle(handle)
+    if "--supervisor-self-test" in sys.argv:
+        return supervisor_self_test()
     if "--self-test" in sys.argv:
         return smoke_test()
     if "--chat-self-test" in sys.argv:

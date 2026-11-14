@@ -1,10 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Text-only production regression suite. Legacy voice tests live in the repo
-but are NOT part of the text-only Windows installer build.
+"""Text-only production regression suite.
+
+Run each module in a fresh interpreter. Keeping all Tk test modules in one
+Python process previously caused Windows Tcl_AsyncDelete crashes: destroyed Tk
+interpreters were finalized by another thread during later unrelated tests.
+Separate processes isolate Tk, active daemon threads and model mocks.
+Legacy voice tests remain excluded from this installer build.
 """
 from pathlib import Path
+import subprocess
 import sys
-import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -40,11 +45,16 @@ TESTS=(
        "test_installer_appearance.py",
        "test_installer_contract.py",
        "test_local_chat.py",
+       "test_text_model_controls.py",
+       "test_intuitive_start.py",
        "test_debate_mode.py",
        "test_chat_first_intent.py",
+       "test_manual_file_deletion.py",
+       "test_semantic_intent_router.py",
        "test_longform_video.py",
        "test_longform_autoexport.py",
        "test_one_shot_project.py",
+       "test_code_stepwise_project.py",
        "test_smart_highlight_selection.py",
        "test_audio_highlight_signal.py",
        "test_semantic_video_selection.py",
@@ -81,20 +91,54 @@ TESTS=(
        "test_video_quality_modules.py",
        "test_viral_integration.py",
        "test_viral_studio.py",
+       "test_task_ai_specialists.py",
+       "test_night_supervisor.py",
+       "test_cross_module_reliability.py",
+       "test_module_audit.py",
+       "test_module_health.py",
+       "test_module_hardening.py",
+       "test_topic_video_engine.py",
+        "test_night_unattended.py",
+       "test_supervisor_always_on.py",
+       "test_text_suite_runner.py",
+       "test_startup_permissions.py",
        "test_vision_chat_protocol.py",
        "test_work_modes.py",
-       "test_text_only_bundle.py",)
+       "test_text_only_bundle.py",
+       "test_no_voice_contract.py",)
+
+def run_suites(*, runner=None, suites=TESTS):
+    """Return all failed filenames; run no generated/model-provided programs."""
+    if runner is None:
+        runner=subprocess.run
+    failed=[]
+    for number,filename in enumerate(suites,1):
+        if filename not in TESTS or not (ROOT/"tests"/filename).is_file():
+            raise SystemExit("Missing mandatory production suite: "+str(filename))
+        print(f"TEXT-ONLY ISOLATED SUITE {number}/{len(suites)}: {filename}",
+              flush=True)
+        argv=[sys.executable,"-u","-m","unittest","discover",
+              "-s","tests","-p",filename,"-v"]
+        try:
+            result=runner(argv,cwd=str(ROOT),shell=False,check=False,
+                          timeout=300)
+        except (subprocess.TimeoutExpired,OSError) as exc:
+            print(f"FAILED {filename}: {type(exc).__name__}: {exc}",flush=True)
+            failed.append(filename)
+            continue
+        if result.returncode!=0:
+            print(f"FAILED {filename}: exit {result.returncode}",flush=True)
+            failed.append(filename)
+    return tuple(failed)
+
 
 def main():
-    suite=unittest.TestSuite()
-    loader=unittest.TestLoader()
-    for filename in TESTS:
-        if not (ROOT/"tests"/filename).is_file():
-            raise SystemExit("Missing mandatory production suite: "+filename)
-        suite.addTests(loader.discover(str(ROOT/"tests"),pattern=filename,
-                                       top_level_dir=str(ROOT/"tests")))
-    result=unittest.TextTestRunner(verbosity=2).run(suite)
-    return 0 if result.wasSuccessful() else 1
+    failed=run_suites()
+    if failed:
+        print("FAILED isolated suites: "+", ".join(failed),flush=True)
+        return 1
+    print(f"PASSED all {len(TESTS)} isolated text-only suites",flush=True)
+    return 0
 
 if __name__=="__main__":
     raise SystemExit(main())

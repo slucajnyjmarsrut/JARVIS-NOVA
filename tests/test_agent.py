@@ -6,7 +6,6 @@ from unittest import mock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from agent_core import parse_local,validate_plan,Step,Plan,ask_ai_for_plan
-from voice_engine import Voice
 from desktop import Desktop
 
 class PlanTests(unittest.TestCase):
@@ -51,12 +50,12 @@ class PlanTests(unittest.TestCase):
     def test_url_scheme(self):
         with self.assertRaises(ValueError):
             validate_plan(Plan(steps=[Step("open_url","http://example.org")]))
-    def test_spoken_url_keeps_case_sensitive_path_and_query(self):
+    def test_typed_url_keeps_case_sensitive_path_and_query(self):
         address="https://Example.COM/CaseSensitive/SignIn?Token=AbC123&Mode=Fast"
         plan=parse_local("Джарвис, открой "+address)
         self.assertEqual(plan.steps,[Step("open_url",address)])
         validate_plan(plan)
-        d=Desktop()
+        d=Desktop(allow_control=lambda:True)
         with mock.patch("desktop.webbrowser.open",return_value=True) as browser:
             d.run(plan.steps[0])
         browser.assert_called_once_with(address)
@@ -121,28 +120,6 @@ class PlanTests(unittest.TestCase):
             validate_plan(Plan(steps=[Step("hotkey","win+r")]))
     def test_open_question(self):
         self.assertTrue(parse_local("напиши").question)
-    def test_voice_no_wake(self):
-        heard=[]
-        v=Voice(heard.append,lambda s:None,lambda:False)
-        v.accept_text("открой Chrome")
-        self.assertEqual(heard,[])
-    def test_voice_wake_fragment_and_followup(self):
-        heard=[]
-        v=Voice(heard.append,lambda s:None,lambda:False)
-        v.accept_text("джарвис")
-        v.accept_text("открой")
-        v.accept_text("хром")
-        self.assertEqual(heard,["открой хром"])
-    def test_voice_wake_single(self):
-        heard=[]
-        v=Voice(heard.append,lambda s:None,lambda:False)
-        v.accept_text("жарвис открой Chrome")
-        self.assertEqual(heard,["открой Chrome"])
-    def test_no_execute_during_tts(self):
-        heard=[]
-        v=Voice(heard.append,lambda s:None,lambda:True)
-        v.accept_text("джарвис открой Chrome")
-        self.assertEqual(heard,[])
     def test_ai_rejects_arbitrary_shell_plan(self):
         answer={"message":{"content":'{"steps":[{"kind":"run_shell","value":"rm -rf /"}]}' }}
         with mock.patch("agent_core.request_json",return_value=answer):
@@ -158,7 +135,8 @@ class PlanTests(unittest.TestCase):
         self.assertTrue(p.need_confirmation)
 
     def test_open_app_blocked_without_shortcuts(self):
-        d=Desktop()
+        # The direct launch API now requires an explicit live grant.
+        d=Desktop(allow_control=lambda: True)
         with mock.patch.object(d,"shortcuts",return_value=[]):
             with self.assertRaises(FileNotFoundError):
                 d.open_app("nonexistent-app-111")

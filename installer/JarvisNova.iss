@@ -63,12 +63,28 @@ Source: "..\dist\JarvisNova\*"; DestDir: "{app}"; Flags: recursesubdirs createal
 Source: "..\dist\updater\JarvisNovaUpdater.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\assets\APP_RELEASE_VERSION.txt"; DestDir: "{app}"; DestName: "JARVIS_NOVA_VERSION.txt"; Flags: ignoreversion
 
+[InstallDelete]
+; Remove only obsolete speech/runtime assets FROM THE INSTALLED APP DIRECTORY.
+; User models, projects, recordings or media under LOCALAPPDATA are untouched.
+Type: filesandordirs; Name: "{app}\_internal\assets\models\whisper"
+Type: filesandordirs; Name: "{app}\_internal\assets\models\vosk"
+Type: filesandordirs; Name: "{app}\_internal\assets\models\silero"
+Type: filesandordirs; Name: "{app}\_internal\whisper"
+Type: filesandordirs; Name: "{app}\_internal\vosk"
+Type: filesandordirs; Name: "{app}\_internal\sounddevice"
+Type: filesandordirs; Name: "{app}\_internal\pyttsx3"
+Type: filesandordirs; Name: "{app}\_internal\silero"
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "autostartsupervisor"; Description: "Запускать фоновый JARVIS Supervisor при входе в Windows"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Icons]
 Name: "{autoprograms}\JARVIS NOVA"; Filename: "{app}\{#AppExecutable}"
 Name: "{autodesktop}\JARVIS NOVA"; Filename: "{app}\{#AppExecutable}"; Tasks: desktopicon
+; Current-user Startup folder (visible/removable via Windows Startup Apps).
+; Auto-starts ONLY the supervised, allowlisted, local task queue, not screen input.
+Name: "{userstartup}\JARVIS NOVA Supervisor"; Filename: "{app}\{#AppExecutable}"; Parameters: "--supervisor-daemon"; Tasks: autostartsupervisor
 
 [Run]
 Filename: "{app}\{#AppExecutable}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

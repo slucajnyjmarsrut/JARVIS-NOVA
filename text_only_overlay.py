@@ -7,7 +7,7 @@ from nova_ui import GREEN, MUTED
 
 class TextOverlay(NovaOverlay):
     def __init__(self, app):
-        super().__init__(app, text_only=True)
+        super().__init__(app)
         self.status_label.configure(text="ГОТОВ К ПЕРЕПИСКЕ", fg=GREEN)
         self.last_user.configure(text="ВЫ  ·  напишите сообщение")
         controls = self.restore_button.master

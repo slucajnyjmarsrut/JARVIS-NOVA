@@ -89,29 +89,33 @@ def select_brief(topic, trends=(), *, mode="fast", audience=None, runtime=None,
 
     AI errors are handled honestly: a fully local, topic-aware fallback is
     returned rather than a blank result or a misleading "AI succeeded".
+    The deeper AI modes use a separate Gemma3 writer, never Qwen Vision.
     """
     if mode not in ("fast", "standard", "deep"):
         raise ValueError("Неизвестная скорость сценария")
     if mode=="fast":
         return quick_brief(topic,trends,audience=audience), (
             "⚡ Быстрый сценарий без ожидания ИИ. "
-            "Это авторский локальный шаблон по теме, не результат Qwen."
+            "Это авторский локальный шаблон по теме, не результат ИИ."
         )
     if ai_generator is None:
-        from viral_studio import create_local_brief
-        ai_generator=create_local_brief
+        from scenario_specialist import create_specialist_brief
+        ai_generator=create_specialist_brief
     kwargs={"audience":audience,
             "timeout_seconds":20 if mode=="standard" else 75,
             "max_tokens":850 if mode=="standard" else 1450}
-    if runtime is not None:
-        kwargs["model_runtime"]=runtime
-        kwargs["stop_runtime"]=False
+    # The legacy bundled Vision runtime is intentionally not forwarded.
+    # The screenplay specialist is a completely separate local model.
     try:
-        return ai_generator(topic,trends,**kwargs), (
-            "Сценарий подготовлен локальной Qwen."
+        brief=ai_generator(topic,trends,**kwargs)
+        # Never present a template or a vision model's text as Gemma writing.
+        if not brief.generator.startswith("локальная Gemma3:4b"):
+            raise ValueError("Ожидался сценарий отдельной Gemma3")
+        return brief, (
+            "Сценарий подготовлен отдельной локальной Gemma3:4b."
         )
     except Exception as exc:
         return quick_brief(topic,trends,audience=audience), (
-            "Qwen не завершила сценарий: "+str(exc)[:150]+
-            ". Подготовлен быстрый локальный сценарий БЕЗ нейросети."
+            "Отдельная Gemma3 не завершила сценарий: "+str(exc)[:150]+
+            ". Подготовлен быстрый локальный шаблон БЕЗ нейросети."
         )

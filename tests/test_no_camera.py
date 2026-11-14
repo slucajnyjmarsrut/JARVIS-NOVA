@@ -4,9 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from main import Jarvis
-from trimodal_service import TrimodalService
-from voice_engine import Voice
+from main import Jarvis, screen_question
 
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -29,18 +27,11 @@ class NoCameraTests(unittest.TestCase):
         self.assertNotIn('request_trimodal("camera")',ui+main)
         self.assertNotIn('label="Спросить голосом о камере',main)
 
-    def test_camera_words_never_activate_vision_source(self):
-        voice=Voice(lambda _:None,lambda _:None,lambda:False)
-        for phrase in ("джарвис посмотри в камеру",
-                       "джарвис что перед камерой",
-                       "опиши камеру","look at webcam"):
-            self.assertIsNone(voice.vision_source(phrase))
-        self.assertEqual(voice.vision_source("посмотри на экран"),"screen")
-
-    def test_service_denies_camera_before_initialization(self):
-        service=TrimodalService.__new__(TrimodalService)
-        with self.assertRaisesRegex(ValueError,"Webcam capture"):
-            service.run_once(source="camera",screen_consent=True)
+    def test_screen_question_only_recognizes_screen_not_webcam(self):
+        for phrase in ("посмотри в камеру", "что перед камерой",
+                       "look at webcam", "опиши камеру"):
+            self.assertFalse(screen_question(phrase))
+        self.assertTrue(screen_question("посмотри на экран"))
 
     def test_explicit_camera_request_is_rejected_before_app_launch(self):
         app=SimpleNamespace(_closing=False,log=Mock(),reply=Mock(),

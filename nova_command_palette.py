@@ -33,6 +33,8 @@ def entries(app, section="main"):
         return [
             ("✓", "Разрешить управление ПК", app.grant_control, None),
             ("◉", "Разрешить чтение экрана", app.grant_vision, None),
+            ("★", "Повторно включить управление и зрение",
+             app.enable_persistent_permissions, None),
             ("×", "Отозвать разрешения", app.revoke, None),
         ]
     if section == "ai":
@@ -59,10 +61,15 @@ def entries(app, section="main"):
     items=[
         ("⟳", "Автообновления · проверить версию", app.show_update_center, None),
         ("▣", "Разрешения", None, "permissions"),
-        ("◎", "Описать экран текстом", lambda: app.request_trimodal("screen"), None),
+        ("◎", "Описать экран текстом", lambda: app.request_screen_analysis("screen"), None),
         None,
         ("◈", "Режимы работы", None, "modes"),
         ("◆", "Выбрать AI", None, "ai"),
+        ("✦", "ИИ по задачам · сценарии / код / зрение / монтаж",
+         app.open_task_ai_hub, None),
+        ("▦", "Диагностика всех модулей", app.show_module_health, None),
+        ("☾", "Автономная ночная работа · Supervisor",
+         app.open_night_supervisor, None),
         ("↔", "Режим спора — вкл/выкл", app.set_debate_mode, None),
         ("⌘", "Программирование · 20 языков", app.open_code_assistant, None),
         ("🛠", "Самоисправление · только jarvis", app.open_self_development, None),
@@ -79,7 +86,9 @@ def entries(app, section="main"):
          lambda: app.open_publish_preparation(), None),
         ("▶", "FilmCraft · открыть редактор", app.open_filmcraft, None),
         None,
+        ("⌕", "Найти модели на дисках", app.scan_models_on_pc, None),
         ("✦", "Проверить локальную модель", app.check_models, None),
+        ("↓", "Скачать Qwen3-VL", lambda: app.check_models(offer_scan=False), None),
         ("♢", "Возможности", app.show_capabilities, None),
         ("↺", "Восстановить настройки", app.self_repair_now, None),
         None,

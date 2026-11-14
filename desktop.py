@@ -53,6 +53,11 @@ class Desktop:
         return any(canonicalize(p.stem)==key for p in self.shortcuts())
 
     def open_app(self, name: str):
+        # This method is also callable directly, outside run(Step).
+        # Always re-check the live scope so a revoked permission cannot
+        # be bypassed by a future UI route or extension.
+        if not self.allow_control():
+            raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
         from agent_core import UNSAFE_APPS
         key=canonicalize(name)
         if not safe_name(name) or key in UNSAFE_APPS:
@@ -66,6 +71,9 @@ class Desktop:
             key=canonicalize(name)
         builtin=self.builtin_programs()
         if key in builtin:
+            # Authorization can be revoked while shortcut lookup is running.
+            if not self.allow_control():
+                raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
             os.startfile(builtin[key])
             return "Открываю "+name
         candidates=[p for p in self.shortcuts()
@@ -74,6 +82,8 @@ class Desktop:
         if candidates:
             candidates.sort(key=lambda p:(len(p.parts),str(p)))
             # Exact verified name only. Do not execute a random fuzzy shortcut.
+            if not self.allow_control():
+                raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
             os.startfile(str(candidates[0]))
             return "Запускаю "+candidates[0].stem
         guess=propose_installed_name(spoken,self.installed_names())
@@ -91,11 +101,19 @@ class Desktop:
 
     def run(self,s:Step):
         validate_step(s)
+        # Opening a program or URL changes the desktop, just like clicking.
+        # Never bypass a saved user revocation via the early branches.
+        if s.kind in ("open_app","open_url") and not self.allow_control():
+            raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
         if s.kind=="open_app": return self.open_app(s.value)
         if s.kind=="open_url":
             if not webbrowser.open(s.value): raise RuntimeError("Браузер не открыл ссылку")
             return "Открываю сайт"
         if s.kind=="window_status":
+            # Window titles can reveal document names and private activity.
+            # Treat this as screen observation, not public system metadata.
+            if not self.allow_vision():
+                raise PermissionError("Разреши анализ экрана в JARVIS")
             try: return "Активное окно: "+self.active_window().title[:150]
             except Exception: return "Название активного окна недоступно"
         if s.kind=="screen_describe": return self.describe_screen()

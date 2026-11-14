@@ -39,7 +39,7 @@ class AutonomousScenarioTests(TestCase):
         app.reset_mock()
         TextJarvis._dispatch_chat_first(app,intent,"создай сценарий про minecraft")
         app.open_viral_studio.return_value.scenario_mode.set.assert_called_with(
-            "fast")
+            "deep")
 
     def test_quick_fallback_has_valid_storyboard_and_honest_label(self):
         brief,note,assessment,attempts=create_checked_scenario(
@@ -90,6 +90,21 @@ class AutonomousScenarioTests(TestCase):
         self.assertIn("Qwen",note)
         self.assertEqual(brief.generator,"локальная Qwen3-VL")
 
+    def test_duplicate_feedback_names_the_actual_scene_roles(self):
+        candidate=replace(quick_brief("салат"),
+                          generator="локальная Qwen3-VL")
+        shots=list(candidate.shots)
+        shots[2]=replace(shots[2],caption=shots[0].caption,
+                         film=shots[1].film)
+        verdict=assess_scenario(replace(candidate,shots=tuple(shots)))
+        self.assertFalse(verdict.passed)
+        self.assertTrue(any(
+            "Повторяются подписи кадров (hook=action)" in issue
+            for issue in verdict.issues),verdict.issues)
+        self.assertTrue(any(
+            "Повторяются инструкции для съёмки (setup=action)" in issue
+            for issue in verdict.issues),verdict.issues)
+
     def test_revision_contains_rejected_ai_shots_not_just_generic_feedback(self):
         original=replace(quick_brief("minecraft"),generator="локальная Qwen3-VL")
         repeated=replace(original,shots=(
@@ -109,6 +124,37 @@ class AutonomousScenarioTests(TestCase):
         self.assertEqual(calls[1][1]["previous_brief"],repeated)
         self.assertIn("Повторяются инструкции",calls[1][1]["quality_feedback"])
         self.assertEqual(result.shots,original.shots)
+
+    def test_workflow_reports_each_step_retries_and_honest_fallback(self):
+        updates=[]
+        original=replace(quick_brief("minecraft"),generator="локальная Qwen3-VL")
+        bad=replace(original,shots=(original.shots[0],original.shots[0],
+                                    *original.shots[2:]))
+        generated=[]
+        def model(topic,trends,**kwargs):
+            generated.append(kwargs)
+            return bad if len(generated)==1 else original
+        brief,note,review,attempts=create_checked_scenario(
+            "minecraft",mode="deep",ai_generator=model,
+            progress=updates.append)
+        self.assertTrue(review.passed)
+        self.assertEqual(attempts,2)
+        self.assertIn("План:",updates[0])
+        self.assertTrue(any("не прошёл проверку" in msg for msg in updates))
+        self.assertTrue(any("формальную проверку" in msg for msg in updates))
+        self.assertTrue(brief.generator.startswith("локальная Qwen"))
+
+        messages=[]
+        template,note,_,_ = create_checked_scenario(
+            "minecraft",mode="deep",
+            ai_generator=lambda *args,**kwargs: (_ for _ in ()).throw(
+                RuntimeError("No Qwen installed")),
+            progress=messages.append)
+        self.assertIn("БЕЗ нейросети",note)
+        self.assertTrue(any("БЕЗ нейросети" in msg for msg in messages))
+        self.assertNotIn("Qwen",template.generator)
+        with self.assertRaises(ValueError):
+            create_checked_scenario("minecraft",mode="fast",progress=3)
 
     def test_qwen_shortens_hook_timing_without_rewriting_ai_scenes(self):
         original=quick_brief("minecraft")

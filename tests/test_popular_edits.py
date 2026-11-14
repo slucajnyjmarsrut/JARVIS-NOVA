@@ -154,7 +154,7 @@ class PopularEditTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(clip.read_bytes()).hexdigest(),before)
             self.assertFalse((root/"out.mp4").exists())
 
-    def test_cancel_during_large_export_rolls_back_mp4_and_sidecar(self):
+    def test_cancel_during_large_export_keeps_partial_mp4_and_sidecar(self):
         from popular_edits import _copy_export_with_cancel
         with tempfile.TemporaryDirectory() as tmp:
             base=Path(tmp)
@@ -190,8 +190,9 @@ class PopularEditTests(unittest.TestCase):
                     render_popular_edit(
                         original,out,style="shorts",cancel=event,
                         tools=("ffmpeg","ffprobe"),executor=segment_render)
-            self.assertFalse(out.exists())
-            self.assertFalse(base.joinpath("result_EDL.json").exists())
+            self.assertTrue(out.exists(), "JARVIS must retain partial MP4")
+            self.assertTrue(base.joinpath("result_EDL.json").exists(),
+                            "JARVIS must retain even partial sidecars")
             self.assertEqual(hashlib.sha256(clip.read_bytes()).hexdigest(),before)
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),

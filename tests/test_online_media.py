@@ -81,7 +81,7 @@ class CommonsTests(unittest.TestCase):
             if "LicenseShortName" in bad_meta and isinstance(bad_meta["LicenseShortName"],str):
                 self.assertEqual(clips,[])
 
-    def test_truncated_download_never_leaves_partial_project(self):
+    def test_truncated_download_preserves_manual_review_folder(self):
         clip = FreeClip("Example",GOOD,"https://commons.wikimedia.org/wiki/File:Example",
                         "CC BY 4.0",2048,"video/webm")
         with tempfile.TemporaryDirectory() as tmp:
@@ -89,9 +89,10 @@ class CommonsTests(unittest.TestCase):
             with self.assertRaisesRegex(OnlineMediaError,"не полностью"):
                 download_free_video([clip],folder,consent=True,
                     transport=lambda *_:bytes.fromhex("1a45dfa3")+b"x"*40)
-            self.assertFalse(folder.exists())
+            self.assertTrue(folder.exists())
+            self.assertFalse(list(folder.glob("*.webm")))
 
-    def test_download_second_clip_error_rolls_back_first_and_preserves_other_content(self):
+    def test_download_second_clip_error_keeps_first_and_other_content(self):
         clip=FreeClip("Example",GOOD,"https://commons.wikimedia.org/wiki/File:Example",
                       "CC BY 4.0",2048,"video/webm")
         webm=bytes.fromhex("1a45dfa3")+b"x"*2044
@@ -108,13 +109,13 @@ class CommonsTests(unittest.TestCase):
                     return webm
                 with self.assertRaisesRegex(OSError,"interrupted"):
                     download_free_video([clip,clip],folder,consent=True,transport=fetch)
-                self.assertFalse((folder/"01.webm").exists())
+                self.assertTrue((folder/"01.webm").exists())
                 self.assertFalse((folder/"02.webm").exists())
-                self.assertEqual(folder.exists(),with_other)
+                self.assertTrue(folder.exists())
                 if with_other:
                     self.assertEqual((folder/"someone_else.txt").read_text(),"keep")
 
-    def test_cancel_during_download_rolls_back_without_credits(self):
+    def test_cancel_during_download_preserves_manual_review_folder(self):
         clip=FreeClip("Example",GOOD,"https://commons.wikimedia.org/wiki/File:Example",
                       "CC BY 4.0",2048,"video/webm")
         stop=threading.Event()
@@ -125,7 +126,8 @@ class CommonsTests(unittest.TestCase):
             folder=Path(tmp)/"download"
             with self.assertRaisesRegex(OnlineMediaError,"отменена"):
                 download_free_video([clip],folder,consent=True,transport=interrupt,cancel=stop)
-            self.assertFalse(folder.exists())
+            self.assertTrue(folder.exists())
+            self.assertFalse((folder/"CREDITS_RU.md").exists())
 
     def test_bad_response_is_bounded(self):
         with self.assertRaises(OnlineMediaError):

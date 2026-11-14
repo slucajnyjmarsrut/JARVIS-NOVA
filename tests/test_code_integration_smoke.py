@@ -21,7 +21,9 @@ class CodingIntegrationSmoke(unittest.TestCase):
         main=(base/'main.py').read_text(encoding='utf-8')
         self.assertIn('def open_code_assistant',main)
         self.assertIn('detect_coding_intent(text)',main)
-        self.assertIn('menu.add_cascade(label="Программирование",menu=code_menu)',main)
+        # The legacy audio-era menu was removed; verify the actual typed UI.
+        text_ui=(base/'text_only_ui.py').read_text(encoding='utf-8')
+        self.assertIn('app.open_code_assistant',text_ui)
         self.assertIn("'code_gui'",(base/'jarvis_nova.spec').read_text(encoding='utf-8'))
 
 

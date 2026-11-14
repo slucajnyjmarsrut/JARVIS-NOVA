@@ -52,7 +52,7 @@ class MontageOutcome:
     review: FinalReview | None
     attempts: tuple[EditAttempt, ...]
     report: Path
-    speech: str
+    summary: str
 
 
 def _score_structure(brief: Brief, duration: float) -> tuple[int, tuple[str, ...]]:
@@ -126,7 +126,7 @@ def _historical(profile: AudienceProfile | None, brief: Brief) -> dict:
             "median_ctr_pct":round(median(ctr),1) if len(ctr)>=3 else None}
 
 
-def _speech(historical: dict, attempts: tuple[EditAttempt,...], best: EditAttempt) -> str:
+def _summary(historical: dict, attempts: tuple[EditAttempt,...], best: EditAttempt) -> str:
     introduction="Я проверил итоговый ролик по техническим и монтажным признакам. "
     if historical["historical_view_band"] is not None:
         a,b=historical["historical_view_band"]
@@ -256,16 +256,16 @@ def analyze_and_recut(
     chosen=records[selected]
     best_brief,best_path,best_render,best_review=versions[selected]
     history=_historical(profile,brief)
-    speech=_speech(history,tuple(records),chosen)
+    summary=_summary(history,tuple(records),chosen)
     if errors:
-        speech+=" Повторная обработка завершилась ошибкой; сохранён проверенный предыдущий вариант."
+        summary+=" Повторная обработка завершилась ошибкой; сохранён проверенный предыдущий вариант."
     if chosen.media_checked:
         media_alerts=[x for x in chosen.issues if x in (
             audits[selected]["media"] or {}).get("warnings",[])]
         if media_alerts:
-            speech+=" По аудио и видео: "+"; ".join(media_alerts[:2])+"."
+            summary+=" По аудио и видео: "+"; ".join(media_alerts[:2])+"."
     elif audits[selected]["status"]=="unavailable":
-        speech+=" Видеопроверка кадров и звука не завершилась."
+        summary+=" Видеопроверка кадров и звука не завершилась."
     report={
         "schema":1,"created_utc":datetime.now(timezone.utc).isoformat(),
         "selected_version":chosen.number,
@@ -282,7 +282,7 @@ def analyze_and_recut(
             "Формальный индекс монтажа НЕ проверяет смысл кадров и реакцию аудитории.",
             "Исходные MP4 и предыдущие версии не перезаписываются.",
         ],
-        "spoken_feedback":speech,
+        "text_feedback":summary,
     }
     project_dir.mkdir(parents=True,exist_ok=True)
     report_path=project_dir/"POST_MONTAGE_REVIEW.json"
@@ -305,12 +305,11 @@ def analyze_and_recut(
         lines.append(f"- Версия {row.number}: {row.score}/100; {row.file}")
         lines.extend("  - "+issue for issue in row.issues)
     lines.extend("Ошибка: "+error for error in errors)
-    lines+=["","## Голосовой вывод",speech,"",
+    lines+=["","## Текстовый отчёт",summary,"",
             "Ни один результат не публикуется автоматически.",
             "Проверь подбор кадров, авторские права, музыку и субтитры перед публикацией."]
-    # Both reports form one logical result. If either exclusive create or
-    # write fails, remove ONLY files created in this attempt; user-owned
-    # reports and every exported MP4 must remain untouched.
+    # If one report fails, keep every created file, even if incomplete.
+    # Never delete a report or MP4 without the owner acting manually.
     created=[]
     try:
         with report_path.open("x",encoding="utf-8") as stream:
@@ -320,11 +319,7 @@ def analyze_and_recut(
             created.append(readme)
             stream.write("\n".join(lines)+"\n")
     except BaseException:
-        for new_file in reversed(created):
-            try:
-                new_file.unlink()
-            except OSError:
-                pass
+        # Retain unfinished reports; Explorer handles any manual cleanup.
         raise
     return MontageOutcome(best_path,best_brief,best_render,best_review,
-                          tuple(records),readme,speech)
+                          tuple(records),readme,summary)

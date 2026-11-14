@@ -1,0 +1,299 @@
+# -*- coding: utf-8 -*-
+"""Cross-component hardening: durable watcher, bounded local protocol and disk safety.
+
+All scenarios are offline; no models started, images captured, external files
+touched, shell commands or network requests issued.
+"""
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from threading import Event
+from types import SimpleNamespace
+from unittest import TestCase, mock
+import unittest
+
+from local_chat import LocalChat, LocalChatError
+from night_resource_guard import MIB, MemorySnapshot
+from night_supervisor import NightSupervisor
+from night_supervisor_service import run_forever
+from quick_video_brief import quick_brief
+from topic_video_engine import (
+    MIN_VIDEO_FREE_BYTES, TopicVideoError, render_topic_video,
+)
+
+
+class HardeningTests(TestCase):
+    def test_watchdog_recovers_from_unexpected_model_adapter_exception(self):
+        stop = Event()
+        invocations = []
+        class FlakyAdapter:
+            def background_enabled(self):
+                return True
+            def background_run_next(self, *, cancel):
+                invocations.append(True)
+                if len(invocations) == 1:
+                    raise KeyError("C:/Users/private/secret")
+                return False
+        adapter = FlakyAdapter()
+        factories = []
+        def factory(root):
+            factories.append(root)
+            return adapter
+        waits = []
+        def await_next(seconds):
+            waits.append(seconds)
+            if len(waits) == 2:
+                stop.set()
+        with mock.patch.object(stop, "wait", side_effect=await_next), \
+                mock.patch("night_supervisor_service._LOG") as logger:
+            run_forever("only-this-local-queue", supervisor_factory=factory,
+                        stop_event=stop, poll_seconds=3)
+            self.assertEqual(len(invocations), 2)
+            self.assertEqual(len(factories), 2)
+            self.assertEqual(waits, [3, 3])
+            self.assertEqual(logger.warning.call_count, 1)
+            self.assertIn("KeyError", logger.warning.call_args.args)
+            self.assertNotIn("secret", str(logger.warning.call_args))
+
+    def test_corrupt_ram_metrics_defer_approved_task(self):
+        with TemporaryDirectory() as temp:
+            calls = []
+            def invalid_memory():
+                raise TypeError("invalid vendor status")
+            def executor(job, progress):
+                calls.append(job.id)
+                raise AssertionError("Must not execute with unknown RAM")
+            s = NightSupervisor(
+                Path(temp)/"queue", executor=executor,
+                memory_probe=invalid_memory, resource_release=lambda: 0)
+            s.enqueue("scenario", "Make Minecraft video",
+                      approved=True, allow_new_files=True)
+            self.assertFalse(s.background_run_next())
+            self.assertEqual(calls, [])
+            self.assertEqual(s.list_jobs()[0].status, "waiting_memory")
+
+    def test_unload_import_failure_cannot_kill_queue(self):
+        from dataclasses import asdict, replace
+        from quick_video_brief import quick_brief
+        with TemporaryDirectory() as temp:
+            def scenario(job, progress):
+                return {"brief":asdict(replace(
+                    quick_brief("minecraft"),generator="локальная Gemma3:4b")),
+                    "model":"gemma3:4b"}
+            def unload():
+                raise ImportError("Ollama local registry temporarily unavailable")
+            s = NightSupervisor(
+                Path(temp)/"queue", executor=scenario,
+                memory_probe=lambda:MemorySnapshot(4000*MIB,8000*MIB),
+                resource_release=unload)
+            s.enqueue("scenario", "Make Minecraft video",
+                      approved=True, allow_new_files=True)
+            self.assertTrue(s.background_run_next())
+            self.assertEqual(s.list_jobs()[0].status, "completed")
+            self.assertIn("memory_release_unavailable",
+                          [entry[3] for entry in s.journal()])
+
+    def test_mp4_never_starts_when_output_volume_lacks_space(self):
+        with TemporaryDirectory() as temp:
+            root=Path(temp)
+            source=quick_brief("Minecraft")
+            for amount in (None, -1, True, MIN_VIDEO_FREE_BYTES-1):
+                with self.subTest(free=amount):
+                    calls=[]
+                    def executor(*args, **kwargs):
+                        calls.append(args)
+                        raise AssertionError("FFmpeg must not execute")
+                    with self.assertRaises(TopicVideoError):
+                        render_topic_video(
+                            source, root,
+                            tools=("ffmpeg","ffprobe"),
+                            executor=executor,
+                            disk_probe=lambda path: amount)
+                    self.assertEqual(calls, [])
+                    self.assertEqual(list(root.iterdir()), [])
+
+    def test_mp4_disk_probe_error_fails_closed_without_path_leak(self):
+        with TemporaryDirectory() as temp:
+            path=Path(temp)
+            def failed_probe(_):
+                raise OSError("D:/Private/username/sensitive")
+            with self.assertRaises(TopicVideoError) as caught:
+                render_topic_video(
+                    quick_brief("Minecraft"),path,tools=("ffmpeg","ffprobe"),
+                    disk_probe=failed_probe)
+            self.assertNotIn("sensitive", str(caught.exception))
+            self.assertEqual(list(path.iterdir()), [])
+
+    def test_revoked_pc_access_blocks_opening_apps_and_urls(self):
+        from desktop import Desktop
+        from agent_core import Step
+        from unittest.mock import Mock, patch
+        desk=Desktop(allow_control=lambda:False)
+        desk.open_app=Mock()
+        with patch("desktop.webbrowser.open") as browser:
+            for step in (Step("open_app","Notepad"),
+                         Step("open_url","https://example.org")):
+                with self.subTest(kind=step.kind), self.assertRaises(PermissionError):
+                    desk.run(step)
+        desk.open_app.assert_not_called()
+        browser.assert_not_called()
+        desk.allow_control=lambda:True
+        self.assertEqual(desk.run(Step("open_app","Notepad")),desk.open_app.return_value)
+        desk.open_app.assert_called_once_with("Notepad")
+
+    def test_direct_app_launch_never_bypasses_revoked_control(self):
+        from desktop import Desktop
+        desk = Desktop(allow_control=lambda: False)
+        # An internal caller may invoke open_app directly, not via run().
+        with mock.patch("desktop.os.startfile", create=True) as start:
+            with self.assertRaises(PermissionError):
+                desk.open_app("Notepad")
+            start.assert_not_called()
+            desk.allow_control = lambda: True
+            self.assertEqual(desk.open_app("Notepad"), "Открываю Notepad")
+            start.assert_called_once_with("notepad.exe")
+
+    def test_permission_revoked_during_shortcut_lookup_cannot_launch(self):
+        from desktop import Desktop
+        from pathlib import Path
+        access = {"allowed": True}
+        desk = Desktop(allow_control=lambda: access["allowed"])
+        def find_shortcuts():
+            access["allowed"] = False
+            return [Path("C:/Start/Steam.lnk")]
+        with mock.patch.object(desk, "shortcuts", side_effect=find_shortcuts), \
+             mock.patch("desktop.os.startfile", create=True) as launch:
+            with self.assertRaises(PermissionError):
+                desk.open_app("Steam")
+            launch.assert_not_called()
+
+    def test_permission_revoked_between_validation_and_builtin_launch(self):
+        from desktop import Desktop
+        states = iter([True, False])
+        desk = Desktop(allow_control=lambda: next(states))
+        with mock.patch("desktop.os.startfile", create=True) as launch:
+            with self.assertRaises(PermissionError):
+                desk.open_app("Notepad")
+            launch.assert_not_called()
+
+    def test_active_window_title_requires_screen_observation_permission(self):
+        from desktop import Desktop
+        from agent_core import Step
+        desk = Desktop(allow_control=lambda: True, allow_vision=lambda: False)
+        desk.active_window = mock.Mock(return_value=SimpleNamespace(
+            title="Private document name"))
+        with self.assertRaises(PermissionError):
+            desk.run(Step("window_status"))
+        desk.active_window.assert_not_called()
+        # A new explicit screen grant allows the one-shot status request.
+        desk.allow_vision = lambda: True
+        self.assertEqual(desk.run(Step("window_status")),
+                         "Активное окно: Private document name")
+        desk.active_window.assert_called_once_with()
+
+    def test_coder_large_project_context_includes_last_modules(self):
+        from code_project_engine import _context
+        sources={f"mod_{i:03}.py": "long-source-" * 300
+                 for i in range(72)}
+        result=_context(sources,max_chars=4900)
+        self.assertLessEqual(len(result),4900)
+        self.assertIn("FILE mod_000.py",result)
+        self.assertIn("FILE mod_071.py",result)
+        self.assertEqual(result.count("END FILE"),72)
+
+    def test_coder_small_project_preserves_actual_code(self):
+        from code_project_engine import _context
+        result=_context({"src/a.py":"def add(a,b): return a+b",
+                         "src/b.py":"from src.a import add"})
+        self.assertIn("def add(a,b): return a+b",result)
+        self.assertIn("from src.a import add",result)
+
+    def test_coder_long_prompt_still_includes_last_module(self):
+        from code_project_engine import _prompt_with_context
+        intro="Пользовательская задача: " + "описание " * 380
+        sources={f"app/module_{i:03}.py":"def function(): pass\\n"*400
+                 for i in range(70)}
+        prompt=_prompt_with_context(intro,sources)
+        self.assertTrue(prompt.startswith(intro))
+        self.assertLessEqual(len(prompt),20000)
+        self.assertIn("FILE app/module_069.py",prompt)
+        self.assertEqual(prompt.count("END FILE"),70)
+
+    def test_coder_context_rejects_impossible_budget(self):
+        from code_project_engine import _context
+        from code_workspace import WorkspaceError
+        for bad in (0, -1, True, 20001, 40.5, None):
+            with self.subTest(value=bad), self.assertRaises(WorkspaceError):
+                _context({"a.py":"x"},max_chars=bad)
+
+    def test_local_chat_rejects_bad_url_ports_as_controlled_error(self):
+        for endpoint in (
+            "http://127.0.0.1:invalid",
+            "http://127.0.0.1:99999",
+            "http://127.0.0.1:-22",
+            "http://127.0.0.1:11434@evil.example",
+            "http://[::1:11434",
+        ):
+            with self.subTest(url=endpoint), self.assertRaises(LocalChatError):
+                LocalChat._request(endpoint, {"messages":[]})
+
+    def test_all_model_routes_block_malformed_or_credentialed_urls(self):
+        from task_ai_registry import _local_endpoint, SpecialistUnavailable
+        from task_ai_registry import get_specialist
+        from scenario_specialist import request_local_writer
+        from montage_specialist import _request as request_montage
+        cases=(
+            "http://127.0.0.1:bad/api/generate",
+            "http://127.0.0.1:99999/api/generate",
+            "http://@127.0.0.1:11434/api/generate",
+            "http://user@127.0.0.1:11434/api/generate",
+            "http://127.0.0.1:11434@evil.example/api/generate",
+            "https://127.0.0.1:11434/api/generate",
+        )
+        writer={"model":get_specialist("scenario").model}
+        montage={"model":get_specialist("montage").model}
+        with mock.patch("urllib.request.build_opener") as http:
+            for url in cases:
+                with self.subTest(url=url):
+                    with self.assertRaises(SpecialistUnavailable):
+                        _local_endpoint(url)
+                    with self.assertRaises(SpecialistUnavailable):
+                        request_local_writer(url,writer)
+                    with self.assertRaises(SpecialistUnavailable):
+                        request_montage(url,montage)
+        http.assert_not_called()
+
+    def test_writer_timeout_rejects_invalid_values_without_network(self):
+        from task_ai_registry import get_specialist, SpecialistUnavailable
+        from scenario_specialist import request_local_writer
+        payload={"model":get_specialist("scenario").model}
+        with mock.patch("urllib.request.build_opener") as http:
+            for value in (True, 0, -1, 91, "80"):
+                with self.subTest(value=value), self.assertRaises(SpecialistUnavailable):
+                    request_local_writer("http://127.0.0.1:11434/api/generate",
+                                         payload,timeout=value)
+        http.assert_not_called()
+
+    def test_malformed_local_model_json_is_never_a_success(self):
+        class Reply:
+            def __init__(self, payload):
+                self.payload=payload
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return None
+            def read(self, amount):
+                return self.payload
+        for body in (b"[]", b"null", b'{"message":null}',
+                     b'{"message":[]}', b'{"message":"bad"}'):
+            with self.subTest(body=body):
+                opener=mock.Mock()
+                opener.open.return_value=Reply(body)
+                with mock.patch("local_chat.urllib.request.build_opener",
+                                return_value=opener):
+                    with self.assertRaises(LocalChatError):
+                        LocalChat._request(
+                            "http://127.0.0.1:11434", {"messages":[]})
+
+
+if __name__ == "__main__":
+    unittest.main()

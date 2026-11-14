@@ -2,7 +2,7 @@ name: JARVIS NOVA 0.5.18 learning safety candidate
 # Explicit CI rerun: 2026-10-18 source and model integration verification
 on:
   push:
-    branches: [jarvis, fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, fix/video-studio-quality-regressions-2026-10, feat/post-montage-review-recut-2026-10, feat/visual-audio-quality-audit-2026-10, fix/full-system-regressions-2026-10, feat/safe-self-repair-windows-triple-2026-10, feat/verified-unattended-self-update-2026-10, fix/auto-update-endtoend-bughunt-2026-10, fix/media-probe-silent-video-2026-10, fix/audience-review-file-safety-2026-10, fix/audience-profile-validation-recovery-2026-10, fix/url-command-and-recovery-2026-10, fix/learning-data-preservation-2026-10]
+    branches: [jarvis, fix/qwen-scenario-stability-2026-11, fix/voice-ui-2026-10, dev/voice-stability-2026-10, feat/nova-futuristic-ui-2026-10, feat/nova-hud-telemetry-2026-10, feat/overlay-auto-voice-2026-10, feat/overlay-voice-polish-2026-10, feat/overlay-voice-controls-2026-10, feat/mic-auto-recovery-2026-10, feat/adaptive-whisper-replies-2026-10, feat/natural-voice-2026-10, feat/remove-webcam-2026-10, fix/quiet-russian-voice-2026-10, feat/left-nova-fast-voice-2026-10, fix/russian-asr-quality-2026-10, fix/dark-chrome-fast-replies-2026-10, feat/russian-whisper-small-2026-10, fix/russian-wake-recovery-2026-10, fix/russian-short-phrase-asr-2026-10, fix/russian-lexical-retry-2026-10, feat/studio-online-assets-fast-ci-2026-10, feat/autonomous-video-quality-triple-ci-2026-10, fix/video-studio-quality-regressions-2026-10, feat/post-montage-review-recut-2026-10, feat/visual-audio-quality-audit-2026-10, fix/full-system-regressions-2026-10, feat/safe-self-repair-windows-triple-2026-10, feat/verified-unattended-self-update-2026-10, fix/auto-update-endtoend-bughunt-2026-10, fix/media-probe-silent-video-2026-10, fix/audience-review-file-safety-2026-10, fix/audience-profile-validation-recovery-2026-10, fix/url-command-and-recovery-2026-10, fix/learning-data-preservation-2026-10]
     paths:
       - '**/*.py'
       - '**/*.ps1'
@@ -15,10 +15,16 @@ on:
       - 'local_chat.py'
       - 'scripts/verify_text_vision_e2e.py'
       - 'scripts/verify_local_scenario_e2e.py'
+      - 'scripts/verify_real_qwen_intent_e2e.py'
       - 'scripts/verify_real_qwen_coding_e2e.py'
       - 'tests/test_real_qwen_coding_contract.py'
       - 'code_agent.py'
       - 'video_scenario_autonomy.py'
+      - 'task_ai_registry.py'
+      - 'scenario_specialist.py'
+      - 'montage_specialist.py'
+      - 'task_ai_hub.py'
+      - 'tests/test_task_ai_specialists.py'
       - 'quick_video_brief.py'
       - 'scripts/run_text_only_tests.py'
       - 'scripts/verify_text_package_size.py'
@@ -207,6 +213,8 @@ jobs:
         run: python -m unittest discover -s tests -p test_text_only_bundle.py -v
       - name: Gate online-license security, offline documentation, fast local routes
         run: python -m unittest discover -s tests -p 'test_online_media.py' -v && python -m unittest discover -s tests -p 'test_editing_knowledge.py' -v && python -m unittest discover -s tests -p 'test_faster_app_routes.py' -v
+      - name: Source audit of all modules
+        run: python scripts/audit_module_health.py
       - name: Three production TEXT-ONLY unit suite passes
         shell: pwsh
         timeout-minutes: 45
@@ -231,18 +239,25 @@ jobs:
             python scripts/verify_text_vision_e2e.py
             if ($LASTEXITCODE -ne 0) { throw "Qwen Vision failed pass $pass" }
           }
-      - name: REAL autonomous Qwen screenplay and shooting-plan acceptance
+      - name: REAL local Qwen natural-command classification acceptance
         shell: pwsh
-        timeout-minutes: 25
+        timeout-minutes: 12
         run: |
-          python scripts/verify_local_scenario_e2e.py
-          if ($LASTEXITCODE -ne 0) { throw 'Real local Qwen scenario could not pass acceptance' }
-      - name: REAL Qwen-generated Python project static acceptance
+          python scripts/verify_real_qwen_intent_e2e.py
+          if ($LASTEXITCODE -ne 0) { throw 'Real Qwen intent routing failed; do not publish a release' }
+      # These models are NOT the bundled Vision Qwen and are NOT downloaded
+      # by this full-offline installer workflow. Never count Qwen-VL prompts
+      # as proof of dedicated Gemma or Qwen Coder generation.
+      - name: Verify separated Gemma screenplay routing without extra weights
         shell: pwsh
-        timeout-minutes: 25
         run: |
-          python scripts/verify_real_qwen_coding_e2e.py
-          if ($LASTEXITCODE -ne 0) { throw 'Real Qwen could not write a valid small Python project' }
+          python -m unittest discover -s tests -p test_task_ai_specialists.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Separate specialist contract tests failed' }
+      - name: Verify dedicated code model cannot fall back to Vision
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -p test_local_coder_models.py -v
+          if ($LASTEXITCODE -ne 0) { throw 'Dedicated Coder routing tests failed' }
       - name: Generate Windows icon (original image, not an external dependency)
         run: python scripts/generate_icon.py
       - name: Generate original dark NOVA installer wizard graphics
@@ -281,6 +296,12 @@ jobs:
       - name: Build fully bundled onedir Windows application
         timeout-minutes: 60
         run: python -m PyInstaller --clean --noconfirm jarvis_nova.spec
+      - name: Verify packaged standalone Supervisor without GUI or weights
+        shell: pwsh
+        run: |
+          $exe=(Resolve-Path 'dist/JarvisNova/JarvisNova.exe').Path
+          $run=Start-Process $exe -ArgumentList '--supervisor-self-test' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw 'Packaged headless Supervisor failed' }
       - name: Measure distribution size and reject unexpected voice files
         shell: pwsh
         run: |
