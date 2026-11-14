@@ -10,6 +10,14 @@ import json
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
+# Do not allow a removed audio/voice engine to return through a different
+# production module. Check AST imports only; no module code is executed.
+FORBIDDEN_VOICE_IMPORTS=frozenset({
+    "asr_quality", "audio_io", "microphone", "silero_engine", "speaker",
+    "speech_capture", "speech_output", "trimodal_pipeline",
+    "trimodal_service", "voice_engine", "whisper_engine", "whisper_mode",
+    "vosk", "sounddevice", "pyttsx3", "whisper",
+})
 FAMILIES={
     "models":("task_ai_registry.py","task_ai_hub.py","local_chat.py","scenario_specialist.py","module_health.py","module_health_ui.py"),
     "scenarios":("video_scenario_autonomy.py","quick_video_brief.py"),
@@ -30,7 +38,20 @@ def audit_sources(root=ROOT):
     issues=[]
     for p in paths:
         try:
-            ast.parse(p.read_text(encoding="utf-8"),filename=str(p))
+            tree=ast.parse(p.read_text(encoding="utf-8"),filename=str(p))
+            for node in ast.walk(tree):
+                imports=()
+                if isinstance(node,ast.Import):
+                    imports=(alias.name.split(".")[0] for alias in node.names)
+                elif isinstance(node,ast.ImportFrom) and node.module:
+                    imports=(node.module.split(".")[0],)
+                for module in imports:
+                    if module in FORBIDDEN_VOICE_IMPORTS:
+                        issues.append({
+                            "path":str(p.relative_to(root)),
+                            "error":"RemovedVoiceImport",
+                            "line":node.lineno,
+                        })
         except (OSError,UnicodeError,ValueError,SyntaxError) as exc:
             issues.append({"path":str(p.relative_to(root)),
                            "error":type(exc).__name__,
