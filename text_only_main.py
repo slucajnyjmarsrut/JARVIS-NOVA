@@ -60,6 +60,8 @@ class TextJarvis(BaseJarvis):
         self.executing = False
         self.control_allowed = False
         self.vision_allowed = False
+        # Revocation generation invalidates in-flight one-shot screen tasks.
+        self._vision_revocation_epoch = 0
         self.engine = "bundled"
         self._debate_mode = False
         # The legacy mode dispatcher updates this variable even when the
@@ -813,22 +815,49 @@ class TextJarvis(BaseJarvis):
             "Изображение не отправляется в облако.", parent=self):
             self.status.set("Снимок экрана отменён")
             return
+        # An explicit "allow once" is valid for this request only. A later
+        # global revoke invalidates BOTH saved grants and one-shot requests.
+        persistent_grant = bool(self.vision_allowed)
+        generation = getattr(self, "_vision_revocation_epoch", 0)
+        if type(generation) is not int:
+            generation = 0
+
+        def request_still_authorized():
+            return (not self._shutdown.is_set() and
+                    getattr(self, "_vision_revocation_epoch", 0) == generation and
+                    (not persistent_grant or bool(self.vision_allowed)))
+
         self.executing = True
         self.status.set("Анализирую экран локально…")
         def work():
             try:
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
                 from screen_capture import ScreenFrameSource
                 from vision_engine import LocalOllamaVision, VisionConfig
                 endpoint = self.runtime.start()
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
                 model = LocalOllamaVision(VisionConfig(endpoint=endpoint))
                 model.initialize()
-                answer = model.describe(question, ScreenFrameSource().capture_jpeg())
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
+                jpeg = ScreenFrameSource().capture_jpeg()
+                # Do not send a captured frame to a model after revocation.
+                if not request_still_authorized():
+                    raise PermissionError("Разрешение на экран отозвано.")
+                answer = model.describe(question, jpeg)
                 if not self._shutdown.is_set():
                     self.q.put(("action_result", (True, answer, (), "normal")))
-            except Exception as exc:
+            except PermissionError:
                 if not self._shutdown.is_set():
                     self.q.put(("action_result", (
-                        False, "Не могу проанализировать экран: "+str(exc)[:180], (), "normal")))
+                        False, "Анализ экрана отменён: разрешение отозвано.", (), "normal")))
+            except Exception:
+                # Exceptions may contain local profile paths or file names.
+                if not self._shutdown.is_set():
+                    self.q.put(("action_result", (
+                        False, "Не удалось проанализировать экран. Проверь локальную модель и доступ к экрану.", (), "normal")))
         threading.Thread(target=work, daemon=True, name="jarvis-text-vision").start()
 
     def reply(self, message):
