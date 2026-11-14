@@ -27,7 +27,7 @@ def _home():
 
 
 class ViralStudioWindow(tk.Toplevel):
-    def __init__(self, parent, speaker=None):
+    def __init__(self, parent):
         super().__init__(parent)
         from studio_theme import (
             apply_video_theme, BG, CARD, ALT, EDGE, CYAN, TEXT, MUTED,
@@ -45,7 +45,6 @@ class ViralStudioWindow(tk.Toplevel):
         self.geometry(f"{width}x{height}")
         self.minsize(min(650,screen_w),min(520,screen_h))
         self.parent=parent
-        self.speaker=speaker
         self.brief=None
         self.project=None
         self.profile=None
@@ -496,8 +495,7 @@ class ViralStudioWindow(tk.Toplevel):
         if opts is None or not opts.semantic:
             return None
         parent=getattr(self,'parent',None)
-        runtime=(getattr(parent,'runtime',None) or
-                 getattr(getattr(parent,'trimodal',None),'runtime',None))
+        runtime=getattr(parent,'runtime',None)
         if runtime is None:return None
         try:
             from vision_engine import LocalOllamaVision, VisionConfig
@@ -568,10 +566,6 @@ class ViralStudioWindow(tk.Toplevel):
             finally:
                 self._notify(lambda:self._busy(False))
         threading.Thread(target=task,daemon=True,name='jarvis-viral-studio').start()
-
-    def _speak(self, text):
-        if self.speaker and not self.parent._closing:
-            threading.Thread(target=self.speaker.say,args=(text[:500],),daemon=True).start()
 
     def import_audience(self):
         path=filedialog.askopenfilename(parent=self,title='Выбери экспорт статистики своего канала',
@@ -891,7 +885,6 @@ class ViralStudioWindow(tk.Toplevel):
                     'Проверь сюжет, права, музыку, качество и соответствие теме перед публикацией.'
                 )
                 self.status.set('Автомонтаж и повторная оценка закончены. Публикации нет.')
-                self._speak(outcome.speech)
             self._notify(done)
         self._spawn(work)
 
@@ -964,7 +957,6 @@ class ViralStudioWindow(tk.Toplevel):
                            'Оценка и повторный монтаж: '+str(report)+'\n'
                            'Проверено вариантов: '+str(len(outcome.attempts))+'\n\n'
                            'Проверь результат перед публикацией. JARVIS ничего не публикует автоматически.')
-                self._speak(outcome.speech)
             self._notify(done)
         self._spawn(work)
 
