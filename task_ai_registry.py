@@ -63,10 +63,16 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _local_endpoint(endpoint: str) -> str:
-    parts = urlsplit(endpoint)
+    # Invalid port syntax should never crash the model manager or UI.
+    try:
+        parts = urlsplit(endpoint)
+        port = parts.port
+    except (ValueError, TypeError) as exc:
+        raise SpecialistUnavailable("Некорректный адрес локального ИИ.") from exc
     if (parts.scheme != "http" or parts.hostname != "127.0.0.1" or
-            not 1 <= (parts.port or 0) <= 65535 or
-            parts.path or parts.query or parts.fragment or parts.username):
+            not 1 <= (port or 0) <= 65535 or
+            parts.path or parts.query or parts.fragment or
+            parts.username is not None or parts.password is not None):
         raise SpecialistUnavailable("Для ИИ разрешена только 127.0.0.1.")
     return endpoint
 

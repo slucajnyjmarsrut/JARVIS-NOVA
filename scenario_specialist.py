@@ -33,11 +33,18 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def request_local_writer(url: str, payload: dict, *, timeout=MODEL_TIMEOUT) -> dict:
-    parts=urlsplit(url)
+    try:
+        parts=urlsplit(url)
+        port=parts.port
+    except (ValueError,TypeError) as exc:
+        raise SpecialistUnavailable("Некорректный адрес ИИ-сценариста.") from exc
     if (parts.scheme!="http" or parts.hostname!="127.0.0.1" or
-            parts.port!=11434 or parts.path!="/api/generate" or
-            parts.query or parts.fragment or parts.username):
+            port!=11434 or parts.path!="/api/generate" or
+            parts.query or parts.fragment or
+            parts.username is not None or parts.password is not None):
         raise SpecialistUnavailable("ИИ-сценарист работает только локально.")
+    if type(timeout) not in (int,float) or not 1 <= timeout <= MODEL_TIMEOUT:
+        raise SpecialistUnavailable("Недопустимое ожидание ИИ-сценариста.")
     if not isinstance(payload,dict) or payload.get("model")!=get_specialist("scenario").model:
         raise SpecialistUnavailable("Для сценариев разрешён только отдельный ИИ.")
     opener=urllib.request.build_opener(

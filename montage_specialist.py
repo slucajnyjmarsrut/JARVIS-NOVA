@@ -56,12 +56,17 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _request(url,payload):
-    parts=urlsplit(url)
+    try:
+        parts=urlsplit(url)
+        port=parts.port
+    except (ValueError,TypeError) as exc:
+        raise SpecialistUnavailable("Некорректный адрес монтажного ИИ.") from exc
     if (parts.scheme!="http" or parts.hostname!="127.0.0.1"
-            or parts.port!=11434 or parts.path!="/api/generate"
-            or parts.query or parts.fragment or parts.username):
+            or port!=11434 or parts.path!="/api/generate"
+            or parts.query or parts.fragment or
+            parts.username is not None or parts.password is not None):
         raise SpecialistUnavailable("Монтажный ИИ принимает только локальные запросы.")
-    if payload.get("model")!=get_specialist("montage").model:
+    if not isinstance(payload,dict) or payload.get("model")!=get_specialist("montage").model:
         raise SpecialistUnavailable("Неверная модель для монтажа.")
     opener=urllib.request.build_opener(
         urllib.request.ProxyHandler({}),_NoRedirect())
