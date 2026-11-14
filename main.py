@@ -785,7 +785,7 @@ class Jarvis(tk.Tk):
             self.reply("Веб-камера полностью удалена из JARVIS. Можно анализировать только экран.")
             return
         if screen_question(text):
-            self.request_trimodal("screen")
+            self.request_screen_analysis("screen")
             return
         if text.casefold().strip() in {"стоп","отмена","прекрати"}:
             self.status.set("Остановлено")
@@ -836,7 +836,7 @@ class Jarvis(tk.Tk):
             if len(plan.steps)>1:
                 self.reply("Анализ экрана выполняется отдельно от остальных действий.")
                 return
-            self.request_trimodal("screen")
+            self.request_screen_analysis("screen")
             return
         if any(s.kind not in {"screen_describe","window_status","open_app","open_url"} for s in plan.steps):
             if not self.control_allowed:
