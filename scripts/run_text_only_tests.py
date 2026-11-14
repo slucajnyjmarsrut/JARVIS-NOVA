@@ -104,7 +104,8 @@ TESTS=(
        "test_startup_permissions.py",
        "test_vision_chat_protocol.py",
        "test_work_modes.py",
-       "test_text_only_bundle.py",)
+       "test_text_only_bundle.py",
+       "test_no_voice_contract.py",)
 
 def run_suites(*, runner=None, suites=TESTS):
     """Return all failed filenames; run no generated/model-provided programs."""
