@@ -10,7 +10,7 @@ import unittest
 from quick_video_brief import quick_brief
 from night_supervisor import NightSupervisor
 from topic_video_engine import (
-    TopicVideoError, _theme, _draw_card, _music, render_topic_video,
+    TopicVideoError, _theme, _draw_card, _music, _wrapped, _font, render_topic_video,
 )
 from viral_studio import ViralStudioError, ffmpeg_tools
 
@@ -30,6 +30,27 @@ class TopicOnlyVideoTests(TestCase):
         self.assertEqual(_theme("Марс"),"space")
         self.assertEqual(_theme("искусственный интеллект"),"tech")
         self.assertEqual(_theme("абстрактный сюжет"),"abstract")
+
+    def test_very_long_russian_captions_fit_the_frame_in_pixels(self):
+        from PIL import Image, ImageDraw
+        image = Image.new("RGB", (240, 426), "white")
+        draw = ImageDraw.Draw(image)
+        font = _font(19)
+        for text in (
+            "СУПЕРДЛИННОЕЗАГЛАВИЕ" * 12,
+            "Нейросетевая система создаёт полноценное видео " * 20,
+            "https://very-long-example.com/special/not-a-shell-command" * 5,
+        ):
+            with self.subTest(text=text[:30]):
+                output = _wrapped(draw, text, font, 150, max_lines=2)
+                lines = output.splitlines()
+                self.assertGreaterEqual(len(lines), 1)
+                self.assertLessEqual(len(lines), 2)
+                for line in lines:
+                    x0, _y0, x1, _y1 = draw.textbbox((0, 0), line, font=font)
+                    self.assertLessEqual(x1 - x0, 150)
+                self.assertTrue(output.endswith("…"))
+        self.assertEqual(_wrapped(draw, "Привет", font, -1), "")
 
     def test_original_cards_and_audio_exist_without_source_files(self):
         with TemporaryDirectory() as tmp:
