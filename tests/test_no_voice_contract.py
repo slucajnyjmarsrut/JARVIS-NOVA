@@ -61,6 +61,17 @@ class NoVoiceContractTests(unittest.TestCase):
         for marker in ("self.speaker", "_speak(", "speaker=None"):
             self.assertNotIn(marker,studio)
 
+    def test_multitrack_cannot_add_voiceover_anymore(self):
+        from dataclasses import fields
+        from multitrack_composer import MultitrackProject
+        names={field.name for field in fields(MultitrackProject)}
+        self.assertNotIn("voiceover",names)
+        self.assertNotIn("duck_music",names)
+        ui=(ROOT/"multitrack_ui.py").read_text(encoding="utf-8")
+        self.assertNotIn("ОЗВУЧКА",ui)
+        self.assertNotIn("duck_music",ui)
+        self.assertNotIn("self.voice",ui)
+
     def test_video_soundtrack_and_aac_still_supported(self):
         self.assertTrue((ROOT/"audio_highlight_signal.py").is_file())
         self.assertTrue((ROOT/"video_audio_audit.py").is_file())
