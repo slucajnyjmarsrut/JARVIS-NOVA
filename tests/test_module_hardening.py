@@ -152,6 +152,29 @@ class HardeningTests(TestCase):
             self.assertEqual(desk.open_app("Notepad"), "Открываю Notepad")
             start.assert_called_once_with("notepad.exe")
 
+    def test_permission_revoked_during_shortcut_lookup_cannot_launch(self):
+        from desktop import Desktop
+        from pathlib import Path
+        access = {"allowed": True}
+        desk = Desktop(allow_control=lambda: access["allowed"])
+        def find_shortcuts():
+            access["allowed"] = False
+            return [Path("C:/Start/Steam.lnk")]
+        with mock.patch.object(desk, "shortcuts", side_effect=find_shortcuts), \
+             mock.patch("desktop.os.startfile", create=True) as launch:
+            with self.assertRaises(PermissionError):
+                desk.open_app("Steam")
+            launch.assert_not_called()
+
+    def test_permission_revoked_between_validation_and_builtin_launch(self):
+        from desktop import Desktop
+        states = iter([True, False])
+        desk = Desktop(allow_control=lambda: next(states))
+        with mock.patch("desktop.os.startfile", create=True) as launch:
+            with self.assertRaises(PermissionError):
+                desk.open_app("Notepad")
+            launch.assert_not_called()
+
     def test_active_window_title_requires_screen_observation_permission(self):
         from desktop import Desktop
         from agent_core import Step
