@@ -135,7 +135,8 @@ class PlanTests(unittest.TestCase):
         self.assertTrue(p.need_confirmation)
 
     def test_open_app_blocked_without_shortcuts(self):
-        d=Desktop()
+        # The direct launch API now requires an explicit live grant.
+        d=Desktop(allow_control=lambda: True)
         with mock.patch.object(d,"shortcuts",return_value=[]):
             with self.assertRaises(FileNotFoundError):
                 d.open_app("nonexistent-app-111")
