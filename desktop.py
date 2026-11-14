@@ -53,6 +53,11 @@ class Desktop:
         return any(canonicalize(p.stem)==key for p in self.shortcuts())
 
     def open_app(self, name: str):
+        # This method is also callable directly, outside run(Step).
+        # Always re-check the live scope so a revoked permission cannot
+        # be bypassed by a future UI route or extension.
+        if not self.allow_control():
+            raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
         from agent_core import UNSAFE_APPS
         key=canonicalize(name)
         if not safe_name(name) or key in UNSAFE_APPS:
@@ -100,6 +105,10 @@ class Desktop:
             if not webbrowser.open(s.value): raise RuntimeError("Браузер не открыл ссылку")
             return "Открываю сайт"
         if s.kind=="window_status":
+            # Window titles can reveal document names and private activity.
+            # Treat this as screen observation, not public system metadata.
+            if not self.allow_vision():
+                raise PermissionError("Разреши анализ экрана в JARVIS")
             try: return "Активное окно: "+self.active_window().title[:150]
             except Exception: return "Название активного окна недоступно"
         if s.kind=="screen_describe": return self.describe_screen()
