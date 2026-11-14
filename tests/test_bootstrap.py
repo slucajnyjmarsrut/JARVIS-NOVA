@@ -40,30 +40,21 @@ class SmokeTests(unittest.TestCase):
                     (root/'models'/'base.pt').write_bytes(b'old-whisper')
                     self.assertEqual(bootstrap.smoke_test(),7)
 
-    def test_voice_starts_before_loading_silero(self):
-        events=[]
-        fake=type('JarvisStub', (), {})()
-        fake._shutdown=threading.Event()
-        fake.voice=type('VoiceStub', (), {'start': lambda self:events.append('voice'),
-                    'stop':lambda self: events.append('stop')})()
-        fake.speaker=type('SpeakerStub', (), {'load':lambda self:events.append('silero') or 'ready'})()
-        fake.voice_enabled=False
-        fake.q=type('QueueStub', (), {'put':lambda self,x:None})()
-        Jarvis.init_voice(fake)
-        self.assertEqual(events,['voice','silero'])
-        self.assertTrue(fake.voice_enabled)
+    def test_old_agent_cannot_boot_speech(self):
+        from main import Jarvis
+        import inspect
+        source=inspect.getsource(Jarvis)
+        for forbidden in ("init_voice", "toggle_voice",
+                          "self.speaker", "self.voice", "self.trimodal"):
+            self.assertNotIn(forbidden,source)
 
-    def test_shutdown_during_voice_boot(self):
-        events=[]
-        fake=type('JarvisStub', (), {})()
-        fake._shutdown=threading.Event()
-        def start():
-            events.append('voice')
-            fake._shutdown.set()
-        fake.voice=type('VoiceStub', (), {'start':lambda self:start(),
-                    'stop':lambda self:events.append('stop')})()
-        fake.speaker=Mock()
-        fake.q=Mock()
-        Jarvis.init_voice(fake)
-        self.assertEqual(events,['voice','stop'])
-        fake.speaker.load.assert_not_called()
+    def test_current_entrypoint_uses_text_only_application(self):
+        import inspect
+        self.assertIn("from text_only_main import TextJarvis",
+                      inspect.getsource(bootstrap.main))
+        self.assertIn("TextJarvis().mainloop()",
+                      inspect.getsource(bootstrap.main))
+
+
+if __name__ == '__main__':
+    unittest.main()
