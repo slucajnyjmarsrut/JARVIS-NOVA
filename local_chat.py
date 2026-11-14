@@ -45,9 +45,11 @@ def explain_local_model_failure(error: Exception) -> str:
                     "Найденная Qwen Coder — отдельная модель для программирования.")
     # Exceptions from filesystem/network adapters can include private user
     # paths, API secrets or credential-bearing URLs. Never echo them into chat.
-    if isinstance(error, (OSError, TimeoutError)) or re.search(
-            r"(?:[A-Za-z]:[/\\\\]|/Users/|/home/|/mnt/|(?:password|secret|token|api[_-]?key)\\s*[=:])",
-            detail, re.IGNORECASE):
+    private_path = re.search(
+        r"(?:[A-Za-z]:[/\\]|/(?:Users|home|mnt)/)", detail, re.IGNORECASE)
+    credential = re.search(
+        r"(?:password|secret|token|api[_-]?key)\s*[:=]", detail, re.IGNORECASE)
+    if isinstance(error, (OSError, TimeoutError)) or private_path or credential:
         return ("Локальная модель недоступна. Проверь состояние Ollama, "
                 "доступность модели и локальные разрешения.")
     return "Локальная модель недоступна: " + detail[:160]
