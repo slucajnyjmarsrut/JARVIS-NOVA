@@ -85,9 +85,17 @@ def _context(files: dict[str,str],max_chars=18000):
               for filename, _ in ordered]
     headers=sum(len(start)+len(end) for start,end in wrappers)
     if headers >= max_chars:
-        # An extraordinary inventory with very long filenames is still
-        # strictly bounded; never output half of a source file as a header.
-        return "".join(start+end for start,end in wrappers)[:max_chars]
+        # Even with pathological filenames keep complete source markers:
+        # omit excess entries instead of emitting a broken context record.
+        summary=[]
+        occupied=0
+        for start,end in wrappers:
+            note=start+end
+            if occupied+len(note)>max_chars:
+                break
+            summary.append(note)
+            occupied+=len(note)
+        return "".join(summary)
     share=min(1400,(max_chars-headers)//len(ordered))
     return "".join(
         start+content[:share]+end
