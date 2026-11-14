@@ -37,8 +37,12 @@ class TextOnlyBundleContract(unittest.TestCase):
         self.assertNotIn("from offline_e2e_test",entry)
         self.assertIn("from scripts.verify_text_vision_e2e",entry)
         controller=(ROOT/"text_only_main.py").read_text(encoding="utf-8")
-        self.assertIn("self.voice_enabled = False",controller)
-        self.assertIn("self.voice = NoAudio()",controller)
+        self.assertNotIn("self.voice_enabled",controller)
+        self.assertNotIn("self.voice =",controller)
+        self.assertNotIn("self.speaker =",controller)
+        self.assertNotIn("NoAudio",controller)
+        self.assertNotIn("init_voice",controller)
+        self.assertNotIn("toggle_voice",controller)
     def test_text_assets_fail_if_old_voice_checkpoints_present(self):
         from scripts.verify_installer_payload import verify
         with tempfile.TemporaryDirectory() as d:
