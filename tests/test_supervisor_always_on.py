@@ -39,6 +39,37 @@ class AlwaysOnSupervisorTests(TestCase):
             self.assertFalse(s.background_run_next())
             self.assertEqual(s.list_jobs(), ())
 
+    def test_unapproved_queue_row_cannot_execute_even_if_db_is_modified(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)/"night"
+            executed=[]
+            def execute(job,cb):
+                executed.append(job.id)
+                return _scenario(job,cb)
+            s=_manager(root,executor=execute)
+            job_id=s.enqueue("scenario","Minecraft",approved=True,
+                             allow_new_files=True)
+            with sqlite3.connect(s.db) as db:
+                db.execute("UPDATE jobs SET approved=0 WHERE id=?",(job_id,))
+            self.assertFalse(s.background_run_next())
+            self.assertEqual(executed,[])
+            self.assertEqual(s.list_jobs()[0].status,"queued")
+
+    def test_memory_waiting_jobs_still_count_toward_queue_limit(self):
+        from night_supervisor import SupervisorError
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)/"night"
+            s=_manager(root)
+            for i in range(12):
+                s.enqueue("scenario",f"Minecraft project {i}",
+                          approved=True,allow_new_files=True)
+            with sqlite3.connect(s.db) as db:
+                db.execute("UPDATE jobs SET status='waiting_memory'")
+            with self.assertRaises(SupervisorError):
+                s.enqueue("scenario","13th Minecraft project",
+                          approved=True,allow_new_files=True)
+            self.assertEqual(len(s.list_jobs()),12)
+
     def test_only_explicitly_approved_job_runs_automatically(self):
         with TemporaryDirectory() as tmp:
             root=Path(tmp)/"night"

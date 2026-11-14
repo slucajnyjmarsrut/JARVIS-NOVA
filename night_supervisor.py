@@ -463,8 +463,11 @@ class NightSupervisor:
         elif source_id:
             raise SupervisorError("Внешние файлы и источники не разрешены.")
         with self._connect() as db:
+            # Waiting for memory is still an outstanding approved job:
+            # excluding it allowed the unattended queue to grow past 12.
             count = db.execute("SELECT count(*) FROM jobs WHERE status IN "
-                               "('queued','running','paused')").fetchone()[0]
+                               "('queued','running','paused','waiting_memory')"
+                               ).fetchone()[0]
             if count >= MAX_JOBS:
                 raise SupervisorError("Очередь заполнена. Лимит — 12 задач.")
             if kind == "montage_advice":
@@ -696,7 +699,11 @@ class NightSupervisor:
             if cancel is not None and cancel.is_set():
                 return False
             with self._connect() as db:
-                row = db.execute("SELECT id FROM jobs WHERE status='queued' "
+                # Defense-in-depth: background mode may only execute
+                # rows with an explicit per-task approval, even if the DB
+                # was migrated or modified outside the supported UI.
+                row = db.execute("SELECT id FROM jobs "
+                                 "WHERE status='queued' AND approved=1 "
                                  "ORDER BY created,id LIMIT 1").fetchone()
                 if row is None:
                     return False
