@@ -82,6 +82,7 @@ on:
       - tests/test_chat_first_intent.py
       - tests/test_one_shot_project.py
       - tests/test_code_stepwise_project.py
+      - tests/test_module_hardening.py
       - tests/test_video_timeline.py
       - code_project_engine.py
       - local_coder_models.py

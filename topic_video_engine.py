@@ -253,7 +253,9 @@ def render_topic_video(brief: Brief, output_dir: Path, *, size=DEFAULT_SIZE,
     execute = executor or _execute
     publish = renderer or render_video
     result_path = output_dir / "JARVIS_NOVA_FROM_TOPIC.mp4"
-    with TemporaryDirectory(prefix="jarvis-topic-") as temporary:
+    # Stage clips on the actual output volume: a full Windows system temp
+    # drive must not break rendering to a different, healthy project disk.
+    with TemporaryDirectory(prefix=".jarvis-topic-", dir=output_dir) as temporary:
         clips = Path(temporary) / "generated_clips"
         clips.mkdir()
         for i, shot in enumerate(brief.shots, 1):
