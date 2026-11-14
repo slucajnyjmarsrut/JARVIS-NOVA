@@ -49,7 +49,7 @@ class AlwaysOnSupervisorTests(TestCase):
             s=_manager(root,executor=execute)
             job_id=s.enqueue("scenario","Minecraft",approved=True,
                              allow_new_files=True)
-            with sqlite3.connect(s.db) as db:
+            with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE jobs SET approved=0 WHERE id=?",(job_id,))
             self.assertFalse(s.background_run_next())
             self.assertEqual(executed,[])
@@ -63,7 +63,7 @@ class AlwaysOnSupervisorTests(TestCase):
             for i in range(12):
                 s.enqueue("scenario",f"Minecraft project {i}",
                           approved=True,allow_new_files=True)
-            with sqlite3.connect(s.db) as db:
+            with closing(sqlite3.connect(s.db)) as db, db:
                 db.execute("UPDATE jobs SET status='waiting_memory'")
             with self.assertRaises(SupervisorError):
                 s.enqueue("scenario","13th Minecraft project",
