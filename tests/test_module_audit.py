@@ -23,6 +23,18 @@ class ModuleInventoryTests(unittest.TestCase):
             self.assertIn("SyntaxError",errors)
             self.assertIn("MissingCriticalModule",errors)
 
+    def test_removed_speech_import_is_detected_without_importing_module(self):
+        with TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            (root/"accidental.py").write_text(
+                "import voice_engine\nfrom speaker import assets\n",
+                encoding="utf-8")
+            report=audit_sources(root)
+            issues=[x for x in report["issues"]
+                    if x["error"]=="RemovedVoiceImport"]
+            self.assertEqual(len(issues),2)
+            self.assertEqual([x["line"] for x in issues],[1,2])
+
     def test_report_never_claims_real_model_quality(self):
         self.assertNotIn("real_llm_passed",audit_sources())
         self.assertNotIn("installer_passed",audit_sources())
