@@ -15,6 +15,12 @@ on:
       - tests/test_text_model_controls.py
       - tests/test_text_only_mode.py
       - tests/test_no_voice_contract.py
+      - post_montage_review.py
+      - tests/test_post_montage_review.py
+      - tests/test_shutdown.py
+      - tests/test_no_camera.py
+      - tests/test_agent.py
+      - scripts/audit_module_health.py
       - tests/test_chat_first_intent.py
       - semantic_intent_router.py
       - tests/test_semantic_intent_router.py
