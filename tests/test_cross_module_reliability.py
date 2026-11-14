@@ -63,6 +63,25 @@ class CrossModuleReliability(TestCase):
                 self.assertTrue(s.run_next())
             self.assertEqual(s.list_jobs()[0].status,"completed")
 
+    def test_screen_errors_do_not_disclose_user_paths(self):
+        from screen_capture import ScreenFrameSource, ScreenCaptureError
+        def failed_grab():
+            raise OSError("Private path C:/Users/Someone/token.png")
+        with self.assertRaises(ScreenCaptureError) as caught:
+            ScreenFrameSource(grab=failed_grab).capture_jpeg()
+        self.assertEqual(str(caught.exception), "Cannot capture screen")
+        self.assertNotIn("token", str(caught.exception))
+
+    def test_corrupt_ram_counters_pause_supervisor_instead_of_crashing(self):
+        from night_resource_guard import MemorySnapshot, under_pressure
+        for sample in (None, "bad", MemorySnapshot(None, 1000),
+                       MemorySnapshot(True, 1000),
+                       MemorySnapshot(1001, 1000),
+                       MemorySnapshot(-1, 1000),
+                       MemorySnapshot(0, 0)):
+            with self.subTest(value=sample):
+                self.assertTrue(under_pressure(sample))
+
     def test_real_scene_art_changes_with_scenario(self):
         brief=replace(quick_brief("Minecraft"),generator="локальная Gemma3:4b")
         first=brief.shots[0]

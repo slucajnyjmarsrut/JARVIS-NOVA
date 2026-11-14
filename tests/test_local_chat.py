@@ -98,6 +98,25 @@ class LocalChatTests(unittest.TestCase):
         self.assertIn("Connection refused", message)
         self.assertNotIn("файлы повреждены", message)
 
+    def test_missing_dedicated_chat_rechecks_after_ollama_install(self):
+        from unittest.mock import Mock
+        runtime = FakeRuntime()
+        transport = Mock(return_value={"message": {"content": "Модель готова"}})
+        chat = LocalChat(runtime, requester=transport)
+        chat.prefer_task_specialist(True)
+        with patch("task_ai_registry.specialist_available",
+                   side_effect=[False, True]) as present, patch(
+                   "local_chat.time.monotonic", side_effect=[100., 105., 121.]):
+            with self.assertRaises(LocalChatError):
+                chat.ask("Расскажи о городе")
+            with self.assertRaises(LocalChatError):
+                chat.ask("Расскажи о городе")
+            self.assertEqual(present.call_count, 1)
+            self.assertEqual(chat.ask("Расскажи о городе"), "Модель готова")
+            self.assertEqual(present.call_count, 2)
+        self.assertEqual(runtime.calls, 0)
+        self.assertEqual(transport.call_args.args[1]["model"], "qwen3:4b")
+
     def test_chat_refuses_external_hosts(self):
         for host in ("https://127.0.0.1:1234", "http://localhost:1234",
                      "http://example.com:1234", "http://127.0.0.1:1234/path",

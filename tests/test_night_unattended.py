@@ -198,9 +198,10 @@ class UnattendedRecoveryTests(unittest.TestCase):
         from task_ai_registry import get_specialist
         calls = []
         total = release_specialist_memory(sender=calls.append)
-        self.assertEqual(total, 3)
+        self.assertEqual(total, 4)
         self.assertEqual(set(calls), {
-            get_specialist(x).model for x in ("scenario", "code", "montage")
+            get_specialist(x).model for x in
+            ("scenario", "code", "montage", "chat")
         })
 
     def test_startup_module_does_not_do_anything_without_queue_file(self):

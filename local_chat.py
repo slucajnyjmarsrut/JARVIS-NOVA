@@ -7,6 +7,7 @@ back to the image model. No unapproved downloads or external APIs.
 from __future__ import annotations
 import json
 import threading
+import time
 from urllib.parse import urlsplit
 import urllib.request
 
@@ -56,6 +57,7 @@ class LocalChat:
         self._prefer_task_chat = False
         self._task_chat_checked = False
         self._task_chat_ready = False
+        self._task_chat_next_check = 0.0
 
     def prefer_task_specialist(self, enabled=True):
         """Select independent Qwen3 chat; fail closed if it is unavailable.
@@ -67,6 +69,7 @@ class LocalChat:
             raise ValueError("Нужно выбрать True или False")
         self._prefer_task_chat = enabled
         self._task_chat_checked = False
+        self._task_chat_next_check = 0.0
 
     def set_debate_mode(self, enabled: bool) -> None:
         if type(enabled) is not bool:
@@ -161,13 +164,20 @@ class LocalChat:
         endpoint = None
         model = self.model
         if self._prefer_task_chat:
-            if not self._task_chat_checked:
+            # Missing models are rechecked after 20 seconds: installing
+            # Ollama later must not require restarting JARVIS or changing
+            # the chosen specialist. Never downloads or starts a model.
+            now = time.monotonic()
+            if (not self._task_chat_checked or
+                    (not self._task_chat_ready and
+                     now >= self._task_chat_next_check)):
                 try:
                     from task_ai_registry import specialist_available
                     self._task_chat_ready = specialist_available("chat")
                 except Exception:
                     self._task_chat_ready = False
                 self._task_chat_checked = True
+                self._task_chat_next_check = now + 20.0
             if not self._task_chat_ready:
                 raise LocalChatError(
                     "Отдельный ИИ-диалог Qwen3:4b недоступен. "

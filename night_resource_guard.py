@@ -3,7 +3,7 @@
 
 Never terminate arbitrary processes, delete files, download models or reboot.
 Windows memory measurement uses the kernel's GlobalMemoryStatusEx, not LLM
-guesses. Only three fixed, locally installed specialist models may be unloaded
+guesses. Only four fixed, locally installed Ollama specialist models may be unloaded
 via loopback Ollama's documented keep_alive=0 API. No redirects or proxies.
 """
 from __future__ import annotations
@@ -80,7 +80,14 @@ def memory_snapshot():
 
 
 def under_pressure(snapshot):
-    return snapshot is None or snapshot.total <= 0 or snapshot.available < 0 or snapshot.low
+    """Unknown/corrupt memory metrics must not start a new local model."""
+    if not isinstance(snapshot, MemorySnapshot):
+        return True
+    if (type(snapshot.total) is not int or type(snapshot.available) is not int or
+            snapshot.total <= 0 or
+            snapshot.available < 0 or snapshot.available > snapshot.total):
+        return True
+    return snapshot.low
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -104,14 +111,15 @@ def _local_unload(model):
 
 
 def release_specialist_memory(*, sender=None):
-    """Best-effort unload only three specialist model IDs, no other processes.
+    """Best-effort unload four allowlisted Ollama models, no other processes.
 
     Ollama may be unavailable under OOM: release failures never cause an
     arbitrary kill. GUI/background code may recheck and sleep instead.
     """
     from task_ai_registry import get_specialist
     sender = sender or _local_unload
-    ids = {get_specialist(role).model for role in ("scenario", "code", "montage")}
+    ids = {get_specialist(role).model for role in
+           ("scenario", "code", "montage", "chat")}
     gc.collect()
     released = 0
     for model in sorted(ids):
