@@ -20,7 +20,7 @@ from multitrack_composer import (
 class MultitrackTests(unittest.TestCase):
     def test_chat_routes_explicit_multilayer_commands_only(self):
         for text in ("Джарвис, сделай многодорожечный монтаж",
-                     "наложи логотип на видео","добавь озвучку к видео",
+                     "наложи логотип на видео",
                      "наложи видео на видео"):
             self.assertTrue(is_multitrack_request(text),text)
         for text in ("включи музыку","сделай эдит","открой ютуб"):
@@ -61,7 +61,7 @@ class MultitrackTests(unittest.TestCase):
         return MultitrackProject(
             base_video=base,output_video=root/"finished.mp4",
             layers=(VisualLayer(image,start=.5,duration=1.2),),
-            title="JARVIS NOVA",music=None,voiceover=None)
+            title="JARVIS NOVA",music=None)
 
     def test_editable_multitrack_json_roundtrip_and_no_overwrite(self):
         with tempfile.TemporaryDirectory() as root:
@@ -165,30 +165,33 @@ class MultitrackTests(unittest.TestCase):
                 self.assertEqual(audio,"abase")
                 self.assertNotIn("http",graph)
 
-    def test_music_voice_no_audio_has_three_live_audio_tracks(self):
+    def test_music_and_silent_base_mix_without_narration(self):
         with tempfile.TemporaryDirectory() as directory:
             project=self.fixture(directory)
             root=Path(directory)
             music=root/"music.mp3"
-            voice=root/"voice.wav"
             music.write_bytes(b"music"*50)
-            voice.write_bytes(b"voice"*50)
-            project=replace(project,music=music,voiceover=voice,
-                            duck_music=True)
+            project=replace(project,music=music)
             graph,video,audio=build_filter_graph(
                 project,duration=4.0,width=1280,height=720,
-                has_base_audio=False,title_index=2,silent_index=5)
-            self.assertIn("[5:a:0]aresample",graph)
-            self.assertIn("amix=inputs=3",graph)
+                has_base_audio=False,title_index=2,silent_index=4)
+            self.assertIn("[4:a:0]aresample",graph)
+            self.assertIn("amix=inputs=2",graph)
             self.assertIn("volume=0.220[music]",graph)
-            self.assertIn("asplit=2[voice_detector][voice_for_mix]",graph)
-            self.assertIn("sidechaincompress=threshold=0.020",graph)
-            self.assertIn("[ducked_music][voice_for_mix]amix",graph)
+            self.assertNotIn("sidechaincompress",graph)
+            self.assertNotIn("voice",graph)
             self.assertEqual(audio,"finalaudio")
+
+    def test_existing_voiceover_project_rejected_rather_than_silently_muted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project=self.fixture(directory)
+            path=Path(directory)/"project.json"
+            save_multitrack(project,path)
+            data=json.loads(path.read_text(encoding="utf-8"))
+            data["narration"]=str(Path(directory)/"voice.wav")
+            path.write_text(json.dumps(data),encoding="utf-8")
             with self.assertRaises(MultitrackError):
-                validate_project(replace(self.fixture(directory),duck_music=True))
-            with self.assertRaises(MultitrackError):
-                validate_project(replace(project,duck_music="yes"))
+                load_multitrack(path)
 
     def test_banned_sources_bad_values_and_existing_output(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -222,7 +225,7 @@ class MultitrackTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"),
                          "Real FFmpeg missing on this runner")
-    def test_real_layered_mp4_with_logo_title_music_and_voice(self):
+    def test_real_layered_mp4_with_logo_title_and_music(self):
         from PIL import Image
         ffmpeg=shutil.which("ffmpeg")
         ffprobe=shutil.which("ffprobe")
@@ -230,7 +233,6 @@ class MultitrackTests(unittest.TestCase):
             root=Path(directory)
             base=root/"base.mp4"
             logo=root/"logo.png"
-            voice=root/"voice.wav"
             music=root/"music.wav"
             Image.new("RGBA",(90,45),(255,20,30,210)).save(logo)
             def execute(args):
@@ -244,7 +246,7 @@ class MultitrackTests(unittest.TestCase):
                      "sine=frequency=440:sample_rate=48000:duration=2.4",
                      "-t","2.4","-c:v","libx264","-pix_fmt","yuv420p",
                      "-c:a","aac",str(base)])
-            for name,frequency in ((voice,880),(music,220)):
+            for name,frequency in ((music,220),):
                 execute([ffmpeg,"-hide_banner","-loglevel","error","-y",
                          "-f","lavfi","-i",
                          f"sine=frequency={frequency}:sample_rate=48000:duration=2.4",
@@ -254,17 +256,17 @@ class MultitrackTests(unittest.TestCase):
                 base_video=base,output_video=root/"ready.mp4",
                 layers=(VisualLayer(logo,start=.2,duration=1.5,
                                     position="top-left",width_percent=35),),
-                title="NOVA",voiceover=voice,music=music,
-                duck_music=True)
+                title="NOVA",music=music)
             result=render_multitrack(project,tools=(ffmpeg,ffprobe))
             output=Path(result["output"])
             self.assertTrue(output.is_file())
             self.assertEqual(result["technical_quality"]["video_codec"],"h264")
             self.assertEqual(result["technical_quality"]["audio_codec"],"aac")
+            self.assertNotIn("narration", result)
+            self.assertNotIn("duck_music", result)
             self.assertEqual(result["technical_quality"]["width"],320)
             self.assertEqual(result["technical_quality"]["height"],180)
             self.assertEqual(len(result["layers"]),1)
-            self.assertTrue(result["duck_music"])
             self.assertTrue(output.with_name("ready_MULTITRACK.json").is_file())
             self.assertEqual(hashlib.sha256(base.read_bytes()).hexdigest(),digest)
             with self.assertRaises(MultitrackError):
