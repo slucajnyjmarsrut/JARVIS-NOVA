@@ -67,6 +67,7 @@ def entries(app, section="main"):
         ("◆", "Выбрать AI", None, "ai"),
         ("✦", "ИИ по задачам · сценарии / код / зрение / монтаж",
          app.open_task_ai_hub, None),
+        ("▦", "Диагностика всех модулей", app.show_module_health, None),
         ("☾", "Автономная ночная работа · Supervisor",
          app.open_night_supervisor, None),
         ("↔", "Режим спора — вкл/выкл", app.set_debate_mode, None),

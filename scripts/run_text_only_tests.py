@@ -95,6 +95,7 @@ TESTS=(
        "test_night_supervisor.py",
        "test_cross_module_reliability.py",
        "test_module_audit.py",
+       "test_module_health.py",
        "test_topic_video_engine.py",
         "test_night_unattended.py",
        "test_supervisor_always_on.py",

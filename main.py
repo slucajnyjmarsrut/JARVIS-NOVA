@@ -826,6 +826,11 @@ class Jarvis(tk.Tk):
                          "openai":"AI: OpenAI API (ключ из окружения)",
                          "anthropic":"AI: Claude API (ключ из окружения)"}[engine])
 
+    def show_module_health(self):
+        """Read-only health dashboard: no models or external tools launched."""
+        from module_health_ui import ModuleHealthWindow
+        ModuleHealthWindow(self)
+
     def open_night_supervisor(self):
         """Open explicit-consent night queue, never execute on open."""
         old = getattr(self, "_night_window", None)

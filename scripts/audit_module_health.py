@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
 FAMILIES={
-    "models":("task_ai_registry.py","task_ai_hub.py","local_chat.py","scenario_specialist.py"),
+    "models":("task_ai_registry.py","task_ai_hub.py","local_chat.py","scenario_specialist.py","module_health.py","module_health_ui.py"),
     "scenarios":("video_scenario_autonomy.py","quick_video_brief.py"),
     "coding":("code_project_engine.py","code_agent.py","code_workspace.py","code_checks.py"),
     "video":("topic_video_engine.py","viral_studio.py","smart_montage.py","post_montage_review.py"),
