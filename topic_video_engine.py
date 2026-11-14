@@ -54,20 +54,53 @@ def _font(size):
 
 
 def _wrapped(draw, text, font, limit, *, max_lines=3):
+    """Bound every caption line by actual pixel width, including long words."""
+    if type(limit) is not int or type(max_lines) is not int or limit <= 0 or max_lines <= 0:
+        return ""
+
+    def width(line):
+        x0, _y0, x1, _y1 = draw.textbbox((0, 0), line, font=font)
+        return x1 - x0
+
+    def truncate(line):
+        if width(line) <= limit:
+            return line
+        suffix = "…"
+        if width(suffix) > limit:
+            return ""
+        left, right = 0, len(line)
+        while left < right:
+            middle = (left + right + 1) // 2
+            if width(line[:middle] + suffix) <= limit:
+                left = middle
+            else:
+                right = middle - 1
+        return line[:left].rstrip() + suffix
+
     words = re.sub(r"[\x00-\x1f\x7f]", " ", text).split()
     lines, part = [], ""
     for word in words:
-        proposal = (part + " " + word).strip()
-        if part and draw.textbbox((0, 0), proposal, font=font)[2] > limit:
-            lines.append(part)
-            part = word
+        if not part:
+            if width(word) > limit:
+                lines.append(truncate(word))
+            else:
+                part = word
+            continue
+        candidate = part + " " + word
+        if width(candidate) <= limit:
+            part = candidate
         else:
-            part = proposal
+            lines.append(part)
+            if width(word) > limit:
+                lines.append(truncate(word))
+                part = ""
+            else:
+                part = word
     if part:
         lines.append(part)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-        lines[-1] = lines[-1][:36].rstrip() + "…"
+        lines[-1] = truncate(lines[-1] + "…")
     return "\n".join(lines)
 
 
