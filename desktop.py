@@ -91,6 +91,10 @@ class Desktop:
 
     def run(self,s:Step):
         validate_step(s)
+        # Opening a program or URL changes the desktop, just like clicking.
+        # Never bypass a saved user revocation via the early branches.
+        if s.kind in ("open_app","open_url") and not self.allow_control():
+            raise PermissionError("Управление компьютером отключено в настройках JARVIS.")
         if s.kind=="open_app": return self.open_app(s.value)
         if s.kind=="open_url":
             if not webbrowser.open(s.value): raise RuntimeError("Браузер не открыл ссылку")
