@@ -35,9 +35,12 @@ def run_forever(root=None, *, supervisor_factory=NightSupervisor,
                 supervisor = supervisor_factory(root)
             if supervisor.background_enabled():
                 supervisor.background_run_next(cancel=stop_event)
-        except (OSError, SupervisorError, ValueError, RuntimeError) as exc:
-            # Another JARVIS instance may temporarily hold the queue lock,
-            # or a drive may be offline. Never attempt a privilege escalation.
+        except Exception as exc:
+            # A buggy model adapter, corrupt checkpoint or temporary drive
+            # failure must not kill the always-on watchdog permanently.
+            # Do not catch BaseException (SystemExit, KeyboardInterrupt).
+            # Log the exception *class*, never potentially private paths,
+            # prompts, access tokens or arbitrary model output.
             _LOG.warning("Supervisor watcher deferred: %s", type(exc).__name__)
             supervisor = None
         stop_event.wait(poll_seconds)

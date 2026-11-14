@@ -284,7 +284,7 @@ class NightSupervisor:
                 return False
             try:
                 snapshot = self._memory_probe()
-            except (OSError, ValueError, RuntimeError):
+            except (OSError, ValueError, RuntimeError, TypeError, AttributeError):
                 snapshot = None
             if under_pressure(snapshot):
                 with self._connect() as db:
@@ -353,7 +353,8 @@ class NightSupervisor:
         # an otherwise safely checkpointed overnight queue.
         try:
             return self._resource_release()
-        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+        except (OSError, ValueError, TypeError, RuntimeError,
+                ImportError, AttributeError) as exc:
             with self._connect() as db:
                 self._event(db, "night", "memory_release_unavailable",
                             type(exc).__name__)
@@ -413,7 +414,8 @@ class NightSupervisor:
                     return processed
                 try:
                     snap = self._memory_probe()
-                except (OSError, ValueError, RuntimeError):
+                except (OSError, ValueError, RuntimeError,
+                        TypeError, AttributeError):
                     snap = None  # Unknown memory: fail closed and wait.
                 if under_pressure(snap):
                     with self._connect() as db:

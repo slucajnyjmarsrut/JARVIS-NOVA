@@ -16,6 +16,7 @@ from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import shutil
 import json
 import math
 import random
@@ -34,6 +35,8 @@ SCENE_COLORS = (
     ((18, 31, 56), (45, 70, 139), (251, 216, 115)),
 )
 MAX_TOTAL_SECONDS = 55
+# Leave enough free space for staged H.264 clips, captions, WAV and muxing.
+MIN_VIDEO_FREE_BYTES = 768 * 1024 * 1024
 
 
 class TopicVideoError(ViralStudioError):
@@ -213,7 +216,8 @@ def _music(original_file, index, seconds):
 
 
 def render_topic_video(brief: Brief, output_dir: Path, *, size=DEFAULT_SIZE,
-                       tools=None, cancel=None, executor=None, renderer=None):
+                       tools=None, cancel=None, executor=None, renderer=None,
+                       disk_probe=None):
     """Generate five animated, originally illustrated clips and a verified MP4.
 
     The target directory must already exist and be empty. All inputs are
@@ -233,6 +237,18 @@ def render_topic_video(brief: Brief, output_dir: Path, *, size=DEFAULT_SIZE,
     if (not output_dir.is_dir() or output_dir.is_symlink() or
             any(output_dir.iterdir())):
         raise TopicVideoError("Нужна новая пустая папка, ничего не перезаписываю.")
+    # Verify the actual target volume *before* producing temporary media.
+    # A full disk must never be reported as a successful night render.
+    try:
+        free = (disk_probe(output_dir) if disk_probe is not None
+                else shutil.disk_usage(output_dir).free)
+    except (OSError, ValueError, TypeError) as exc:
+        raise TopicVideoError(
+            "Не удалось проверить свободное место для MP4.") from exc
+    if type(free) is not int or free < MIN_VIDEO_FREE_BYTES:
+        raise TopicVideoError(
+            "Для автономного MP4 недостаточно свободного места: нужно "
+            "не менее 768 МиБ на диске результата.")
     ffmpeg, ffprobe = tools or ffmpeg_tools()
     execute = executor or _execute
     publish = renderer or render_video

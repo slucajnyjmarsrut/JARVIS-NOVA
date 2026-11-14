@@ -93,9 +93,15 @@ class LocalChat:
     def _request(endpoint: str, payload: dict, *, timeout: float = 150) -> dict:
         if type(timeout) not in (int,float) or not 1 <= timeout <= 150:
             raise LocalChatError("Недопустимое время ожидания Ollama.")
-        parts = urlsplit(endpoint)
+        # Invalid port syntax (e.g. :abc or :99999) must be a
+        # controlled validation error, not an uncaught ValueError in the UI.
+        try:
+            parts = urlsplit(endpoint)
+            port = parts.port
+        except (ValueError, TypeError) as exc:
+            raise LocalChatError("Некорректный адрес локальной Ollama.") from exc
         if (parts.scheme != "http" or parts.hostname != "127.0.0.1"
-                or not (1 <= (parts.port or 0) <= 65535) or
+                or not (1 <= (port or 0) <= 65535) or
                 parts.path or parts.query or parts.fragment or
                 parts.username is not None or parts.password is not None):
             raise LocalChatError("Локальная модель должна отвечать только с 127.0.0.1")
@@ -112,9 +118,13 @@ class LocalChat:
         if len(body) > 300_000:
             raise LocalChatError("Слишком длинный ответ модели")
         try:
-            return json.loads(body)
+            parsed = json.loads(body)
         except (UnicodeError, ValueError) as exc:
             raise LocalChatError("Неверный ответ локальной модели") from exc
+        if not isinstance(parsed, dict) or not isinstance(
+                parsed.get("message"), dict):
+            raise LocalChatError("Локальная модель вернула неверную структуру.")
+        return parsed
 
     def ask(self, question: str) -> str:
         question = str(question or "").strip()
@@ -211,7 +221,8 @@ class LocalChat:
                         "temperature": 0.4 if self.debate_mode else 0.3},
         }
         result = self._requester(endpoint, payload)
-        answer = result.get("message", {}).get("content", "") if isinstance(result, dict) else ""
+        message = result.get("message") if isinstance(result, dict) else None
+        answer = message.get("content", "") if isinstance(message, dict) else ""
         if not isinstance(answer, str) or not answer.strip():
             raise LocalChatError("Локальная модель не дала ответа")
         if self._closed:
