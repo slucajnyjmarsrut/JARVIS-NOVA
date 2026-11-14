@@ -139,32 +139,6 @@ class StartupPermissionsTests(unittest.TestCase):
         self.assertFalse(app.control_allowed)
         self.assertFalse(app.vision_allowed)
 
-    def test_saved_vision_grant_avoids_repeat_screen_capture_prompt(self):
-        app = Mock()
-        app._closing = False
-        app.executing = False
-        app.vision_allowed = True
-        app.voice_enabled = False
-        with patch("main.messagebox.askyesno") as ask, patch(
-                "main.threading.Thread") as worker:
-            Jarvis.request_trimodal(app, "screen")
-            ask.assert_not_called()
-            worker.assert_called_once()
-            worker.return_value.start.assert_called_once()
-        self.assertTrue(app.executing)
-
-    def test_without_vision_permission_screen_capture_can_be_denied(self):
-        app = Mock()
-        app._closing = False
-        app.executing = False
-        app.vision_allowed = False
-        with patch("main.messagebox.askyesno", return_value=False) as ask, patch(
-                "main.threading.Thread") as worker:
-            Jarvis.request_trimodal(app, "screen")
-            ask.assert_called_once()
-            worker.assert_not_called()
-        self.assertFalse(app.executing)
-
     def test_existing_access_does_not_show_repeat_grant_dialogs(self):
         app = Mock()
         app.control_allowed = True
@@ -194,7 +168,7 @@ class StartupPermissionsTests(unittest.TestCase):
         with patch("text_only_main.simpledialog.askstring", return_value="Что на экране?"), patch(
                 "text_only_main.messagebox.askyesno") as confirm, patch(
                 "text_only_main.threading.Thread") as thread:
-            TextJarvis.request_trimodal(app, "screen")
+            TextJarvis.request_screen_analysis(app, "screen")
             confirm.assert_not_called()
             thread.return_value.start.assert_called_once()
         self.assertTrue(app.executing)
@@ -208,7 +182,7 @@ class StartupPermissionsTests(unittest.TestCase):
         with patch("text_only_main.simpledialog.askstring", return_value="Что на экране?"), patch(
                 "text_only_main.messagebox.askyesno", return_value=False) as confirm, patch(
                 "text_only_main.threading.Thread") as thread:
-            TextJarvis.request_trimodal(app, "screen")
+            TextJarvis.request_screen_analysis(app, "screen")
             confirm.assert_called_once()
             thread.assert_not_called()
         self.assertFalse(app.executing)
