@@ -61,7 +61,7 @@ def entries(app, section="main"):
     items=[
         ("⟳", "Автообновления · проверить версию", app.show_update_center, None),
         ("▣", "Разрешения", None, "permissions"),
-        ("◎", "Описать экран текстом", lambda: app.request_trimodal("screen"), None),
+        ("◎", "Описать экран текстом", lambda: app.request_screen_analysis("screen"), None),
         None,
         ("◈", "Режимы работы", None, "modes"),
         ("◆", "Выбрать AI", None, "ai"),
