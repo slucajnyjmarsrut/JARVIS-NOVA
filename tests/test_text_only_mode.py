@@ -10,7 +10,8 @@ from unittest.mock import Mock
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
 import text_only_main as text_main
-from text_only_main import TextJarvis, NoAudio
+from text_only_main import TextJarvis
+from main import screen_question
 
 
 class TextModeTests(unittest.TestCase):
@@ -34,18 +35,13 @@ class TextModeTests(unittest.TestCase):
         from text_only_overlay import TextOverlay
         base=inspect.getsource(NovaOverlay.__init__)
         text=inspect.getsource(TextOverlay.__init__)
-        self.assertIn("if not self._text_only:",base)
-        self.assertIn("super().__init__(app, text_only=True)",text)
+        self.assertNotIn("mic_button",base)
+        self.assertIn("super().__init__(app)",text)
         self.assertNotIn("mic_button.destroy()",text)
 
-    def test_no_audio_object_does_not_have_hardware_methods(self):
-        obj=NoAudio()
-        self.assertFalse(obj.busy)
-        self.assertFalse(obj.speaking)
-        self.assertFalse(hasattr(obj,"start"))
-        self.assertFalse(hasattr(obj,"say"))
-        self.assertEqual(obj.vision_source("опиши экран"),"screen")
-        self.assertIsNone(obj.vision_source("напиши код на Java"))
+    def test_screen_question_is_pure_typed_text_not_audio(self):
+        self.assertTrue(screen_question("опиши экран"))
+        self.assertFalse(screen_question("напиши код на Java"))
 
     def test_reply_never_calls_speaker(self):
         app=Mock()
@@ -53,11 +49,12 @@ class TextModeTests(unittest.TestCase):
         TextJarvis.reply(app,"Письменный ответ")
         app.log.assert_called_once_with("JARVIS","Письменный ответ")
         app.status.set.assert_called_once()
-        app.speaker.say.assert_not_called()
+        self.assertNotIn("speaker", inspect.getsource(TextJarvis.reply))
 
     def test_video_window_is_not_passed_a_speaker(self):
         source=inspect.getsource(TextJarvis.open_viral_studio)
-        self.assertIn("speaker=None",source)
+        self.assertIn("ViralStudioWindow(self)",source)
+        self.assertNotIn("speaker=",source)
 
     def test_audio_controls_absent_in_text_layout(self):
         from text_only_ui import build_text_interface
@@ -124,7 +121,9 @@ class TextModeTests(unittest.TestCase):
                 try:
                     app.update_idletasks()
                     app.update()
-                    self.assertFalse(app.voice_enabled)
+                    self.assertFalse(hasattr(app,"voice_enabled"))
+                    self.assertFalse(hasattr(app,"speaker"))
+                    self.assertFalse(hasattr(app,"voice"))
                     self.assertFalse(hasattr(app,"mic_toggle_button"))
                     self.assertFalse(hasattr(app.overlay,"mic_button"))
                     self.assertFalse(hasattr(app.overlay,"listen_button"))
